@@ -1,6 +1,13 @@
 {
   "simulator_name": "Honeycomb Tech Conference Attendee Conversation Simulator",
   "version": "1.0",
+  "state_order": [
+    "ICEBREAKER",
+    "EXPLORATION",
+    "PAIN_DISCOVERY",
+    "SOLUTION_FRAMING",
+    "OUTCOME"
+  ],
   "states": {
     "ICEBREAKER": {
       "description": "Initial booth interaction. Attendee is guarded, brief, and non-commitful.",

@@ -22,11 +22,27 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const isMock = process.env.NEXT_PUBLIC_USE_MOCK_LLM === "true";
+
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        {isMock && (
+          <div
+            style={{
+              background: "#fde68a",
+              color: "#92400e",
+              padding: "8px 12px",
+              fontSize: "14px",
+              textAlign: "center",
+              borderBottom: "1px solid #f59e0b",
+            }}
+          >
+            ⚠️ Mock Mode enabled — AI responses are simulated
+          </div>
+        )}
         {children}
       </body>
     </html>
