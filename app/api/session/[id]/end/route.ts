@@ -5,10 +5,11 @@ import { randomUUID } from 'crypto';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getSession(params.id);
+    const { id } = await params;
+    const session = await getSession(id);
     if (!session) {
       return NextResponse.json(
         { error: 'Session not found' },
@@ -84,3 +85,4 @@ Remember: Listen, discover pain, validate, then align to outcomes.
       { status: 500 }
     );
   }
+}

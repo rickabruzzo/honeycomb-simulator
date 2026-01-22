@@ -70,6 +70,11 @@ export function buildAttendeePrompt(
 ): string {
   const stateConfig = SIMULATOR_CONFIG.states[currentState as keyof typeof SIMULATOR_CONFIG.states];
   
+  // Check if this state has attendee_behavior (OUTCOME state doesn't)
+  const behaviorText = 'attendee_behavior' in stateConfig 
+    ? `Your behavior: ${stateConfig.attendee_behavior.join(', ')}`
+    : 'The conversation is concluding.';
+  
   return `You are roleplaying as a tech conference attendee at the Honeycomb booth. 
 
 CRITICAL INSTRUCTIONS:
@@ -84,7 +89,7 @@ ${attendeeProfile}
 
 CURRENT STATE: ${currentState}
 State Description: ${stateConfig.description}
-Your behavior: ${stateConfig.attendee_behavior.join(', ')}
+${behaviorText}
 
 DIFFICULTY: ${difficulty}
 
