@@ -36,6 +36,11 @@ export default function HoneycombSimulator() {
   const [difficulty, setDifficulty] = useState("medium");
   const [violations, setViolations] = useState<string[]>([]);
 
+  const [inviteUrl, setInviteUrl] = useState<string>("");
+  const [inviteToken, setInviteToken] = useState<string>("");
+  const [isCreatingInvite, setIsCreatingInvite] = useState(false);
+  const [inviteError, setInviteError] = useState<string>("");
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const active = Boolean(sessionId);
@@ -104,22 +109,22 @@ export default function HoneycombSimulator() {
     restore();
   }, []);
 
-useEffect(() => {
-  // If user switches back to manual entry, clear the fields
-  if (selectedPersonaId === "custom") {
-    setConferenceContext("");
-    setAttendeeProfile("");
-    setDifficulty("medium");
-    return;
-  }
+  useEffect(() => {
+    // If user switches back to manual entry, clear the fields
+    if (selectedPersonaId === "custom") {
+      setConferenceContext("");
+      setAttendeeProfile("");
+      setDifficulty("medium");
+      return;
+    }
 
-  const preset = PERSONAS.find((p) => p.id === selectedPersonaId);
-  if (!preset) return;
+    const preset = PERSONAS.find((p) => p.id === selectedPersonaId);
+    if (!preset) return;
 
-  setConferenceContext(preset.conferenceContext);
-  setAttendeeProfile(preset.attendeeProfile);
-  setDifficulty(preset.difficulty);
-}, [selectedPersonaId]);
+    setConferenceContext(preset.conferenceContext);
+    setAttendeeProfile(preset.attendeeProfile);
+    setDifficulty(preset.difficulty);
+  }, [selectedPersonaId]);
 
   const handleResetSession = async () => {
     // Always clear client-side pointer + UI first (so Reset is instant)
@@ -226,6 +231,35 @@ useEffect(() => {
     }
   };
 
+  async function handleCreateInvite() {
+    try {
+      setInviteError("");
+      setIsCreatingInvite(true);
+
+      const body =
+        selectedPersonaId && selectedPersonaId !== "custom"
+          ? { personaId: selectedPersonaId }
+          : { conferenceContext, attendeeProfile, difficulty };
+
+      const res = await fetch("/api/invite/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to create invite");
+
+      const fullUrl = `${window.location.origin}${data.url}`;
+      setInviteUrl(fullUrl);
+      setInviteToken(data.token);
+    } catch (e: any) {
+      setInviteError(e?.message || "Failed to create invite");
+    } finally {
+      setIsCreatingInvite(false);
+    }
+  }
+
   const handleEndSession = async () => {
     if (!sessionId || loading) return;
 
@@ -317,7 +351,47 @@ useEffect(() => {
             Reset Session
           </button>
         </div>
+        {/* Trainee Share Link */}
+        <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-gray-200">Trainee Share Link</div>
+            <button
+              onClick={handleCreateInvite}
+              disabled={isCreatingInvite}
+              className="rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {isCreatingInvite ? "Creating..." : "Create Link"}
+            </button>
+          </div>
 
+          {inviteError ? (
+            <div className="mt-2 text-sm text-red-300">{inviteError}</div>
+          ) : null}
+
+          {inviteUrl ? (
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                value={inviteUrl}
+                readOnly
+                className="w-full rounded-md border border-gray-700 bg-gray-950/60 px-3 py-2 text-sm text-gray-200 outline-none"
+              />
+              <button
+                onClick={() => navigator.clipboard.writeText(inviteUrl)}
+                className="rounded-md border border-gray-600 bg-gray-800 hover:bg-gray-700 px-3 py-2 text-sm text-gray-200"
+              >
+                Copy
+              </button>
+            </div>
+          ) : (
+            <div className="mt-2 text-sm text-gray-400">
+              Create a link to send to a trainee. The trainee will not see the hidden profile.
+            </div>
+          )}
+
+          {inviteToken ? (
+            <div className="mt-2 text-xs text-gray-500">Token: {inviteToken}</div>
+          ) : null}
+        </div>
         {/* Setup panel */}
         <div>
           <label className="block text-sm text-gray-300 mb-1">Persona Preset</label>
