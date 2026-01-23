@@ -101,6 +101,30 @@ export default function HoneycombSimulator() {
     restore();
   }, []);
 
+const handleResetSession = async () => {
+  // Always clear client-side pointer + UI first (so Reset is instant)
+  window.localStorage.removeItem(SESSION_STORAGE_KEY);
+  setSessionId(null);
+  setMessages([]);
+  setViolations([]);
+  setCurrentState("ICEBREAKER");
+
+  // Optional: clear setup fields too (uncomment if you want)
+  // setConferenceContext("");
+  // setAttendeeProfile("");
+  // setDifficulty("medium");
+
+  // If there was an active session, delete it server-side
+  if (!sessionId) return;
+
+  try {
+    await fetch(`/api/session/${sessionId}`, { method: "DELETE" });
+  } catch (e) {
+    // Not fatal — client reset already happened
+    console.error("Failed to delete session on server:", e);
+  }
+};
+  
   const handleStartSession = async () => {
     if (!conferenceContext.trim() || !attendeeProfile.trim()) {
       alert("Please fill in conference context and attendee profile");
@@ -264,6 +288,14 @@ export default function HoneycombSimulator() {
             className="inline-flex items-center gap-2 bg-red-700 hover:bg-red-600 disabled:opacity-50 px-4 py-2 rounded-md"
           >
             <Square size={16} /> End Session
+          </button>
+          <button
+            onClick={handleResetSession}
+            disabled={loading && !sessionId}
+            className="inline-flex items-center gap-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 px-4 py-2 rounded-md"
+            title="Clears the current session and starts fresh"
+          >
+            Reset Session
           </button>
         </div>
 
