@@ -1,64 +1,140 @@
-'use client';
+"use client";
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Play, Square, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Send, Play, Square, ChevronDown, ChevronUp } from "lucide-react";
 
 interface Message {
   id: string;
-  type: 'system' | 'trainee' | 'attendee';
+  type: "system" | "trainee" | "attendee";
   text: string;
   timestamp: string;
 }
 
+const SESSION_STORAGE_KEY = "honeycomb_simulator_session_id";
+
+function formatTime(timestamp: string) {
+  return new Date(timestamp).toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 export default function HoneycombSimulator() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [currentState, setCurrentState] = useState('ICEBREAKER');
+  const [currentState, setCurrentState] = useState("ICEBREAKER");
   const [loading, setLoading] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
-  
-  const [conferenceContext, setConferenceContext] = useState('');
-  const [attendeeProfile, setAttendeeProfile] = useState('');
-  const [difficulty, setDifficulty] = useState('medium');
+
+  const [conferenceContext, setConferenceContext] = useState("");
+  const [attendeeProfile, setAttendeeProfile] = useState("");
+  const [difficulty, setDifficulty] = useState("medium");
   const [violations, setViolations] = useState<string[]>([]);
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const active = Boolean(sessionId);
+
+  const difficultyLabel = useMemo(() => {
+    switch (difficulty) {
+      case "easy":
+        return "Easy - Friendly";
+      case "hard":
+        return "Hard - Skeptical";
+      default:
+        return "Medium - Realistic";
+    }
+  }, [difficulty]);
+
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
+  /**
+   * ✅ Resume session on refresh (client-side pointer -> server-side KV session)
+   */
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const savedId = window.localStorage.getItem(SESSION_STORAGE_KEY);
+        if (!savedId) return;
+
+        setLoading(true);
+
+        const res = await fetch(`/api/session/${savedId}`, { method: "GET" });
+        if (!res.ok) {
+          window.localStorage.removeItem(SESSION_STORAGE_KEY);
+          return;
+        }
+
+        const data = await res.json();
+
+        if (data.active === false) {
+          window.localStorage.removeItem(SESSION_STORAGE_KEY);
+          return;
+        }
+
+        setSessionId(data.sessionId);
+        setMessages(data.transcript || []);
+        setCurrentState(data.currentState || "ICEBREAKER");
+        setViolations(data.violations || []);
+
+        if (data.kickoff) {
+          setConferenceContext(data.kickoff.conferenceContext || "");
+          setAttendeeProfile(data.kickoff.attendeeProfile || "");
+          setDifficulty(data.kickoff.difficulty || "medium");
+        }
+      } catch (e) {
+        console.error("Failed to restore session:", e);
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    restore();
+  }, []);
+
   const handleStartSession = async () => {
     if (!conferenceContext.trim() || !attendeeProfile.trim()) {
-      alert('Please fill in conference context and attendee profile');
+      alert("Please fill in conference context and attendee profile");
       return;
     }
-    
+
     setLoading(true);
     try {
-      const response = await fetch('/api/session/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/session/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conferenceContext,
           attendeeProfile,
-          difficulty
-        })
+          difficulty,
+        }),
       });
-      
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "");
+        throw new Error(`Start failed: ${response.status} ${errText}`);
+      }
+
       const data = await response.json();
+
       setSessionId(data.sessionId);
-      setMessages(data.transcript);
-      setCurrentState(data.currentState);
+      window.localStorage.setItem(SESSION_STORAGE_KEY, data.sessionId);
+
+      setMessages(data.transcript || []);
+      setCurrentState(data.currentState || "ICEBREAKER");
       setViolations([]);
     } catch (error) {
-      console.error('Failed to start session:', error);
-      alert('Failed to start session');
+      console.error("Failed to start session:", error);
+      alert("Failed to start session");
     } finally {
       setLoading(false);
     }
@@ -66,35 +142,41 @@ export default function HoneycombSimulator() {
 
   const handleSendMessage = async () => {
     if (!input.trim() || !sessionId || loading) return;
-    
-    const userMessage = input;
-    setInput('');
+
+    const userMessage = input.trim();
+    setInput("");
     setLoading(true);
-    
+
     try {
       const response = await fetch(`/api/session/${sessionId}/message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userMessage }),
       });
-      
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "");
+        throw new Error(`Message failed: ${response.status} ${errText}`);
+      }
+
       const data = await response.json();
-      
-      // Add both trainee and attendee messages
-      setMessages(prev => [...prev, 
+
+      setMessages((prev) => [
+        ...prev,
         {
-          id: Date.now().toString(),
-          type: 'trainee',
+          id: `${Date.now()}-trainee`,
+          type: "trainee",
           text: userMessage,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         },
-        data.message
+        data.message,
       ]);
-      
-      setCurrentState(data.currentState);
+
+      setCurrentState(data.currentState || currentState);
       setViolations(data.violations || []);
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error("Failed to send message:", error);
+      alert("Failed to send message");
     } finally {
       setLoading(false);
     }
@@ -102,199 +184,230 @@ export default function HoneycombSimulator() {
 
   const handleEndSession = async () => {
     if (!sessionId || loading) return;
-    
+
     setLoading(true);
     try {
       const response = await fetch(`/api/session/${sessionId}/end`, {
-        method: 'POST'
+        method: "POST",
       });
-      
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "");
+        throw new Error(`End failed: ${response.status} ${errText}`);
+      }
+
       const data = await response.json();
-      setMessages(prev => [...prev, data.feedback]);
+
+      // Some implementations return { feedback: Message } or { message: Message }
+      const feedbackMsg: Message | undefined = data.feedback ?? data.message;
+
+      if (feedbackMsg) {
+        setMessages((prev) => [...prev, feedbackMsg]);
+      }
+
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
       setSessionId(null);
     } catch (error) {
-      console.error('Failed to end session:', error);
+      console.error("Failed to end session:", error);
+      alert("Failed to end session");
     } finally {
       setLoading(false);
     }
   };
 
-  const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      second: '2-digit'
-    });
+  const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSendMessage();
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-1">Honeycomb Conference Simulator</h1>
-          <p className="text-gray-400 text-sm mb-4">Practice discovery conversations with AI-powered attendees</p>
-          
-          {!sessionId && (
-            <div className="bg-gray-800 rounded-lg p-4 mb-4 space-y-3">
-              <div>
-                <label className="block text-sm font-medium mb-1">Conference Context</label>
-                <input
-                  type="text"
-                  value={conferenceContext}
-                  onChange={(e) => setConferenceContext(e.target.value)}
-                  placeholder="e.g., KubeCon booth, Tuesday afternoon"
-                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Hidden Attendee Profile (Secret)</label>
-                <textarea
-                  value={attendeeProfile}
-                  onChange={(e) => setAttendeeProfile(e.target.value)}
-                  placeholder="e.g., Backend engineer, 5 years exp, using Datadog, frustrated with correlation, OTel: AWARE"
-                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 h-20"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Difficulty</label>
-                <select
-                  value={difficulty}
-                  onChange={(e) => setDifficulty(e.target.value)}
-                  className="w-full bg-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="easy">Easy - More forgiving</option>
-                  <option value="medium">Medium - Realistic</option>
-                  <option value="hard">Hard - Very guarded</option>
-                </select>
-              </div>
+      <div className="max-w-5xl mx-auto space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Honeycomb Conference Simulator</h1>
+            <p className="text-gray-400 text-sm">
+              Practice discovery conversations with AI-powered attendees
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-gray-300">
+              State: <span className="font-semibold">{currentState}</span>
             </div>
-          )}
-          
-          <div className="flex gap-3 items-center">
-            <button
-              onClick={handleStartSession}
-              disabled={!!sessionId || loading}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors"
+            <div
+              className={`px-3 py-1 rounded-full text-sm ${
+                active ? "bg-green-800 text-green-100" : "bg-gray-700 text-gray-200"
+              }`}
             >
-              <Play size={18} />
-              Start Session
-            </button>
-            <button
-              onClick={handleEndSession}
-              disabled={!sessionId || loading}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors"
-            >
-              <Square size={18} />
-              End Session
-            </button>
-            
-            {sessionId && (
-              <div className="flex items-center gap-3 ml-auto">
-                <div className="text-sm">
-                  <span className="text-gray-400">State:</span>{' '}
-                  <span className="font-medium text-indigo-300">{currentState}</span>
-                </div>
-                <span className="px-3 py-2 rounded-lg text-sm font-medium bg-green-900 text-green-200">
-                  ● Active
-                </span>
-              </div>
-            )}
+              {active ? "● Active" : "● Inactive"}
+            </div>
           </div>
         </div>
 
-        <div className="bg-gray-800 rounded-lg shadow-xl mb-4 h-96 overflow-y-auto p-4">
+        {/* Controls */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleStartSession}
+            disabled={loading}
+            className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 px-4 py-2 rounded-md"
+          >
+            <Play size={16} /> Start Session
+          </button>
+
+          <button
+            onClick={handleEndSession}
+            disabled={!sessionId || loading}
+            className="inline-flex items-center gap-2 bg-red-700 hover:bg-red-600 disabled:opacity-50 px-4 py-2 rounded-md"
+          >
+            <Square size={16} /> End Session
+          </button>
+        </div>
+
+        {/* Setup panel */}
+        <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-4 space-y-3">
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Conference Context</label>
+            <input
+              value={conferenceContext}
+              onChange={(e) => setConferenceContext(e.target.value)}
+              placeholder="e.g., KubeCon booth, Tuesday afternoon"
+              className="w-full bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">
+              Hidden Attendee Profile (Secret)
+            </label>
+            <textarea
+              value={attendeeProfile}
+              onChange={(e) => setAttendeeProfile(e.target.value)}
+              placeholder='e.g., Backend engineer, 5 years exp, using Datadog, frustrated with correlation, OTel: AWARE'
+              className="w-full min-h-[84px] bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Difficulty</label>
+            <select
+              value={difficulty}
+              onChange={(e) => setDifficulty(e.target.value)}
+              className="w-full bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
+            >
+              <option value="easy">Easy - Friendly</option>
+              <option value="medium">Medium - Realistic</option>
+              <option value="hard">Hard - Skeptical</option>
+            </select>
+            <div className="text-xs text-gray-400 mt-1">{difficultyLabel}</div>
+          </div>
+        </div>
+
+        {/* Chat panel */}
+        <div className="bg-gray-800/30 border border-gray-700 rounded-lg p-4 min-h-[320px]">
           {messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-gray-500">
+            <div className="text-gray-500 text-center py-20">
               Configure session and click Start to begin
             </div>
           ) : (
             <div className="space-y-3">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.type === 'trainee' ? 'justify-end' : 'justify-start'}`}
-                >
+              {messages.map((m) => {
+                const isTrainee = m.type === "trainee";
+                const isAttendee = m.type === "attendee";
+                const bubble =
+                  isTrainee
+                    ? "bg-indigo-600/80 ml-auto"
+                    : isAttendee
+                    ? "bg-gray-700/60"
+                    : "bg-blue-800/60";
+
+                const label =
+                  isTrainee ? "You" : isAttendee ? "Attendee" : "System";
+
+                return (
                   <div
-                    className={`max-w-[80%] rounded-lg p-3 ${
-                      msg.type === 'system'
-                        ? 'bg-blue-900 text-blue-200 mx-auto text-sm whitespace-pre-line'
-                        : msg.type === 'trainee'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-gray-700 text-gray-100'
-                    }`}
+                    key={m.id}
+                    className={`max-w-[75%] rounded-lg px-4 py-3 ${bubble}`}
                   >
-                    <div className="text-xs font-medium mb-1 opacity-80">
-                      {msg.type === 'system' ? '🤖 System' : msg.type === 'trainee' ? '👤 You' : '🎭 Attendee'}
-                    </div>
-                    <div>{msg.text}</div>
-                    <div className="text-xs opacity-60 mt-1">
-                      {formatTime(msg.timestamp)}
+                    <div className="text-xs text-gray-200/80 mb-1">{label}</div>
+                    <div className="whitespace-pre-wrap">{m.text}</div>
+                    <div className="text-xs text-gray-200/60 mt-1">
+                      {formatTime(m.timestamp)}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
           )}
         </div>
 
-        <div className="mb-4">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              placeholder={sessionId ? 'Your response...' : "Start a session to begin"}
-              disabled={!sessionId || loading}
-              className="flex-1 bg-gray-800 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-700 disabled:cursor-not-allowed"
-            />
-            <button
-              onClick={handleSendMessage}
-              disabled={!sessionId || !input.trim() || loading}
-              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-2"
-            >
-              <Send size={18} />
-              {loading ? 'Sending...' : 'Send'}
-            </button>
-          </div>
+        {/* Input */}
+        <div className="flex items-center gap-3">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={sessionId ? "Your response..." : "Start a session to begin"}
+            disabled={!sessionId || loading}
+            className="flex-1 bg-gray-900/60 border border-gray-700 rounded-md px-4 py-3 outline-none disabled:opacity-60"
+          />
+          <button
+            onClick={handleSendMessage}
+            disabled={!sessionId || loading || !input.trim()}
+            className="inline-flex items-center gap-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 px-4 py-3 rounded-md"
+          >
+            <Send size={16} /> Send
+          </button>
         </div>
 
-        <div className="bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+        {/* Debug panel */}
+        <div className="bg-gray-800/30 border border-gray-700 rounded-lg">
           <button
-            onClick={() => setDebugOpen(!debugOpen)}
-            className="w-full px-4 py-3 bg-gray-750 hover:bg-gray-700 transition-colors flex items-center justify-between text-sm font-medium text-gray-400"
+            onClick={() => setDebugOpen((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-200"
           >
-            <span>🔧 Debug Panel</span>
-            {debugOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            <span>🛠 Debug Panel</span>
+            {debugOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
-          
+
           {debugOpen && (
-            <div className="p-4 font-mono text-xs space-y-3">
-              <div className="text-green-400">Session State:</div>
-              <div className="pl-4 space-y-1 text-gray-300">
-                <div>sessionId: <span className="text-yellow-400">{sessionId || 'null'}</span></div>
-                <div>currentState: <span className="text-yellow-400">"{currentState}"</span></div>
-                <div>messageCount: <span className="text-yellow-400">{messages.length}</span></div>
-                <div>violations: <span className="text-red-400">{violations.length}</span></div>
+            <div className="px-4 pb-4 text-sm text-gray-300 space-y-2">
+              <div>
+                <span className="text-gray-400">sessionId:</span>{" "}
+                <span className="font-mono">{sessionId ?? "(none)"}</span>
               </div>
-              
-              <div className="text-green-400">Violations:</div>
-              <div className="pl-4 text-red-400">
+              <div>
+                <span className="text-gray-400">currentState:</span>{" "}
+                <span className="font-mono">{currentState}</span>
+              </div>
+              <div>
+                <span className="text-gray-400">violations:</span>{" "}
                 {violations.length === 0 ? (
-                  <div className="text-gray-500">None</div>
+                  <span className="text-green-300">none</span>
                 ) : (
-                  violations.map((v, i) => <div key={i}>• {v}</div>)
+                  <ul className="list-disc ml-5 mt-1">
+                    {violations.map((v, idx) => (
+                      <li key={`${idx}-${v}`}>{v}</li>
+                    ))}
+                  </ul>
                 )}
+              </div>
+              <div className="text-gray-500">
+                Tip: hard refresh should now restore sessions once
+                <code className="mx-1 px-1 bg-gray-900/60 rounded">/api/session/[id]</code>
+                exists and localStorage has the session id.
               </div>
             </div>
           )}
         </div>
+
+        {loading && (
+          <div className="text-xs text-gray-400">Working…</div>
+        )}
       </div>
     </div>
   );
