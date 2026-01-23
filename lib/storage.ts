@@ -15,6 +15,7 @@ export interface SessionState {
     conferenceContext: string;
     attendeeProfile: string;
     difficulty: string;
+    personaId?: string;
   };
   startTime: string;
   active: boolean;

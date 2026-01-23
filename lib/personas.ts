@@ -9,3 +9,7 @@ export type PersonaPreset = {
 };
 
 export const PERSONAS: PersonaPreset[] = (config as any).personas ?? [];
+
+export function getPersonaById(id: string): PersonaPreset | undefined {
+  return PERSONAS.find((p) => p.id === id);
+}
