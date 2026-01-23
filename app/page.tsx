@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Send, Play, Square, ChevronDown, ChevronUp } from "lucide-react";
+import { PERSONAS } from "../lib/personas";
 
 interface Message {
   id: string;
@@ -21,6 +22,8 @@ function formatTime(timestamp: string) {
 }
 
 export default function HoneycombSimulator() {
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string>("custom");
+  const isPresetSelected = selectedPersonaId !== "custom";
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -101,30 +104,47 @@ export default function HoneycombSimulator() {
     restore();
   }, []);
 
-const handleResetSession = async () => {
-  // Always clear client-side pointer + UI first (so Reset is instant)
-  window.localStorage.removeItem(SESSION_STORAGE_KEY);
-  setSessionId(null);
-  setMessages([]);
-  setViolations([]);
-  setCurrentState("ICEBREAKER");
-
-  // Optional: clear setup fields too (uncomment if you want)
-  // setConferenceContext("");
-  // setAttendeeProfile("");
-  // setDifficulty("medium");
-
-  // If there was an active session, delete it server-side
-  if (!sessionId) return;
-
-  try {
-    await fetch(`/api/session/${sessionId}`, { method: "DELETE" });
-  } catch (e) {
-    // Not fatal — client reset already happened
-    console.error("Failed to delete session on server:", e);
+useEffect(() => {
+  // If user switches back to manual entry, clear the fields
+  if (selectedPersonaId === "custom") {
+    setConferenceContext("");
+    setAttendeeProfile("");
+    setDifficulty("medium");
+    return;
   }
-};
-  
+
+  const preset = PERSONAS.find((p) => p.id === selectedPersonaId);
+  if (!preset) return;
+
+  setConferenceContext(preset.conferenceContext);
+  setAttendeeProfile(preset.attendeeProfile);
+  setDifficulty(preset.difficulty);
+}, [selectedPersonaId]);
+
+  const handleResetSession = async () => {
+    // Always clear client-side pointer + UI first (so Reset is instant)
+    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    setSessionId(null);
+    setMessages([]);
+    setViolations([]);
+    setCurrentState("ICEBREAKER");
+
+    // Optional: clear setup fields too (uncomment if you want)
+    // setConferenceContext("");
+    // setAttendeeProfile("");
+    // setDifficulty("medium");
+
+    // If there was an active session, delete it server-side
+    if (!sessionId) return;
+
+    try {
+      await fetch(`/api/session/${sessionId}`, { method: "DELETE" });
+    } catch (e) {
+      // Not fatal — client reset already happened
+      console.error("Failed to delete session on server:", e);
+    }
+  };
+
   const handleStartSession = async () => {
     if (!conferenceContext.trim() || !attendeeProfile.trim()) {
       alert("Please fill in conference context and attendee profile");
@@ -263,9 +283,8 @@ const handleResetSession = async () => {
               State: <span className="font-semibold">{currentState}</span>
             </div>
             <div
-              className={`px-3 py-1 rounded-full text-sm ${
-                active ? "bg-green-800 text-green-100" : "bg-gray-700 text-gray-200"
-              }`}
+              className={`px-3 py-1 rounded-full text-sm ${active ? "bg-green-800 text-green-100" : "bg-gray-700 text-gray-200"
+                }`}
             >
               {active ? "● Active" : "● Inactive"}
             </div>
@@ -300,6 +319,41 @@ const handleResetSession = async () => {
         </div>
 
         {/* Setup panel */}
+        <div>
+          <label className="block text-sm text-gray-300 mb-1">Persona Preset</label>
+          <div className="text-xs text-gray-400">
+            Personas loaded: {PERSONAS.length} | Selected: {selectedPersonaId}
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={selectedPersonaId}
+              onChange={(e) => setSelectedPersonaId(e.target.value)}
+              className="w-full bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
+            >
+              <option value="custom">Custom (manual entry)</option>
+              {PERSONAS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+
+            {isPresetSelected && (
+              <button
+                type="button"
+                onClick={() => setSelectedPersonaId("custom")}
+                className="px-3 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-sm"
+                title="Switch to custom and edit freely"
+              >
+                Customize
+              </button>
+            )}
+          </div>
+
+          <div className="text-xs text-gray-400 mt-1">
+            Choose a preset to auto-fill fields. Use “Customize” to edit.
+          </div>
+        </div>
         <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-4 space-y-3">
           <div>
             <label className="block text-sm text-gray-300 mb-1">Conference Context</label>
@@ -307,6 +361,7 @@ const handleResetSession = async () => {
               value={conferenceContext}
               onChange={(e) => setConferenceContext(e.target.value)}
               placeholder="e.g., KubeCon booth, Tuesday afternoon"
+              readOnly={isPresetSelected}
               className="w-full bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
             />
           </div>
@@ -318,6 +373,7 @@ const handleResetSession = async () => {
             <textarea
               value={attendeeProfile}
               onChange={(e) => setAttendeeProfile(e.target.value)}
+              readOnly={isPresetSelected}
               placeholder='e.g., Backend engineer, 5 years exp, using Datadog, frustrated with correlation, OTel: AWARE'
               className="w-full min-h-[84px] bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
             />
@@ -328,6 +384,7 @@ const handleResetSession = async () => {
             <select
               value={difficulty}
               onChange={(e) => setDifficulty(e.target.value)}
+              readOnly={isPresetSelected}
               className="w-full bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
             >
               <option value="easy">Easy - Friendly</option>
@@ -353,8 +410,8 @@ const handleResetSession = async () => {
                   isTrainee
                     ? "bg-indigo-600/80 ml-auto"
                     : isAttendee
-                    ? "bg-gray-700/60"
-                    : "bg-blue-800/60";
+                      ? "bg-gray-700/60"
+                      : "bg-blue-800/60";
 
                 const label =
                   isTrainee ? "You" : isAttendee ? "Attendee" : "System";
