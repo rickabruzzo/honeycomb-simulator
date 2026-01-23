@@ -384,7 +384,7 @@ useEffect(() => {
             <select
               value={difficulty}
               onChange={(e) => setDifficulty(e.target.value)}
-              readOnly={isPresetSelected}
+              disabled={isPresetSelected}
               className="w-full bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
             >
               <option value="easy">Easy - Friendly</option>
