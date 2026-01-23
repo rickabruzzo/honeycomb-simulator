@@ -1,0 +1,223 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { Award, TrendingUp, AlertCircle, Home } from "lucide-react";
+
+interface ScoreRecord {
+  token: string;
+  sessionId: string;
+  personaId?: string;
+  difficulty?: string;
+  conferenceContext?: string;
+  score: number;
+  grade: "A" | "B" | "C" | "D" | "F";
+  breakdown: {
+    listening: number;
+    discovery: number;
+    empathy: number;
+    otel_assumptions: number;
+    guardrails: number;
+  };
+  highlights: string[];
+  mistakes: string[];
+  violations: string[];
+  createdAt: string;
+  completedAt: string;
+}
+
+export default function ShareScorePage() {
+  const params = useParams();
+  const router = useRouter();
+  const token = params?.token as string;
+
+  const [scoreRecord, setScoreRecord] = useState<ScoreRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) {
+      setError("Invalid share link");
+      setLoading(false);
+      return;
+    }
+
+    const fetchScore = async () => {
+      try {
+        const res = await fetch(`/api/share/${token}`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          setError(errData.error || "Score not found");
+          return;
+        }
+
+        const data = await res.json();
+        setScoreRecord(data);
+      } catch (e) {
+        console.error("Failed to load score:", e);
+        setError("Failed to load score");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchScore();
+  }, [token]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-gray-100 p-6 flex items-center justify-center">
+        <div className="text-gray-400">Loading score...</div>
+      </div>
+    );
+  }
+
+  if (error || !scoreRecord) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-gray-100 p-6 flex items-center justify-center">
+        <div className="max-w-md text-center">
+          <h1 className="text-2xl font-semibold mb-4">Score Not Found</h1>
+          <p className="text-red-400 mb-4">{error || "Unknown error"}</p>
+          <button
+            onClick={() => router.push("/")}
+            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-md"
+          >
+            <Home size={16} /> Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const gradeColor = {
+    A: "text-green-400",
+    B: "text-blue-400",
+    C: "text-yellow-400",
+    D: "text-orange-400",
+    F: "text-red-400",
+  }[scoreRecord.grade];
+
+  const gradeBackground = {
+    A: "bg-green-900/30 border-green-700",
+    B: "bg-blue-900/30 border-blue-700",
+    C: "bg-yellow-900/30 border-yellow-700",
+    D: "bg-orange-900/30 border-orange-700",
+    F: "bg-red-900/30 border-red-700",
+  }[scoreRecord.grade];
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-gray-100 p-6">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="text-center">
+          <h1 className="text-3xl font-bold mb-2">Session Scorecard</h1>
+          <p className="text-gray-400 text-sm">
+            {scoreRecord.conferenceContext || "Practice Session"}
+          </p>
+          {scoreRecord.difficulty && (
+            <p className="text-gray-500 text-xs mt-1">
+              Difficulty: {scoreRecord.difficulty}
+            </p>
+          )}
+        </div>
+
+        {/* Score Card */}
+        <div
+          className={`rounded-lg border-2 p-8 text-center ${gradeBackground}`}
+        >
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <Award size={48} className={gradeColor} />
+            <div>
+              <div className={`text-6xl font-bold ${gradeColor}`}>
+                {scoreRecord.grade}
+              </div>
+              <div className="text-2xl text-gray-300 mt-2">
+                {scoreRecord.score}/100
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Breakdown */}
+        <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-6">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <TrendingUp size={20} /> Score Breakdown
+          </h2>
+          <div className="space-y-3">
+            {Object.entries(scoreRecord.breakdown).map(([key, value]) => {
+              const label = key
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (c) => c.toUpperCase());
+              const percentage = (value / 20) * 100;
+              return (
+                <div key={key}>
+                  <div className="flex items-center justify-between text-sm mb-1">
+                    <span className="text-gray-300">{label}</span>
+                    <span className="text-gray-400">
+                      {value}/20
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div
+                      className="bg-indigo-500 h-2 rounded-full transition-all"
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Highlights */}
+        {scoreRecord.highlights.length > 0 && (
+          <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4 text-green-400">
+              ✅ What You Did Well
+            </h2>
+            <ul className="space-y-2">
+              {scoreRecord.highlights.map((highlight, idx) => (
+                <li key={idx} className="text-gray-300 flex items-start gap-2">
+                  <span className="text-green-400 mt-1">•</span>
+                  <span>{highlight}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Mistakes */}
+        {scoreRecord.mistakes.length > 0 && (
+          <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4 text-orange-400 flex items-center gap-2">
+              <AlertCircle size={20} /> Areas for Improvement
+            </h2>
+            <ul className="space-y-2">
+              {scoreRecord.mistakes.map((mistake, idx) => (
+                <li key={idx} className="text-gray-300 flex items-start gap-2">
+                  <span className="text-orange-400 mt-1">•</span>
+                  <span>{mistake}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center justify-center gap-4">
+          <button
+            onClick={() => router.push("/")}
+            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-6 py-3 rounded-md font-medium"
+          >
+            <Home size={16} /> Practice Again
+          </button>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center text-gray-500 text-xs">
+          Session completed: {new Date(scoreRecord.completedAt).toLocaleString()}
+        </div>
+      </div>
+    </div>
+  );
+}

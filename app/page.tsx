@@ -371,12 +371,21 @@ export default function HoneycombSimulator() {
           {inviteUrl ? (
             <div className="mt-3 flex items-center gap-2">
               <input
+                id="invite-link"
                 value={inviteUrl}
                 readOnly
                 className="w-full rounded-md border border-gray-700 bg-gray-950/60 px-3 py-2 text-sm text-gray-200 outline-none"
               />
               <button
-                onClick={() => navigator.clipboard.writeText(inviteUrl)}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(inviteUrl);
+                  } catch {
+                    const el = document.getElementById("invite-link") as HTMLInputElement | null;
+                    el?.focus();
+                    el?.select();
+                  }
+                }}
                 className="rounded-md border border-gray-600 bg-gray-800 hover:bg-gray-700 px-3 py-2 text-sm text-gray-200"
               >
                 Copy

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Send, Square } from "lucide-react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 interface Message {
   id: string;
@@ -23,6 +23,7 @@ function formatTime(timestamp: string) {
 
 export default function TraineePracticePage() {
   const params = useParams();
+  const router = useRouter();
   const token = params?.token as string;
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -158,6 +159,8 @@ export default function TraineePracticePage() {
     try {
       const response = await fetch(`/api/session/${sessionId}/end`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }), // Pass token for scoring
       });
 
       if (!response.ok) {
@@ -175,6 +178,14 @@ export default function TraineePracticePage() {
 
       window.localStorage.removeItem(INVITE_TOKEN_STORAGE_KEY);
       setSessionId(null);
+
+      // Redirect to share page if available
+      if (data.shareUrl) {
+        // Small delay to show feedback message
+        setTimeout(() => {
+          router.push(data.shareUrl);
+        }, 1000);
+      }
     } catch (error) {
       console.error("Failed to end session:", error);
       alert("Failed to end session");

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession, saveSession } from '@/lib/storage';
 import { SIMULATOR_CONFIG } from '@/lib/simulator';
 import { randomUUID } from 'crypto';
+import { getInviteForSession } from '@/lib/invites';
+import { scoreSession } from '@/lib/scoring';
+import { saveScore } from '@/lib/scoreStore';
 
 export async function POST(
   request: NextRequest,
@@ -16,7 +19,7 @@ export async function POST(
         { status: 404 }
       );
     }
-    
+
     session.active = false;
     
     // Calculate session duration
@@ -69,14 +72,50 @@ Remember: Listen, discover pain, validate, then align to outcomes.
       timestamp: new Date().toISOString()
     };
     session.transcript.push(feedbackMsg);
-    
+
     await saveSession(session);
-    
+
+    // Attempt to get token for scoring (Phase C)
+    let token: string | null = null;
+    try {
+      // Try to get token from reverse mapping
+      token = await getInviteForSession(id);
+
+      // Fallback: accept token from request body
+      if (!token) {
+        const body = await request.json().catch(() => ({}));
+        token = body.token || null;
+      }
+    } catch (e) {
+      console.warn('Failed to resolve token for scoring:', e);
+    }
+
+    // If we have a token, compute and save score
+    let shareUrl: string | null = null;
+    let scoreData = null;
+    if (token) {
+      try {
+        const scoreRecord = scoreSession(session, token);
+        await saveScore(scoreRecord);
+        shareUrl = `/share/${token}`;
+        scoreData = {
+          score: scoreRecord.score,
+          grade: scoreRecord.grade,
+          breakdown: scoreRecord.breakdown,
+        };
+      } catch (e) {
+        console.error('Failed to save score:', e);
+      }
+    }
+
     return NextResponse.json({
+      ok: true,
       feedback: feedbackMsg,
       outcome,
       stateProgress: { reached, total },
-      violations: session.violations
+      violations: session.violations,
+      shareUrl,
+      score: scoreData,
     });
   } catch (error) {
     console.error('End session error:', error);
