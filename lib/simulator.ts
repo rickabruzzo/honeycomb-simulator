@@ -1,5 +1,5 @@
 // lib/simulator.ts
-import config from "../simulator.config.json";
+import config from "./simulator.config.json";
 
 export const SIMULATOR_CONFIG = config as any;
 
