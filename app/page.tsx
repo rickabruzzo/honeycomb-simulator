@@ -40,6 +40,7 @@ export default function HoneycombSimulator() {
   const [inviteToken, setInviteToken] = useState<string>("");
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const [inviteError, setInviteError] = useState<string>("");
+  const [copied, setCopied] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -301,13 +302,13 @@ export default function HoneycombSimulator() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 p-6">
+    <div className="min-h-screen text-gray-100 p-6">
       <div className="max-w-5xl mx-auto space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Honeycomb Conference Simulator</h1>
-            <p className="text-gray-400 text-sm">
+            <p className="text-white/70 text-sm">
               Practice discovery conversations with AI-powered attendees
             </p>
           </div>
@@ -317,7 +318,7 @@ export default function HoneycombSimulator() {
               State: <span className="font-semibold">{currentState}</span>
             </div>
             <div
-              className={`px-3 py-1 rounded-full text-sm ${active ? "bg-green-800 text-green-100" : "bg-gray-700 text-gray-200"
+              className={`px-3 py-1 rounded-full text-sm ${active ? "bg-emerald-500/15 text-emerald-200 border border-emerald-400/20" : "bg-white/10 text-white/70 border border-white/10"
                 }`}
             >
               {active ? "● Active" : "● Inactive"}
@@ -330,7 +331,7 @@ export default function HoneycombSimulator() {
           <button
             onClick={handleStartSession}
             disabled={loading}
-            className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 px-4 py-2 rounded-md"
+            className="inline-flex items-center gap-2 bg-sky-500/90 hover:bg-sky-400 text-gray-950 disabled:opacity-50 px-4 py-2 rounded-md font-medium"
           >
             <Play size={16} /> Start Session
           </button>
@@ -338,27 +339,27 @@ export default function HoneycombSimulator() {
           <button
             onClick={handleEndSession}
             disabled={!sessionId || loading}
-            className="inline-flex items-center gap-2 bg-red-700 hover:bg-red-600 disabled:opacity-50 px-4 py-2 rounded-md"
+            className="inline-flex items-center gap-2 bg-rose-500/90 hover:bg-rose-400 text-gray-950 px-4 py-2 rounded-md font-medium disabled:opacity-50"
           >
             <Square size={16} /> End Session
           </button>
           <button
             onClick={handleResetSession}
-            disabled={loading && !sessionId}
-            className="inline-flex items-center gap-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 px-4 py-2 rounded-md"
+            disabled={loading || !sessionId}
+            className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white px-4 py-2 rounded-md font-medium disabled:opacity-50 border border-white/10"
             title="Clears the current session and starts fresh"
           >
             Reset Session
           </button>
         </div>
-        {/* Trainee Share Link */}
-        <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-4">
+        <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
+          {/* Trainee Share Link */}
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold text-gray-200">Trainee Share Link</div>
             <button
               onClick={handleCreateInvite}
               disabled={isCreatingInvite}
-              className="rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="rounded-md bg-violet-500/90 hover:bg-violet-400 text-gray-950 px-3 py-2 text-sm font-medium disabled:opacity-50"
             >
               {isCreatingInvite ? "Creating..." : "Create Link"}
             </button>
@@ -374,25 +375,32 @@ export default function HoneycombSimulator() {
                 id="invite-link"
                 value={inviteUrl}
                 readOnly
-                className="w-full rounded-md border border-gray-700 bg-gray-950/60 px-3 py-2 text-sm text-gray-200 outline-none"
+                className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-gray-100 outline-none"
               />
               <button
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(inviteUrl);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
                   } catch {
                     const el = document.getElementById("invite-link") as HTMLInputElement | null;
                     el?.focus();
                     el?.select();
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
                   }
                 }}
-                className="rounded-md border border-gray-600 bg-gray-800 hover:bg-gray-700 px-3 py-2 text-sm text-gray-200"
+                className={`rounded-md border px-3 py-2 text-sm font-medium transition ${copied
+                    ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
+                    : "border-white/10 bg-white/10 hover:bg-white/15 text-gray-100"
+                  }`}
               >
-                Copy
+                {copied ? "Copied ✓" : "Copy"}
               </button>
             </div>
           ) : (
-            <div className="mt-2 text-sm text-gray-400">
+            <div className="mt-2 text-sm text-white/70">
               Create a link to send to a trainee. The trainee will not see the hidden profile.
             </div>
           )}
@@ -411,7 +419,7 @@ export default function HoneycombSimulator() {
             <select
               value={selectedPersonaId}
               onChange={(e) => setSelectedPersonaId(e.target.value)}
-              className="w-full bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
+              className="w-full bg-black/20 border-white/10 text-gray-100 rounded-md px-3 py-2 outline-none"
             >
               <option value="custom">Custom (manual entry)</option>
               {PERSONAS.map((p) => (
@@ -425,7 +433,7 @@ export default function HoneycombSimulator() {
               <button
                 type="button"
                 onClick={() => setSelectedPersonaId("custom")}
-                className="px-3 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-sm"
+                className="px-3 py-2 rounded-md bg-white/10 hover:bg-white/15 border border-white/10 text-sm text-gray-100"
                 title="Switch to custom and edit freely"
               >
                 Customize
@@ -437,7 +445,7 @@ export default function HoneycombSimulator() {
             Choose a preset to auto-fill fields. Use “Customize” to edit.
           </div>
         </div>
-        <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-4 space-y-3">
+        <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
           <div>
             <label className="block text-sm text-gray-300 mb-1">Conference Context</label>
             <input
@@ -445,7 +453,7 @@ export default function HoneycombSimulator() {
               onChange={(e) => setConferenceContext(e.target.value)}
               placeholder="e.g., KubeCon booth, Tuesday afternoon"
               readOnly={isPresetSelected}
-              className="w-full bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
+              className="w-full bg-black/20 border-white/10 text-gray-100 rounded-md px-3 py-2 outline-none"
             />
           </div>
 
@@ -458,7 +466,7 @@ export default function HoneycombSimulator() {
               onChange={(e) => setAttendeeProfile(e.target.value)}
               readOnly={isPresetSelected}
               placeholder='e.g., Backend engineer, 5 years exp, using Datadog, frustrated with correlation, OTel: AWARE'
-              className="w-full min-h-[84px] bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
+              className="w-full min-h-[84px] bg-black/20 border-white/10 text-gray-100 rounded-md px-3 py-2 outline-none"
             />
           </div>
 
@@ -468,7 +476,7 @@ export default function HoneycombSimulator() {
               value={difficulty}
               onChange={(e) => setDifficulty(e.target.value)}
               disabled={isPresetSelected}
-              className="w-full bg-gray-900/60 border border-gray-700 rounded-md px-3 py-2 outline-none"
+              className="w-full bg-black/20 border-white/10 text-gray-100 rounded-md px-3 py-2 outline-none"
             >
               <option value="easy">Easy - Friendly</option>
               <option value="medium">Medium - Realistic</option>
@@ -479,7 +487,7 @@ export default function HoneycombSimulator() {
         </div>
 
         {/* Chat panel */}
-        <div className="bg-gray-800/30 border border-gray-700 rounded-lg p-4 min-h-[320px]">
+        <div className="rounded-lg border border-white/10 bg-white/5 p-4 min-h-[320px]">
           {messages.length === 0 ? (
             <div className="text-gray-500 text-center py-20">
               Configure session and click Start to begin
@@ -491,10 +499,10 @@ export default function HoneycombSimulator() {
                 const isAttendee = m.type === "attendee";
                 const bubble =
                   isTrainee
-                    ? "bg-indigo-600/80 ml-auto"
+                    ? "bg-violet-500/40 border border-violet-400/20 ml-auto"
                     : isAttendee
-                      ? "bg-gray-700/60"
-                      : "bg-blue-800/60";
+                      ? "bg-white/10 border border-white/10"
+                      : "bg-sky-500/20 border border-sky-400/20";
 
                 const label =
                   isTrainee ? "You" : isAttendee ? "Attendee" : "System";
@@ -525,19 +533,18 @@ export default function HoneycombSimulator() {
             onKeyDown={handleKeyDown}
             placeholder={sessionId ? "Your response..." : "Start a session to begin"}
             disabled={!sessionId || loading}
-            className="flex-1 bg-gray-900/60 border border-gray-700 rounded-md px-4 py-3 outline-none disabled:opacity-60"
+            className="flex-1 bg-black/20 border-white/10 text-gray-100 rounded-md px-4 py-3 outline-none disabled:opacity-60"
           />
           <button
             onClick={handleSendMessage}
             disabled={!sessionId || loading || !input.trim()}
-            className="inline-flex items-center gap-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 px-4 py-3 rounded-md"
-          >
+            className="inline-flex items-center gap-2 bg-sky-500/90 hover:bg-sky-400 text-gray-950 disabled:opacity-50 px-4 py-2 rounded-md font-medium"          >
             <Send size={16} /> Send
           </button>
         </div>
 
         {/* Debug panel */}
-        <div className="bg-gray-800/30 border border-gray-700 rounded-lg">
+        <div className="rounded-lg border border-white/10 bg-white/5">
           <button
             onClick={() => setDebugOpen((v) => !v)}
             className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-200"
@@ -570,7 +577,7 @@ export default function HoneycombSimulator() {
               </div>
               <div className="text-gray-500">
                 Tip: hard refresh should now restore sessions once
-                <code className="mx-1 px-1 bg-gray-900/60 rounded">/api/session/[id]</code>
+                <code className="mx-1 px-1 bg-black/20 border border-white/10 rounded">/api/session/[id]</code>
                 exists and localStorage has the session id.
               </div>
             </div>
@@ -581,6 +588,6 @@ export default function HoneycombSimulator() {
           <div className="text-xs text-gray-400">Working…</div>
         )}
       </div>
-    </div>
+    </div >
   );
 }
