@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Send, Play, Square, ChevronDown, ChevronUp } from "lucide-react";
 import { PERSONAS } from "../lib/personas";
+import { TopNav } from "../components/TopNav";
+import { BrandButton } from "../components/ui/BrandButton";
 
 interface Message {
   id: string;
@@ -302,12 +304,13 @@ export default function HoneycombSimulator() {
   };
 
   return (
-    <div className="min-h-screen text-gray-100 p-6">
-      <div className="max-w-5xl mx-auto space-y-4">
+    <div className="min-h-screen text-gray-100">
+      <TopNav />
+      <div className="max-w-5xl mx-auto space-y-4 p-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">Honeycomb Conference Simulator</h1>
+            <h1 className="text-2xl font-semibold">Trainer Dashboard</h1>
             <p className="text-white/70 text-sm">
               Practice discovery conversations with AI-powered attendees
             </p>
@@ -328,40 +331,42 @@ export default function HoneycombSimulator() {
 
         {/* Controls */}
         <div className="flex items-center gap-3">
-          <button
+          <BrandButton
             onClick={handleStartSession}
             disabled={loading}
-            className="inline-flex items-center gap-2 bg-[#64BA00] hover:bg-[#4CA600] text-gray-950 disabled:opacity-50 px-4 py-2 rounded-md font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-[#64BA00]/40"          >
+            variant="lime"
+          >
             <Play size={16} /> Start Session
-          </button>
+          </BrandButton>
 
-          <button
+          <BrandButton
             onClick={handleEndSession}
             disabled={!sessionId || loading}
-            className="inline-flex items-center gap-2 bg-[#E65B53] hover:bg-[#D75450] text-white px-4 py-2 rounded-md font-medium disabled:opacity-50 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E65B53]/40"
+            variant="red"
           >
             <Square size={16} /> End Session
-          </button>
-          <button
+          </BrandButton>
+          <BrandButton
             onClick={handleResetSession}
             disabled={loading || !sessionId}
-            className="inline-flex items-center gap-2 bg-white/8 hover:bg-white/12 text-white px-4 py-2 rounded-md font-medium disabled:opacity-50 border border-white/15"
+            variant="neutral"
             title="Clears the current session and starts fresh"
           >
             Reset Session
-          </button>
+          </BrandButton>
         </div>
-        <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="rounded-lg border border-white/15 bg-white/7 p-4 space-y-3 shadow-sm">
           {/* Trainee Share Link */}
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold text-gray-200">Trainee Share Link</div>
-            <button
+            <BrandButton
               onClick={handleCreateInvite}
               disabled={isCreatingInvite}
-              className="rounded-md bg-[#51368D] hover:bg-[#431E80] text-white px-3 py-2 text-sm font-medium disabled:opacity-50 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#51368D]/45"
+              variant="indigo"
+              className="text-sm"
             >
               {isCreatingInvite ? "Creating..." : "Create Link"}
-            </button>
+            </BrandButton>
           </div>
 
           {inviteError ? (
@@ -374,7 +379,7 @@ export default function HoneycombSimulator() {
                 id="invite-link"
                 value={inviteUrl}
                 readOnly
-                className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-gray-100 outline-none"
+                className="w-full rounded-md border border-white/20 bg-black/30 px-3 py-2 text-sm text-gray-100 outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10"
               />
               <button
                 onClick={async () => {
@@ -390,7 +395,7 @@ export default function HoneycombSimulator() {
                     setTimeout(() => setCopied(false), 1500);
                   }
                 }}
-                className={`rounded-md border px-3 py-2 text-sm font-medium transition ${copied
+                className={`rounded-md border px-3 py-2 text-sm font-medium transition whitespace-nowrap ${copied
                   ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
                   : "border-white/10 bg-white/10 hover:bg-white/15 text-gray-100"
                   }`}
@@ -444,7 +449,7 @@ export default function HoneycombSimulator() {
             Choose a preset to auto-fill fields. Use “Customize” to edit.
           </div>
         </div>
-        <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="rounded-lg border border-white/15 bg-white/7 p-4 space-y-3 shadow-sm">
           <div>
             <label className="block text-sm text-gray-300 mb-1">Conference Context</label>
             <input
@@ -532,18 +537,19 @@ export default function HoneycombSimulator() {
             onKeyDown={handleKeyDown}
             placeholder={sessionId ? "Your response..." : "Start a session to begin"}
             disabled={!sessionId || loading}
-            className="flex-1 bg-black/20 border-white/10 text-gray-100 rounded-md px-4 py-3 outline-none disabled:opacity-60"
+            className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-4 py-3 outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10 disabled:opacity-60"
           />
-          <button
+          <BrandButton
             onClick={handleSendMessage}
             disabled={!sessionId || loading || !input.trim()}
-            className="inline-flex items-center gap-2 bg-[#0278CD] hover:bg-[#0066BA] text-white disabled:opacity-50 px-4 py-2 rounded-md font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-[#0278CD]/40"         >
+            variant="cobalt"
+          >
             <Send size={16} /> Send
-          </button>
+          </BrandButton>
         </div>
 
         {/* Debug panel */}
-        <div className="rounded-lg border border-white/10 bg-white/5">
+        <div className="rounded-lg border border-white/15 bg-white/7 shadow-sm">
           <button
             onClick={() => setDebugOpen((v) => !v)}
             className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-200"
@@ -587,6 +593,6 @@ export default function HoneycombSimulator() {
           <div className="text-xs text-gray-400">Working…</div>
         )}
       </div>
-    </div >
+    </div>
   );
 }

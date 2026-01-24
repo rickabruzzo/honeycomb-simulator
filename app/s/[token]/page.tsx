@@ -3,6 +3,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Send, Square } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
+import { TopNav } from "../../../components/TopNav";
+import { BrandButton } from "../../../components/ui/BrandButton";
 
 interface Message {
   id: string;
@@ -203,28 +205,32 @@ export default function TraineePracticePage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-900 text-gray-100 p-6 flex items-center justify-center">
-        <div className="max-w-md text-center">
-          <h1 className="text-2xl font-semibold mb-4">Invite Error</h1>
-          <p className="text-red-400 mb-4">{error}</p>
-          <p className="text-gray-400 text-sm">
-            Please check your invite link or contact your trainer.
-          </p>
+      <div className="min-h-screen text-gray-100">
+        <TopNav />
+        <div className="p-6 flex items-center justify-center">
+          <div className="max-w-md text-center">
+            <h1 className="text-2xl font-semibold mb-4">Invite Error</h1>
+            <p className="text-red-400 mb-4">{error}</p>
+            <p className="text-gray-400 text-sm">
+              Please check your invite link or contact your trainer.
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 p-6">
-      <div className="max-w-5xl mx-auto space-y-4">
+    <div className="min-h-screen text-gray-100">
+      <TopNav />
+      <div className="max-w-5xl mx-auto space-y-4 p-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">
-              Honeycomb Practice Session
+              Practice Session
             </h1>
-            <p className="text-gray-400 text-sm">
+            <p className="text-white/70 text-sm">
               {conferenceContext || "Loading..."}
             </p>
           </div>
@@ -236,8 +242,8 @@ export default function TraineePracticePage() {
             <div
               className={`px-3 py-1 rounded-full text-sm ${
                 active
-                  ? "bg-green-800 text-green-100"
-                  : "bg-gray-700 text-gray-200"
+                  ? "bg-emerald-500/15 text-emerald-200 border border-emerald-400/20"
+                  : "bg-white/10 text-white/70 border border-white/10"
               }`}
             >
               {active ? "● Active" : "● Inactive"}
@@ -247,17 +253,17 @@ export default function TraineePracticePage() {
 
         {/* Controls */}
         <div className="flex items-center gap-3">
-          <button
+          <BrandButton
             onClick={handleEndSession}
             disabled={!sessionId || loading}
-            className="inline-flex items-center gap-2 bg-red-700 hover:bg-red-600 disabled:opacity-50 px-4 py-2 rounded-md"
+            variant="red"
           >
             <Square size={16} /> End Session
-          </button>
+          </BrandButton>
         </div>
 
         {/* Chat panel */}
-        <div className="bg-gray-800/30 border border-gray-700 rounded-lg p-4 min-h-[400px]">
+        <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm min-h-[400px]">
           {messages.length === 0 ? (
             <div className="text-gray-500 text-center py-20">
               {loading ? "Loading session..." : "No messages yet"}
@@ -268,10 +274,10 @@ export default function TraineePracticePage() {
                 const isTrainee = m.type === "trainee";
                 const isAttendee = m.type === "attendee";
                 const bubble = isTrainee
-                  ? "bg-indigo-600/80 ml-auto"
+                  ? "bg-violet-500/40 border border-violet-400/20 ml-auto"
                   : isAttendee
-                    ? "bg-gray-700/60"
-                    : "bg-blue-800/60";
+                    ? "bg-white/10 border border-white/10"
+                    : "bg-sky-500/20 border border-sky-400/20";
 
                 const label = isTrainee ? "You" : isAttendee ? "Attendee" : "System";
 
@@ -301,15 +307,15 @@ export default function TraineePracticePage() {
             onKeyDown={handleKeyDown}
             placeholder={sessionId ? "Your response..." : "Loading..."}
             disabled={!sessionId || loading}
-            className="flex-1 bg-gray-900/60 border border-gray-700 rounded-md px-4 py-3 outline-none disabled:opacity-60"
+            className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-4 py-3 outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10 disabled:opacity-60"
           />
-          <button
+          <BrandButton
             onClick={handleSendMessage}
             disabled={!sessionId || loading || !input.trim()}
-            className="inline-flex items-center gap-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 px-4 py-3 rounded-md"
+            variant="cobalt"
           >
             <Send size={16} /> Send
-          </button>
+          </BrandButton>
         </div>
 
         {loading && <div className="text-xs text-gray-400">Working…</div>}

@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Award, TrendingUp, AlertCircle, Home } from "lucide-react";
+import { TopNav } from "../../../components/TopNav";
+import { BrandButton } from "../../../components/ui/BrandButton";
 
 interface ScoreRecord {
   token: string;
@@ -66,24 +68,36 @@ export default function ShareScorePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 text-gray-100 p-6 flex items-center justify-center">
-        <div className="text-gray-400">Loading score...</div>
+      <div className="min-h-screen text-gray-100">
+        <TopNav />
+        <div className="p-6 flex items-center justify-center">
+          <div className="text-gray-400">Loading score...</div>
+        </div>
       </div>
     );
   }
 
   if (error || !scoreRecord) {
     return (
-      <div className="min-h-screen bg-gray-900 text-gray-100 p-6 flex items-center justify-center">
-        <div className="max-w-md text-center">
-          <h1 className="text-2xl font-semibold mb-4">Score Not Found</h1>
-          <p className="text-red-400 mb-4">{error || "Unknown error"}</p>
-          <button
-            onClick={() => router.push("/")}
-            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-md"
-          >
-            <Home size={16} /> Back to Home
-          </button>
+      <div className="min-h-screen text-gray-100">
+        <TopNav />
+        <div className="p-6 flex items-center justify-center">
+          <div className="max-w-md">
+            <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
+              <div className="text-5xl mb-4">📊</div>
+              <h1 className="text-2xl font-semibold mb-3">No score yet</h1>
+              <p className="text-white/70 mb-6">
+                Complete a practice session first to see your scorecard.
+              </p>
+              <BrandButton
+                onClick={() => router.push("/")}
+                variant="lime"
+                className="w-full justify-center"
+              >
+                <Home size={16} /> Practice Now
+              </BrandButton>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -106,8 +120,9 @@ export default function ShareScorePage() {
   }[scoreRecord.grade];
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="min-h-screen text-gray-100">
+      <TopNav />
+      <div className="max-w-4xl mx-auto space-y-6 p-6">
         {/* Header */}
         <div className="text-center">
           <h1 className="text-3xl font-bold mb-2">Session Scorecard</h1>
@@ -139,7 +154,7 @@ export default function ShareScorePage() {
         </div>
 
         {/* Breakdown */}
-        <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-6">
+        <div className="rounded-lg border border-white/15 bg-white/7 p-6 shadow-sm">
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
             <TrendingUp size={20} /> Score Breakdown
           </h2>
@@ -171,7 +186,7 @@ export default function ShareScorePage() {
 
         {/* Highlights */}
         {scoreRecord.highlights.length > 0 && (
-          <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-6">
+          <div className="rounded-lg border border-white/15 bg-white/7 p-6 shadow-sm">
             <h2 className="text-xl font-semibold mb-4 text-green-400">
               ✅ What You Did Well
             </h2>
@@ -188,7 +203,7 @@ export default function ShareScorePage() {
 
         {/* Mistakes */}
         {scoreRecord.mistakes.length > 0 && (
-          <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-6">
+          <div className="rounded-lg border border-white/15 bg-white/7 p-6 shadow-sm">
             <h2 className="text-xl font-semibold mb-4 text-orange-400 flex items-center gap-2">
               <AlertCircle size={20} /> Areas for Improvement
             </h2>
@@ -205,12 +220,13 @@ export default function ShareScorePage() {
 
         {/* Actions */}
         <div className="flex items-center justify-center gap-4">
-          <button
+          <BrandButton
             onClick={() => router.push("/")}
-            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-6 py-3 rounded-md font-medium"
+            variant="lime"
+            className="px-6 py-3"
           >
             <Home size={16} /> Practice Again
-          </button>
+          </BrandButton>
         </div>
 
         {/* Footer */}
