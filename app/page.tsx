@@ -338,7 +338,7 @@ export default function HoneycombSimulator() {
           <button
             onClick={handleEndSession}
             disabled={!sessionId || loading}
-            className="inline-flex items-center gap-2 bg-[#F96E10] hover:bg-[#ff8a3c] text-gray-950 px-4 py-2 rounded-md font-medium disabled:opacity-50 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#F96E10]/40"
+            className="inline-flex items-center gap-2 bg-[#E65B53] hover:bg-[#D75450] text-white px-4 py-2 rounded-md font-medium disabled:opacity-50 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E65B53]/40"
           >
             <Square size={16} /> End Session
           </button>
