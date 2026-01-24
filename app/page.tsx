@@ -331,22 +331,21 @@ export default function HoneycombSimulator() {
           <button
             onClick={handleStartSession}
             disabled={loading}
-            className="inline-flex items-center gap-2 bg-sky-500/90 hover:bg-sky-400 text-gray-950 disabled:opacity-50 px-4 py-2 rounded-md font-medium"
-          >
+            className="inline-flex items-center gap-2 bg-[#64BA00] hover:bg-[#4CA600] text-gray-950 disabled:opacity-50 px-4 py-2 rounded-md font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-[#64BA00]/40"          >
             <Play size={16} /> Start Session
           </button>
 
           <button
             onClick={handleEndSession}
             disabled={!sessionId || loading}
-            className="inline-flex items-center gap-2 bg-rose-500/90 hover:bg-rose-400 text-gray-950 px-4 py-2 rounded-md font-medium disabled:opacity-50"
+            className="inline-flex items-center gap-2 bg-[#F96E10] hover:bg-[#ff8a3c] text-gray-950 px-4 py-2 rounded-md font-medium disabled:opacity-50 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#F96E10]/40"
           >
             <Square size={16} /> End Session
           </button>
           <button
             onClick={handleResetSession}
             disabled={loading || !sessionId}
-            className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white px-4 py-2 rounded-md font-medium disabled:opacity-50 border border-white/10"
+            className="inline-flex items-center gap-2 bg-white/8 hover:bg-white/12 text-white px-4 py-2 rounded-md font-medium disabled:opacity-50 border border-white/15"
             title="Clears the current session and starts fresh"
           >
             Reset Session
@@ -359,7 +358,7 @@ export default function HoneycombSimulator() {
             <button
               onClick={handleCreateInvite}
               disabled={isCreatingInvite}
-              className="rounded-md bg-violet-500/90 hover:bg-violet-400 text-gray-950 px-3 py-2 text-sm font-medium disabled:opacity-50"
+              className="rounded-md bg-[#51368D] hover:bg-[#431E80] text-white px-3 py-2 text-sm font-medium disabled:opacity-50 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#51368D]/45"
             >
               {isCreatingInvite ? "Creating..." : "Create Link"}
             </button>
@@ -392,8 +391,8 @@ export default function HoneycombSimulator() {
                   }
                 }}
                 className={`rounded-md border px-3 py-2 text-sm font-medium transition ${copied
-                    ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
-                    : "border-white/10 bg-white/10 hover:bg-white/15 text-gray-100"
+                  ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
+                  : "border-white/10 bg-white/10 hover:bg-white/15 text-gray-100"
                   }`}
               >
                 {copied ? "Copied ✓" : "Copy"}
@@ -419,7 +418,7 @@ export default function HoneycombSimulator() {
             <select
               value={selectedPersonaId}
               onChange={(e) => setSelectedPersonaId(e.target.value)}
-              className="w-full bg-black/20 border-white/10 text-gray-100 rounded-md px-3 py-2 outline-none"
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
             >
               <option value="custom">Custom (manual entry)</option>
               {PERSONAS.map((p) => (
@@ -453,7 +452,7 @@ export default function HoneycombSimulator() {
               onChange={(e) => setConferenceContext(e.target.value)}
               placeholder="e.g., KubeCon booth, Tuesday afternoon"
               readOnly={isPresetSelected}
-              className="w-full bg-black/20 border-white/10 text-gray-100 rounded-md px-3 py-2 outline-none"
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
             />
           </div>
 
@@ -476,7 +475,7 @@ export default function HoneycombSimulator() {
               value={difficulty}
               onChange={(e) => setDifficulty(e.target.value)}
               disabled={isPresetSelected}
-              className="w-full bg-black/20 border-white/10 text-gray-100 rounded-md px-3 py-2 outline-none"
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
             >
               <option value="easy">Easy - Friendly</option>
               <option value="medium">Medium - Realistic</option>
@@ -487,7 +486,7 @@ export default function HoneycombSimulator() {
         </div>
 
         {/* Chat panel */}
-        <div className="rounded-lg border border-white/10 bg-white/5 p-4 min-h-[320px]">
+        <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm min-h-[320px]">
           {messages.length === 0 ? (
             <div className="text-gray-500 text-center py-20">
               Configure session and click Start to begin
@@ -538,7 +537,7 @@ export default function HoneycombSimulator() {
           <button
             onClick={handleSendMessage}
             disabled={!sessionId || loading || !input.trim()}
-            className="inline-flex items-center gap-2 bg-sky-500/90 hover:bg-sky-400 text-gray-950 disabled:opacity-50 px-4 py-2 rounded-md font-medium"          >
+            className="inline-flex items-center gap-2 bg-[#0278CD] hover:bg-[#0066BA] text-white disabled:opacity-50 px-4 py-2 rounded-md font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-[#0278CD]/40"         >
             <Send size={16} /> Send
           </button>
         </div>
