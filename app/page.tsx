@@ -537,7 +537,7 @@ export default function HoneycombSimulator() {
             onKeyDown={handleKeyDown}
             placeholder={sessionId ? "Your response..." : "Start a session to begin"}
             disabled={!sessionId || loading}
-            className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-4 py-3 outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10 disabled:opacity-60"
+            className="flex-1 rounded-md px-4 py-3 bg-black/40 border border-white/25 text-gray-100 placeholder:text-gray-400 outline-none transition focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20 disabled:opacity-60 disabled:bg-black/20"
           />
           <BrandButton
             onClick={handleSendMessage}
