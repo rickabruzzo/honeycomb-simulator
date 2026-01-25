@@ -2,17 +2,26 @@ import { listInvitesFromIndex } from "./inviteIndex";
 import { getInvite, InviteRecord } from "./invites";
 import { getSession, SessionState } from "./storage";
 import { getScore } from "./scoreStore";
-import { getPersonaById } from "./personas";
+import { getConference } from "./conferenceStore";
+import { getPersona } from "./personaStore";
+import { buildPersonaTitle } from "./formatUtils";
 
 export type AdminInviteRow = {
   token: string;
   sessionId: string;
-  personaId?: string;
-  personaName: string;
-  difficulty?: string;
+  conferenceId: string | null;
+  conferenceName: string | null;
+  personaId: string | null;
+  personaDisplayName: string | null;
+  jobTitle: string | null;
+  difficulty: "easy" | "medium" | "hard" | null;
   createdAt: string;
   status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
-  scoreTokenExists: boolean;
+  score: number | null;
+  grade: string | null;
+  lastActivityAt: string | null;
+  shareUrl: string | null;
+  traineeUrl: string;
   revoked?: boolean;
 };
 
@@ -46,9 +55,28 @@ function determineStatus(
 }
 
 /**
+ * Compute last activity timestamp from session transcript
+ * Returns the most recent message timestamp, excluding system messages
+ */
+function computeLastActivity(session: SessionState | null): string | null {
+  if (!session || !session.transcript.length) return null;
+
+  // Find the most recent trainee or attendee message
+  const relevantMessages = session.transcript.filter(
+    (msg) => msg.type === "trainee" || msg.type === "attendee"
+  );
+
+  if (relevantMessages.length === 0) return null;
+
+  // Return the most recent timestamp
+  const lastMessage = relevantMessages[relevantMessages.length - 1];
+  return lastMessage.timestamp;
+}
+
+/**
  * Fetch admin invite data for the dashboard
  */
-export async function getAdminInvites(limit = 50): Promise<AdminInviteRow[]> {
+export async function getAdminInvites(limit = 200): Promise<AdminInviteRow[]> {
   const tokens = await listInvitesFromIndex(limit);
   const rows: AdminInviteRow[] = [];
 
@@ -62,33 +90,67 @@ export async function getAdminInvites(limit = 50): Promise<AdminInviteRow[]> {
       const session = await getSession(invite.sessionId);
 
       // Check for score
-      const score = await getScore(token);
-      const hasScore = Boolean(score);
+      const scoreData = await getScore(token);
+      const hasScore = Boolean(scoreData);
 
-      // Determine persona name
-      let personaName = "Custom";
-      let difficulty = session?.kickoff?.difficulty;
+      // Get conference data
+      let conferenceId: string | null = null;
+      let conferenceName: string | null = null;
+      if (invite.conferenceId) {
+        conferenceId = invite.conferenceId;
+        const conference = await getConference(invite.conferenceId);
+        conferenceName = conference?.name || null;
+      }
 
-      if (session?.kickoff?.personaId) {
-        const persona = getPersonaById(session.kickoff.personaId);
+      // Get persona data
+      let personaId: string | null = null;
+      let personaDisplayName: string | null = null;
+      let jobTitle: string | null = null;
+      if (invite.personaId) {
+        personaId = invite.personaId;
+        const persona = await getPersona(invite.personaId);
         if (persona) {
-          personaName = persona.name;
-          difficulty = persona.difficulty;
+          personaDisplayName = buildPersonaTitle(
+            persona.personaType,
+            persona.modifiers,
+            persona.toolingBias
+          );
+          jobTitle = persona.personaType;
         }
+      }
+
+      // Get difficulty (from session kickoff or persona)
+      let difficulty: "easy" | "medium" | "hard" | null = null;
+      if (session?.kickoff?.difficulty) {
+        difficulty = session.kickoff.difficulty as "easy" | "medium" | "hard";
       }
 
       // Determine status
       const status = determineStatus(session, hasScore);
 
+      // Compute last activity
+      const lastActivityAt = computeLastActivity(session);
+
+      // Build URLs
+      const shareUrl = hasScore ? `/share/${token}` : null;
+      const traineeUrl = `/s/${token}`;
+
       rows.push({
         token,
         sessionId: invite.sessionId,
-        personaId: session?.kickoff?.personaId,
-        personaName,
+        conferenceId,
+        conferenceName,
+        personaId,
+        personaDisplayName,
+        jobTitle,
         difficulty,
         createdAt: invite.createdAt,
         status,
-        scoreTokenExists: hasScore,
+        score: scoreData?.score ?? null,
+        grade: scoreData?.grade ?? null,
+        lastActivityAt,
+        shareUrl,
+        traineeUrl,
         revoked: invite.revoked,
       });
     } catch (error) {

@@ -4,6 +4,8 @@ export interface InviteRecord {
   token: string;
   sessionId: string;
   createdAt: string;
+  conferenceId?: string; // Added for admin tracker
+  personaId?: string; // Added for admin tracker
   revoked?: boolean;
   expiresAt?: string;
   createdBy?: string;

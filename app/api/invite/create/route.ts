@@ -31,6 +31,8 @@ export async function POST(request: NextRequest) {
       token,
       sessionId: session.id,
       createdAt,
+      conferenceId: body.conferenceId,
+      personaId: body.personaId,
       createdBy: body.createdBy,
     };
 

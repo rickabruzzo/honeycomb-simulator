@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import type { AdminInviteRow } from "../../lib/adminInvites";
-import { ExternalLink } from "lucide-react";
+import type { Conference, Persona } from "../../lib/scenarioTypes";
+import { ExternalLink, Copy } from "lucide-react";
 
 function StatusBadge({ status }: { status: AdminInviteRow["status"] }) {
   const styles = {
@@ -33,6 +34,22 @@ function formatDate(isoString: string): string {
   });
 }
 
+function formatRelativeTime(isoString: string | null): string {
+  if (!isoString) return "—";
+
+  const now = Date.now();
+  const then = new Date(isoString).getTime();
+  const diffMs = now - then;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+}
+
 function TokenDisplay({ token }: { token: string }) {
   const [copied, setCopied] = React.useState(false);
   const short = `${token.slice(0, 8)}…`;
@@ -43,7 +60,6 @@ function TokenDisplay({ token }: { token: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Fallback: just show the copied state
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }
@@ -66,122 +82,349 @@ function TokenDisplay({ token }: { token: string }) {
   );
 }
 
+function CopyUrlButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      const fullUrl = `${window.location.origin}${url}`;
+      await navigator.clipboard.writeText(fullUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded transition ${
+        copied
+          ? "bg-emerald-500/20 text-emerald-200"
+          : "bg-white/10 hover:bg-white/15 text-gray-300"
+      }`}
+    >
+      {copied ? (
+        <>✓ Copied</>
+      ) : (
+        <>
+          <Copy size={12} /> Copy
+        </>
+      )}
+    </button>
+  );
+}
+
 export default function AdminPage() {
   const [invites, setInvites] = useState<AdminInviteRow[]>([]);
+  const [conferences, setConferences] = useState<Conference[]>([]);
+  const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Filter state
+  const [filterConferenceId, setFilterConferenceId] = useState<string>("");
+  const [filterPersonaId, setFilterPersonaId] = useState<string>("");
+  const [filterDifficulty, setFilterDifficulty] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<string>("");
+  const [filterTimeRange, setFilterTimeRange] = useState<string>("7d");
+
   useEffect(() => {
-    async function loadInvites() {
+    async function loadData() {
       try {
-        const response = await fetch('/api/admin/invites');
-        const data = await response.json();
-        setInvites(data);
+        const [invitesRes, conferencesRes, personasRes] = await Promise.all([
+          fetch("/api/admin/invites"),
+          fetch("/api/conferences"),
+          fetch("/api/personas"),
+        ]);
+
+        if (invitesRes.ok) {
+          const invitesData = await invitesRes.json();
+          setInvites(invitesData);
+        }
+
+        if (conferencesRes.ok) {
+          const confData = await conferencesRes.json();
+          setConferences(confData.conferences || []);
+        }
+
+        if (personasRes.ok) {
+          const personaData = await personasRes.json();
+          setPersonas(personaData.personas || []);
+        }
       } catch (error) {
-        console.error('Failed to load invites:', error);
+        console.error("Failed to load data:", error);
       } finally {
         setLoading(false);
       }
     }
-    loadInvites();
+    loadData();
   }, []);
 
+  // Apply filters
+  const filteredInvites = useMemo(() => {
+    let filtered = [...invites];
+
+    // Time range filter
+    if (filterTimeRange !== "all") {
+      const now = Date.now();
+      const ranges: Record<string, number> = {
+        "24h": 24 * 60 * 60 * 1000,
+        "7d": 7 * 24 * 60 * 60 * 1000,
+        "30d": 30 * 24 * 60 * 60 * 1000,
+      };
+      const cutoff = now - ranges[filterTimeRange];
+      filtered = filtered.filter(
+        (inv) => new Date(inv.createdAt).getTime() >= cutoff
+      );
+    }
+
+    // Conference filter
+    if (filterConferenceId) {
+      filtered = filtered.filter((inv) => inv.conferenceId === filterConferenceId);
+    }
+
+    // Persona filter
+    if (filterPersonaId) {
+      filtered = filtered.filter((inv) => inv.personaId === filterPersonaId);
+    }
+
+    // Difficulty filter
+    if (filterDifficulty) {
+      filtered = filtered.filter((inv) => inv.difficulty === filterDifficulty);
+    }
+
+    // Status filter
+    if (filterStatus) {
+      filtered = filtered.filter((inv) => inv.status === filterStatus);
+    }
+
+    // Sort by createdAt desc
+    filtered.sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    return filtered.slice(0, 200);
+  }, [invites, filterConferenceId, filterPersonaId, filterDifficulty, filterStatus, filterTimeRange]);
+
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-semibold">Scenario Tracker</h1>
-          <p className="text-white/70 text-sm">
-            Track training sessions and view invite status
-          </p>
+    <div className="max-w-[1400px] mx-auto space-y-4">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-semibold">Scenario Tracker</h1>
+        <p className="text-white/70 text-sm">
+          Track training sessions, filter by conference/persona, and view scores
+        </p>
+      </div>
+
+      {/* Filter Bar */}
+      <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Conference</label>
+            <select
+              value={filterConferenceId}
+              onChange={(e) => setFilterConferenceId(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+            >
+              <option value="">All conferences</option>
+              {conferences.map((conf) => (
+                <option key={conf.id} value={conf.id}>
+                  {conf.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Persona</label>
+            <select
+              value={filterPersonaId}
+              onChange={(e) => setFilterPersonaId(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+            >
+              <option value="">All personas</option>
+              {personas.map((persona) => (
+                <option key={persona.id} value={persona.id}>
+                  {persona.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Difficulty</label>
+            <select
+              value={filterDifficulty}
+              onChange={(e) => setFilterDifficulty(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+            >
+              <option value="">All</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Status</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+            >
+              <option value="">All</option>
+              <option value="NOT_STARTED">Not Started</option>
+              <option value="IN_PROGRESS">In Progress</option>
+              <option value="COMPLETED">Completed</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Time Range</label>
+            <select
+              value={filterTimeRange}
+              onChange={(e) => setFilterTimeRange(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+            >
+              <option value="24h">Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="all">All time</option>
+            </select>
+          </div>
         </div>
 
-        {/* Invites Table */}
-        {loading ? (
-          <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
-            <p className="text-gray-400">Loading invites...</p>
-          </div>
-        ) : invites.length === 0 ? (
-          <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
-            <p className="text-gray-400">
-              No invites yet. Create one from the trainer dashboard.
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-lg border border-white/15 bg-white/7 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-white/5 border-b border-white/10">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Token
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Persona
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Difficulty
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Created
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {invites.map((invite) => (
-                    <tr
-                      key={invite.token}
-                      className="hover:bg-white/5 transition"
-                    >
-                      <td className="px-4 py-3">
-                        <TokenDisplay token={invite.token} />
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-300">
-                        {invite.personaName}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-400 capitalize">
-                        {invite.difficulty || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-400">
-                        {formatDate(invite.createdAt)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={invite.status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
+        {filteredInvites.length < invites.length && (
+          <p className="text-xs text-gray-400 mt-3">
+            Showing {filteredInvites.length} of {invites.length} invites
+            {filteredInvites.length === 200 && invites.length > 200 && " (limited to 200 most recent)"}
+          </p>
+        )}
+      </div>
+
+      {/* Invites Table */}
+      {loading ? (
+        <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
+          <p className="text-gray-400">Loading invites...</p>
+        </div>
+      ) : filteredInvites.length === 0 ? (
+        <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
+          <p className="text-gray-400">
+            {invites.length === 0
+              ? "No invites yet. Create one from the Scenario Builder."
+              : "No invites match the selected filters."}
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-white/15 bg-white/7 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-white/5 border-b border-white/10">
+                <tr>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    Token
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    Conference
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    Persona
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    Difficulty
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    Score
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    Created
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    Last Activity
+                  </th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filteredInvites.map((invite) => (
+                  <tr
+                    key={invite.token}
+                    className="hover:bg-white/5 transition"
+                  >
+                    <td className="px-3 py-3">
+                      <TokenDisplay token={invite.token} />
+                    </td>
+                    <td className="px-3 py-3 text-sm text-gray-300">
+                      {invite.conferenceName || "—"}
+                    </td>
+                    <td className="px-3 py-3 text-sm text-gray-300">
+                      <div className="max-w-[180px] truncate" title={invite.personaDisplayName || undefined}>
+                        {invite.personaDisplayName || "—"}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-sm text-gray-400 capitalize">
+                      {invite.difficulty || "—"}
+                    </td>
+                    <td className="px-3 py-3">
+                      <StatusBadge status={invite.status} />
+                    </td>
+                    <td className="px-3 py-3 text-sm text-gray-300">
+                      {invite.score !== null ? (
+                        <span className="font-medium">
+                          {invite.score}
+                          {invite.grade && (
+                            <span className="text-gray-400 ml-1">/ {invite.grade}</span>
+                          )}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-sm text-gray-400">
+                      {formatDate(invite.createdAt)}
+                    </td>
+                    <td className="px-3 py-3 text-sm text-gray-400">
+                      {formatRelativeTime(invite.lastActivityAt)}
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={invite.traineeUrl}
+                          target="_blank"
+                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-[#51368D] hover:bg-[#431E80] text-white transition"
+                        >
+                          <ExternalLink size={12} /> Trainee
+                        </Link>
+                        {invite.shareUrl ? (
                           <Link
-                            href={`/s/${invite.token}`}
+                            href={invite.shareUrl}
                             target="_blank"
-                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-[#51368D] hover:bg-[#431E80] text-white transition"
-                          >
-                            <ExternalLink size={12} /> Trainee
-                          </Link>
-                          <Link
-                            href={`/share/${invite.token}`}
-                            target="_blank"
-                            className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded transition ${
-                              invite.status === "COMPLETED"
-                                ? "bg-[#64BA00] hover:bg-[#4CA600] text-gray-950"
-                                : "bg-white/5 text-gray-500 cursor-not-allowed pointer-events-none"
-                            }`}
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-[#64BA00] hover:bg-[#4CA600] text-gray-950 transition"
                           >
                             <ExternalLink size={12} /> Score
                           </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-white/5 text-gray-500 cursor-not-allowed">
+                            <ExternalLink size={12} /> Score
+                          </span>
+                        )}
+                        <CopyUrlButton url={invite.traineeUrl} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+    </div>
   );
 }

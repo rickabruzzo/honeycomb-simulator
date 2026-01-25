@@ -319,6 +319,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
           conferenceContext,
           attendeeProfile,
           difficulty,
+          conferenceId: selectedConferenceId,
           personaId: selectedPersonaId,
         }),
       });
