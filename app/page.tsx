@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Send, Play, Square, ChevronDown, ChevronUp } from "lucide-react";
 import { BrandButton } from "../components/ui/BrandButton";
-import { ChipInput } from "../components/ui/ChipInput";
 import type { Conference, Persona } from "../lib/scenarioTypes";
 
 interface Message {
@@ -23,7 +23,9 @@ function formatTime(timestamp: string) {
   });
 }
 
-export default function HoneycombSimulator() {
+function HoneycombSimulator() {
+  const searchParams = useSearchParams();
+
   // Session state
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -33,55 +35,12 @@ export default function HoneycombSimulator() {
   const [debugOpen, setDebugOpen] = useState(false);
   const [violations, setViolations] = useState<string[]>([]);
 
-  // Mode selection
-  const [entryMode, setEntryMode] = useState<"structured" | "manual">("structured");
-
-  // Structured mode state
+  // Selection state
   const [conferences, setConferences] = useState<Conference[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [selectedConferenceId, setSelectedConferenceId] = useState<string>("");
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>("");
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
-
-  // Conference creation state
-  const [showConferenceForm, setShowConferenceForm] = useState(false);
-  const [newConference, setNewConference] = useState<{
-    name: string;
-    themes: string[];
-    seniorityMix: string;
-    observabilityMaturity: "Low" | "Medium" | "High";
-    urls: string;
-  }>({
-    name: "",
-    themes: [],
-    seniorityMix: "",
-    observabilityMaturity: "Medium",
-    urls: "",
-  });
-
-  // Persona creation state
-  const [showPersonaForm, setShowPersonaForm] = useState(false);
-  const [newPersona, setNewPersona] = useState<{
-    name: string;
-    personaType: string;
-    modifiers: string[];
-    emotionalPosture: string;
-    toolingBias: string;
-    otelFamiliarity: "never" | "aware" | "considering" | "starting" | "active";
-    notes: string;
-  }>({
-    name: "",
-    personaType: "",
-    modifiers: [],
-    emotionalPosture: "",
-    toolingBias: "",
-    otelFamiliarity: "never",
-    notes: "",
-  });
-
-  // Manual mode state (for backward compatibility)
-  const [manualConferenceContext, setManualConferenceContext] = useState("");
-  const [manualAttendeeProfile, setManualAttendeeProfile] = useState("");
 
   // Invite state
   const [inviteUrl, setInviteUrl] = useState<string>("");
@@ -138,6 +97,19 @@ export default function HoneycombSimulator() {
     loadData();
   }, []);
 
+  // Handle query params for auto-selection (only if items exist and are not archived)
+  useEffect(() => {
+    const conferenceId = searchParams?.get("conferenceId");
+    const personaId = searchParams?.get("personaId");
+
+    if (conferenceId && conferences.some((c) => c.id === conferenceId)) {
+      setSelectedConferenceId(conferenceId);
+    }
+    if (personaId && personas.some((p) => p.id === personaId)) {
+      setSelectedPersonaId(personaId);
+    }
+  }, [searchParams, conferences, personas]);
+
   // Resume session on refresh
   useEffect(() => {
     const restore = async () => {
@@ -167,9 +139,6 @@ export default function HoneycombSimulator() {
 
         if (data.kickoff) {
           setDifficulty(data.kickoff.difficulty || "medium");
-          // Store in manual mode for display
-          setManualConferenceContext(data.kickoff.conferenceContext || "");
-          setManualAttendeeProfile(data.kickoff.attendeeProfile || "");
         }
       } catch (e) {
         console.error("Failed to restore session:", e);
@@ -199,10 +168,6 @@ export default function HoneycombSimulator() {
   };
 
   const buildConferenceContext = (): string => {
-    if (entryMode === "manual") {
-      return manualConferenceContext;
-    }
-
     const conf = conferences.find((c) => c.id === selectedConferenceId);
     if (!conf) return "";
 
@@ -213,10 +178,6 @@ Observability maturity: ${conf.observabilityMaturity}`.trim();
   };
 
   const buildAttendeeProfile = (): string => {
-    if (entryMode === "manual") {
-      return manualAttendeeProfile;
-    }
-
     const persona = personas.find((p) => p.id === selectedPersonaId);
     if (!persona) return "";
 
@@ -232,7 +193,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
     const attendeeProfile = buildAttendeeProfile();
 
     if (!conferenceContext.trim() || !attendeeProfile.trim()) {
-      alert("Please fill in all required fields");
+      alert("Please select both conference and persona");
       return;
     }
 
@@ -343,7 +304,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
     const attendeeProfile = buildAttendeeProfile();
 
     if (!conferenceContext.trim() || !attendeeProfile.trim()) {
-      setInviteError("Please fill in all required fields first");
+      setInviteError("Please select both conference and persona");
       return;
     }
 
@@ -358,7 +319,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
           conferenceContext,
           attendeeProfile,
           difficulty,
-          personaId: entryMode === "structured" ? selectedPersonaId : undefined,
+          personaId: selectedPersonaId,
         }),
       });
 
@@ -379,95 +340,6 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
     }
   };
 
-  const handleCreateConference = async () => {
-    if (!newConference.name.trim()) {
-      alert("Conference name is required");
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/conferences", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newConference.name,
-          themes: newConference.themes,
-          seniorityMix: newConference.seniorityMix,
-          observabilityMaturity: newConference.observabilityMaturity,
-          sources: newConference.urls.trim()
-            ? {
-                urls: newConference.urls
-                  .split(",")
-                  .map((u) => u.trim())
-                  .filter(Boolean),
-              }
-            : undefined,
-        }),
-      });
-
-      if (!response.ok) throw new Error("Failed to create conference");
-
-      const data = await response.json();
-      setConferences((prev) => [data.conference, ...prev]);
-      setSelectedConferenceId(data.conference.id);
-      setShowConferenceForm(false);
-      setNewConference({
-        name: "",
-        themes: [],
-        seniorityMix: "",
-        observabilityMaturity: "Medium",
-        urls: "",
-      });
-    } catch (error) {
-      console.error("Failed to create conference:", error);
-      alert("Failed to create conference");
-    }
-  };
-
-  const handleCreatePersona = async () => {
-    if (!newPersona.name.trim() || !newPersona.personaType.trim()) {
-      alert("Persona name and type are required");
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/personas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newPersona.name,
-          personaType: newPersona.personaType,
-          modifiers: newPersona.modifiers,
-          emotionalPosture: newPersona.emotionalPosture,
-          toolingBias: newPersona.toolingBias,
-          otelFamiliarity: newPersona.otelFamiliarity,
-          sources: newPersona.notes.trim()
-            ? { notes: newPersona.notes }
-            : undefined,
-        }),
-      });
-
-      if (!response.ok) throw new Error("Failed to create persona");
-
-      const data = await response.json();
-      setPersonas((prev) => [data.persona, ...prev]);
-      setSelectedPersonaId(data.persona.id);
-      setShowPersonaForm(false);
-      setNewPersona({
-        name: "",
-        personaType: "",
-        modifiers: [],
-        emotionalPosture: "",
-        toolingBias: "",
-        otelFamiliarity: "never",
-        notes: "",
-      });
-    } catch (error) {
-      console.error("Failed to create persona:", error);
-      alert("Failed to create persona");
-    }
-  };
-
   const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -480,7 +352,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Trainer Dashboard</h1>
+          <h1 className="text-2xl font-semibold">Scenario Builder</h1>
           <p className="text-white/70 text-sm">
             Practice discovery conversations with AI-powered attendees
           </p>
@@ -586,403 +458,97 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
         ) : null}
       </div>
 
-      {/* Mode Selection */}
-      <div>
-        <label className="block text-sm text-gray-300 mb-2">Entry Mode</label>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setEntryMode("structured")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition ${
-              entryMode === "structured"
-                ? "bg-[#51368D] text-white"
-                : "bg-white/10 text-gray-300 hover:bg-white/15"
-            }`}
+      {/* Setup Panel - Selection Only */}
+      <div className="rounded-lg border border-white/15 bg-white/7 p-4 space-y-4 shadow-sm">
+        {/* Conference Selection */}
+        <div>
+          <label className="block text-sm text-gray-300 mb-2 font-medium">
+            Conference
+          </label>
+          <select
+            value={selectedConferenceId}
+            onChange={(e) => setSelectedConferenceId(e.target.value)}
+            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
           >
-            Structured (Recommended)
-          </button>
-          <button
-            onClick={() => setEntryMode("manual")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition ${
-              entryMode === "manual"
-                ? "bg-[#51368D] text-white"
-                : "bg-white/10 text-gray-300 hover:bg-white/15"
-            }`}
-          >
-            Custom / Manual Entry
-          </button>
+            <option value="">Select a conference...</option>
+            {conferences.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+          {selectedConferenceId && (
+            <div className="text-xs text-gray-400 space-y-1 pl-2 mt-2">
+              {(() => {
+                const conf = conferences.find((c) => c.id === selectedConferenceId);
+                if (!conf) return null;
+                return (
+                  <>
+                    <div>Themes: {conf.themes.join(", ")}</div>
+                    <div>Seniority: {conf.seniorityMix}</div>
+                    <div>Maturity: {conf.observabilityMaturity}</div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
         </div>
-        <div className="text-xs text-gray-400 mt-1">
-          {entryMode === "structured"
-            ? "Select from existing conferences and personas, or create new ones"
-            : "Manually enter conference context and attendee profile as free text"}
+
+        {/* Persona Selection */}
+        <div>
+          <label className="block text-sm text-gray-300 mb-2 font-medium">Persona</label>
+          <select
+            value={selectedPersonaId}
+            onChange={(e) => setSelectedPersonaId(e.target.value)}
+            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
+          >
+            <option value="">Select a persona...</option>
+            {personas.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+
+          {selectedPersonaId && (
+            <div className="text-xs text-gray-400 space-y-1 pl-2 mt-2">
+              {(() => {
+                const persona = personas.find((p) => p.id === selectedPersonaId);
+                if (!persona) return null;
+                return (
+                  <>
+                    <div>Type: {persona.personaType}</div>
+                    <div>Posture: {persona.emotionalPosture}</div>
+                    <div>OTel: {persona.otelFamiliarity}</div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+
+        {/* Difficulty */}
+        <div>
+          <label className="block text-sm text-gray-300 mb-2">Difficulty</label>
+          <select
+            value={difficulty}
+            onChange={(e) => setDifficulty(e.target.value as "easy" | "medium" | "hard")}
+            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
+          >
+            <option value="easy">Easy - Friendly</option>
+            <option value="medium">Medium - Realistic</option>
+            <option value="hard">Hard - Skeptical</option>
+          </select>
+          <div className="text-xs text-gray-400 mt-1">{difficultyLabel}</div>
         </div>
       </div>
-
-      {/* Setup Panel - Structured Mode */}
-      {entryMode === "structured" && (
-        <div className="rounded-lg border border-white/15 bg-white/7 p-4 space-y-4 shadow-sm">
-          {/* Conference Section */}
-          <div>
-            <label className="block text-sm text-gray-300 mb-2 font-medium">
-              Conference
-            </label>
-
-            {!showConferenceForm ? (
-              <div className="space-y-2">
-                <select
-                  value={selectedConferenceId}
-                  onChange={(e) => {
-                    if (e.target.value === "__new__") {
-                      setShowConferenceForm(true);
-                    } else {
-                      setSelectedConferenceId(e.target.value);
-                    }
-                  }}
-                  className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
-                >
-                  <option value="">Select a conference...</option>
-                  {conferences.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                  <option value="__new__">+ New Conference...</option>
-                </select>
-
-                {selectedConferenceId && (
-                  <div className="text-xs text-gray-400 space-y-1 pl-2">
-                    {(() => {
-                      const conf = conferences.find((c) => c.id === selectedConferenceId);
-                      if (!conf) return null;
-                      return (
-                        <>
-                          <div>Themes: {conf.themes.join(", ")}</div>
-                          <div>Seniority: {conf.seniorityMix}</div>
-                          <div>Maturity: {conf.observabilityMaturity}</div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3 border border-white/10 bg-black/20 p-3 rounded-md">
-                <div className="text-sm font-medium text-gray-200">Create New Conference</div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Name *</label>
-                  <input
-                    value={newConference.name}
-                    onChange={(e) =>
-                      setNewConference((p) => ({ ...p, name: e.target.value }))
-                    }
-                    placeholder="e.g., KubeCon 2024"
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">
-                    Themes
-                  </label>
-                  <ChipInput
-                    value={newConference.themes}
-                    onChange={(themes) =>
-                      setNewConference((p) => ({ ...p, themes }))
-                    }
-                    placeholder="Type themes and press Enter or comma"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Seniority Mix</label>
-                  <input
-                    value={newConference.seniorityMix}
-                    onChange={(e) =>
-                      setNewConference((p) => ({ ...p, seniorityMix: e.target.value }))
-                    }
-                    placeholder="e.g., IC-heavy with platform leads"
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">
-                    Observability Maturity
-                  </label>
-                  <select
-                    value={newConference.observabilityMaturity}
-                    onChange={(e) =>
-                      setNewConference((p) => ({
-                        ...p,
-                        observabilityMaturity: e.target.value as "Low" | "Medium" | "High",
-                      }))
-                    }
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                  >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">
-                    URLs (comma-separated, optional)
-                  </label>
-                  <input
-                    value={newConference.urls}
-                    onChange={(e) =>
-                      setNewConference((p) => ({ ...p, urls: e.target.value }))
-                    }
-                    placeholder="https://..."
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleCreateConference}
-                    className="px-3 py-1.5 rounded bg-[#64BA00] hover:bg-[#4CA600] text-gray-950 text-sm font-medium"
-                  >
-                    Create
-                  </button>
-                  <button
-                    onClick={() => setShowConferenceForm(false)}
-                    className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/15 text-gray-100 text-sm"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Persona Section */}
-          <div>
-            <label className="block text-sm text-gray-300 mb-2 font-medium">Persona</label>
-
-            {!showPersonaForm ? (
-              <div className="space-y-2">
-                <select
-                  value={selectedPersonaId}
-                  onChange={(e) => {
-                    if (e.target.value === "__new__") {
-                      setShowPersonaForm(true);
-                    } else {
-                      setSelectedPersonaId(e.target.value);
-                    }
-                  }}
-                  className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
-                >
-                  <option value="">Select a persona...</option>
-                  {personas.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                  <option value="__new__">+ New Persona...</option>
-                </select>
-
-                {selectedPersonaId && (
-                  <div className="text-xs text-gray-400 space-y-1 pl-2">
-                    {(() => {
-                      const persona = personas.find((p) => p.id === selectedPersonaId);
-                      if (!persona) return null;
-                      return (
-                        <>
-                          <div>Type: {persona.personaType}</div>
-                          <div>Posture: {persona.emotionalPosture}</div>
-                          <div>OTel: {persona.otelFamiliarity}</div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3 border border-white/10 bg-black/20 p-3 rounded-md">
-                <div className="text-sm font-medium text-gray-200">Create New Persona</div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Name *</label>
-                  <input
-                    value={newPersona.name}
-                    onChange={(e) => setNewPersona((p) => ({ ...p, name: e.target.value }))}
-                    placeholder="e.g., SRE — Alert fatigue"
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Persona Type *</label>
-                  <input
-                    value={newPersona.personaType}
-                    onChange={(e) =>
-                      setNewPersona((p) => ({ ...p, personaType: e.target.value }))
-                    }
-                    placeholder="e.g., SRE, Director of Engineering"
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">
-                    Modifiers
-                  </label>
-                  <ChipInput
-                    value={newPersona.modifiers}
-                    onChange={(modifiers) =>
-                      setNewPersona((p) => ({ ...p, modifiers }))
-                    }
-                    placeholder="Type modifiers and press Enter or comma"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Emotional Posture</label>
-                  <input
-                    value={newPersona.emotionalPosture}
-                    onChange={(e) =>
-                      setNewPersona((p) => ({ ...p, emotionalPosture: e.target.value }))
-                    }
-                    placeholder="e.g., Guarded, thoughtful"
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Tooling Bias</label>
-                  <input
-                    value={newPersona.toolingBias}
-                    onChange={(e) =>
-                      setNewPersona((p) => ({ ...p, toolingBias: e.target.value }))
-                    }
-                    placeholder="e.g., Prometheus + Grafana + ELK Stack"
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">
-                    OpenTelemetry Familiarity
-                  </label>
-                  <select
-                    value={newPersona.otelFamiliarity}
-                    onChange={(e) =>
-                      setNewPersona((p) => ({
-                        ...p,
-                        otelFamiliarity: e.target.value as
-                          | "never"
-                          | "aware"
-                          | "considering"
-                          | "starting"
-                          | "active",
-                      }))
-                    }
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                  >
-                    <option value="never">Never heard</option>
-                    <option value="aware">Aware</option>
-                    <option value="considering">Considering</option>
-                    <option value="starting">Starting</option>
-                    <option value="active">Active user</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">
-                    Notes (optional)
-                  </label>
-                  <textarea
-                    value={newPersona.notes}
-                    onChange={(e) => setNewPersona((p) => ({ ...p, notes: e.target.value }))}
-                    placeholder="Additional context or notes"
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30 min-h-[60px]"
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleCreatePersona}
-                    className="px-3 py-1.5 rounded bg-[#64BA00] hover:bg-[#4CA600] text-gray-950 text-sm font-medium"
-                  >
-                    Create
-                  </button>
-                  <button
-                    onClick={() => setShowPersonaForm(false)}
-                    className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/15 text-gray-100 text-sm"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Difficulty */}
-          <div>
-            <label className="block text-sm text-gray-300 mb-2">Difficulty</label>
-            <select
-              value={difficulty}
-              onChange={(e) => setDifficulty(e.target.value as "easy" | "medium" | "hard")}
-              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
-            >
-              <option value="easy">Easy - Friendly</option>
-              <option value="medium">Medium - Realistic</option>
-              <option value="hard">Hard - Skeptical</option>
-            </select>
-            <div className="text-xs text-gray-400 mt-1">{difficultyLabel}</div>
-          </div>
-        </div>
-      )}
-
-      {/* Setup Panel - Manual Mode */}
-      {entryMode === "manual" && (
-        <div className="rounded-lg border border-white/15 bg-white/7 p-4 space-y-3 shadow-sm">
-          <div>
-            <label className="block text-sm text-gray-300 mb-1">Conference Context</label>
-            <input
-              value={manualConferenceContext}
-              onChange={(e) => setManualConferenceContext(e.target.value)}
-              placeholder="e.g., KubeCon booth, Tuesday afternoon"
-              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-300 mb-1">
-              Hidden Attendee Profile (Secret)
-            </label>
-            <textarea
-              value={manualAttendeeProfile}
-              onChange={(e) => setManualAttendeeProfile(e.target.value)}
-              placeholder="e.g., Backend engineer, 5 years exp, using Datadog, frustrated with correlation, OTel: AWARE"
-              className="w-full min-h-[84px] bg-black/20 border-white/10 text-gray-100 rounded-md px-3 py-2 outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-300 mb-1">Difficulty</label>
-            <select
-              value={difficulty}
-              onChange={(e) => setDifficulty(e.target.value as "easy" | "medium" | "hard")}
-              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
-            >
-              <option value="easy">Easy - Friendly</option>
-              <option value="medium">Medium - Realistic</option>
-              <option value="hard">Hard - Skeptical</option>
-            </select>
-            <div className="text-xs text-gray-400 mt-1">{difficultyLabel}</div>
-          </div>
-        </div>
-      )}
 
       {/* Chat panel */}
       <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm min-h-[320px]">
         {messages.length === 0 ? (
           <div className="text-gray-500 text-center py-20">
-            Configure session and click Start to begin
+            Select conference and persona, then click Start to begin
           </div>
         ) : (
           <div className="space-y-3">
@@ -1064,7 +630,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
               )}
             </div>
             <div className="text-gray-500">
-              Mode: {entryMode} | Conference: {selectedConferenceId || "none"} | Persona:{" "}
+              Conference: {selectedConferenceId || "none"} | Persona:{" "}
               {selectedPersonaId || "none"}
             </div>
           </div>
@@ -1073,5 +639,13 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
 
       {loading && <div className="text-xs text-gray-400">Working…</div>}
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="max-w-5xl mx-auto py-20 text-center text-gray-400">Loading...</div>}>
+      <HoneycombSimulator />
+    </Suspense>
   );
 }

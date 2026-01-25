@@ -89,9 +89,9 @@ export default function AdminPage() {
     <div className="max-w-7xl mx-auto space-y-4">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
+          <h1 className="text-2xl font-semibold">Scenario Tracker</h1>
           <p className="text-white/70 text-sm">
-            Internal training links and session status
+            Track training sessions and view invite status
           </p>
         </div>
 
