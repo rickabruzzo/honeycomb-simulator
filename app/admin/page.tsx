@@ -1,7 +1,8 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { TopNav } from "../../components/TopNav";
-import { getAdminInvites, AdminInviteRow } from "../../lib/adminInvites";
+import type { AdminInviteRow } from "../../lib/adminInvites";
 import { ExternalLink } from "lucide-react";
 
 function StatusBadge({ status }: { status: AdminInviteRow["status"] }) {
@@ -65,13 +66,27 @@ function TokenDisplay({ token }: { token: string }) {
   );
 }
 
-export default async function AdminPage() {
-  const invites = await getAdminInvites(50);
+export default function AdminPage() {
+  const [invites, setInvites] = useState<AdminInviteRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadInvites() {
+      try {
+        const response = await fetch('/api/admin/invites');
+        const data = await response.json();
+        setInvites(data);
+      } catch (error) {
+        console.error('Failed to load invites:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadInvites();
+  }, []);
 
   return (
-    <div className="min-h-screen text-gray-100">
-      <TopNav />
-      <div className="max-w-7xl mx-auto p-6 space-y-4">
+    <div className="max-w-7xl mx-auto space-y-4">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
@@ -81,7 +96,11 @@ export default async function AdminPage() {
         </div>
 
         {/* Invites Table */}
-        {invites.length === 0 ? (
+        {loading ? (
+          <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
+            <p className="text-gray-400">Loading invites...</p>
+          </div>
+        ) : invites.length === 0 ? (
           <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
             <p className="text-gray-400">
               No invites yet. Create one from the trainer dashboard.
@@ -164,6 +183,5 @@ export default async function AdminPage() {
           </div>
         )}
       </div>
-    </div>
   );
 }

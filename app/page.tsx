@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Send, Play, Square, ChevronDown, ChevronUp } from "lucide-react";
 import { PERSONAS } from "../lib/personas";
-import { TopNav } from "../components/TopNav";
 import { BrandButton } from "../components/ui/BrandButton";
 
 interface Message {
@@ -304,9 +303,7 @@ export default function HoneycombSimulator() {
   };
 
   return (
-    <div className="min-h-screen text-gray-100">
-      <TopNav />
-      <div className="max-w-5xl mx-auto space-y-4 p-6">
+    <div className="max-w-5xl mx-auto space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -593,6 +590,5 @@ export default function HoneycombSimulator() {
           <div className="text-xs text-gray-400">Working…</div>
         )}
       </div>
-    </div>
   );
 }

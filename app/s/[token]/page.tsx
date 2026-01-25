@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Send, Square } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { TopNav } from "../../../components/TopNav";
 import { BrandButton } from "../../../components/ui/BrandButton";
 
 interface Message {
@@ -205,9 +204,7 @@ export default function TraineePracticePage() {
 
   if (error) {
     return (
-      <div className="min-h-screen text-gray-100">
-        <TopNav />
-        <div className="p-6 flex items-center justify-center">
+      <div className="flex items-center justify-center">
           <div className="max-w-md text-center">
             <h1 className="text-2xl font-semibold mb-4">Invite Error</h1>
             <p className="text-red-400 mb-4">{error}</p>
@@ -216,14 +213,11 @@ export default function TraineePracticePage() {
             </p>
           </div>
         </div>
-      </div>
     );
   }
 
   return (
-    <div className="min-h-screen text-gray-100">
-      <TopNav />
-      <div className="max-w-5xl mx-auto space-y-4 p-6">
+    <div className="max-w-5xl mx-auto space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -320,6 +314,5 @@ export default function TraineePracticePage() {
 
         {loading && <div className="text-xs text-gray-400">Working…</div>}
       </div>
-    </div>
   );
 }

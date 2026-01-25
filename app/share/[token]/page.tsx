@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Award, TrendingUp, AlertCircle, Home } from "lucide-react";
-import { TopNav } from "../../../components/TopNav";
 import { BrandButton } from "../../../components/ui/BrandButton";
 
 interface ScoreRecord {
@@ -68,20 +67,15 @@ export default function ShareScorePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen text-gray-100">
-        <TopNav />
-        <div className="p-6 flex items-center justify-center">
-          <div className="text-gray-400">Loading score...</div>
-        </div>
+      <div className="flex items-center justify-center">
+        <div className="text-gray-400">Loading score...</div>
       </div>
     );
   }
 
   if (error || !scoreRecord) {
     return (
-      <div className="min-h-screen text-gray-100">
-        <TopNav />
-        <div className="p-6 flex items-center justify-center">
+      <div className="flex items-center justify-center">
           <div className="max-w-md">
             <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
               <div className="text-5xl mb-4">📊</div>
@@ -99,7 +93,6 @@ export default function ShareScorePage() {
             </div>
           </div>
         </div>
-      </div>
     );
   }
 
@@ -120,9 +113,7 @@ export default function ShareScorePage() {
   }[scoreRecord.grade];
 
   return (
-    <div className="min-h-screen text-gray-100">
-      <TopNav />
-      <div className="max-w-4xl mx-auto space-y-6 p-6">
+    <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="text-center">
           <h1 className="text-3xl font-bold mb-2">Session Scorecard</h1>
@@ -234,6 +225,5 @@ export default function ShareScorePage() {
           Session completed: {new Date(scoreRecord.completedAt).toLocaleString()}
         </div>
       </div>
-    </div>
   );
 }
