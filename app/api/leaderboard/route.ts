@@ -4,15 +4,20 @@ import { listLeaderboardIndex, LeaderboardEntry } from "@/lib/leaderboardStore";
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const range = searchParams.get("range") || "all"; // "24h" | "7d" | "30d" | "all"
+    const range = searchParams.get("range") || "7d"; // Default to 7d
+    const conferenceId = searchParams.get("conferenceId") || undefined;
     const personaId = searchParams.get("personaId") || undefined;
+    const jobTitle = searchParams.get("jobTitle") || undefined;
+    const difficulty = searchParams.get("difficulty") || undefined;
     const limitParam = searchParams.get("limit");
     const limit = limitParam ? Math.min(parseInt(limitParam, 10), 200) : 20;
 
     // Fetch all entries
-    let entries = await listLeaderboardIndex();
+    const allEntries = await listLeaderboardIndex();
+    const totalStored = allEntries.length;
 
     // Apply range filter
+    let entries = allEntries;
     if (range !== "all") {
       const now = new Date();
       let cutoffTime: Date;
@@ -28,7 +33,7 @@ export async function GET(request: NextRequest) {
           cutoffTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
           break;
         default:
-          cutoffTime = new Date(0); // No filter
+          cutoffTime = new Date(0);
       }
 
       entries = entries.filter((entry) => {
@@ -37,14 +42,37 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Apply personaId filter
-    if (personaId) {
+    // Apply conference filter
+    if (conferenceId) {
       entries = entries.filter(
-        (entry) => entry.meta?.personaId === personaId
+        (entry) => entry.conferenceId === conferenceId
       );
     }
 
-    // Sort by score desc, then createdAt desc
+    // Apply persona filter
+    if (personaId) {
+      entries = entries.filter(
+        (entry) => entry.personaId === personaId
+      );
+    }
+
+    // Apply job title filter (convenience filter)
+    if (jobTitle) {
+      entries = entries.filter(
+        (entry) => entry.jobTitle?.toLowerCase() === jobTitle.toLowerCase()
+      );
+    }
+
+    // Apply difficulty filter
+    if (difficulty) {
+      entries = entries.filter(
+        (entry) => entry.difficulty === difficulty
+      );
+    }
+
+    const totalMatched = entries.length;
+
+    // Sort by score desc, then createdAt desc (recency tie-break)
     entries.sort((a, b) => {
       if (b.score !== a.score) {
         return b.score - a.score;
@@ -55,7 +83,13 @@ export async function GET(request: NextRequest) {
     // Limit results
     const topEntries = entries.slice(0, limit);
 
-    return NextResponse.json({ entries: topEntries });
+    return NextResponse.json({
+      entries: topEntries,
+      totalMatched,
+      totalStored,
+      rangeUsed: range,
+      limitUsed: limit,
+    });
   } catch (error) {
     console.error("Failed to fetch leaderboard:", error);
     return NextResponse.json(

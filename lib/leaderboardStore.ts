@@ -5,15 +5,13 @@ export type LeaderboardEntry = {
   score: number;
   grade: string;
   createdAt: string;
-  meta?: {
-    personaId?: string;
-    personaName?: string;
-    difficulty?: string;
-    conferenceId?: string; // optional for future
-    conferenceLabel?: string; // optional for future
-    role?: string; // optional for future
-    segment?: string; // optional for future
-  };
+  // Segmentation metadata
+  conferenceId: string | null;
+  conferenceName: string | null;
+  personaId: string | null;
+  personaDisplayName: string | null;
+  jobTitle: string | null;
+  difficulty: "easy" | "medium" | "hard" | null;
 };
 
 const inMemoryLeaderboard: LeaderboardEntry[] = [];

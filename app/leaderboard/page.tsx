@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Trophy, ExternalLink } from "lucide-react";
-import { PERSONAS } from "@/lib/personas";
+import { Trophy, ExternalLink, Play } from "lucide-react";
 import type { LeaderboardEntry } from "@/lib/leaderboardStore";
+import type { Conference, Persona } from "@/lib/scenarioTypes";
+import { BrandButton } from "@/components/ui/BrandButton";
 
 type RangeOption = "24h" | "7d" | "30d" | "all";
 
@@ -37,23 +38,73 @@ function GradeBadge({ grade }: { grade: string }) {
 
 export default function LeaderboardPage() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [conferences, setConferences] = useState<Conference[]>([]);
+  const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
-  const [range, setRange] = useState<RangeOption>("all");
-  const [personaFilter, setPersonaFilter] = useState<string>("");
+  const [stats, setStats] = useState<{
+    totalMatched: number;
+    totalStored: number;
+    rangeUsed: string;
+    limitUsed: number;
+  } | null>(null);
 
+  // Filter state
+  const [range, setRange] = useState<RangeOption>("7d"); // Default to 7 days
+  const [conferenceFilter, setConferenceFilter] = useState<string>("");
+  const [personaFilter, setPersonaFilter] = useState<string>("");
+  const [difficultyFilter, setDifficultyFilter] = useState<string>("");
+
+  // Load conferences and personas for filters
+  useEffect(() => {
+    async function loadFilterData() {
+      try {
+        const [confRes, personaRes] = await Promise.all([
+          fetch("/api/conferences"),
+          fetch("/api/personas"),
+        ]);
+
+        if (confRes.ok) {
+          const confData = await confRes.json();
+          setConferences(confData.conferences || []);
+        }
+
+        if (personaRes.ok) {
+          const personaData = await personaRes.json();
+          setPersonas(personaData.personas || []);
+        }
+      } catch (error) {
+        console.error("Failed to load filter data:", error);
+      }
+    }
+    loadFilterData();
+  }, []);
+
+  // Load leaderboard entries
   useEffect(() => {
     async function loadLeaderboard() {
       setLoading(true);
       try {
         const params = new URLSearchParams();
         params.set("range", range);
+        if (conferenceFilter) {
+          params.set("conferenceId", conferenceFilter);
+        }
         if (personaFilter) {
           params.set("personaId", personaFilter);
+        }
+        if (difficultyFilter) {
+          params.set("difficulty", difficultyFilter);
         }
 
         const response = await fetch(`/api/leaderboard?${params.toString()}`);
         const data = await response.json();
         setEntries(data.entries || []);
+        setStats({
+          totalMatched: data.totalMatched || 0,
+          totalStored: data.totalStored || 0,
+          rangeUsed: data.rangeUsed || range,
+          limitUsed: data.limitUsed || 20,
+        });
       } catch (error) {
         console.error("Failed to load leaderboard:", error);
       } finally {
@@ -61,10 +112,10 @@ export default function LeaderboardPage() {
       }
     }
     loadLeaderboard();
-  }, [range, personaFilter]);
+  }, [range, conferenceFilter, personaFilter, difficultyFilter]);
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="max-w-[1200px] mx-auto space-y-4">
       {/* Header */}
       <div className="text-center">
         <div className="flex items-center justify-center gap-2 mb-2">
@@ -72,47 +123,82 @@ export default function LeaderboardPage() {
           <h1 className="text-3xl font-bold">Leaderboard</h1>
         </div>
         <p className="text-white/70 text-sm">
-          Top scores from practice sessions
+          Top scores from practice sessions. Default: Last 7 days, Top 20.
         </p>
       </div>
 
       {/* Filters */}
       <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-300 font-medium">
-              Time Range:
-            </label>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Time Range</label>
             <select
               value={range}
               onChange={(e) => setRange(e.target.value as RangeOption)}
-              className="bg-black/30 border border-white/20 text-gray-100 rounded px-3 py-1.5 text-sm outline-none focus:border-white/30"
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
             >
-              <option value="all">All Time</option>
-              <option value="24h">Last 24 Hours</option>
-              <option value="7d">Last 7 Days</option>
-              <option value="30d">Last 30 Days</option>
+              <option value="24h">Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="all">All time</option>
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-300 font-medium">
-              Persona:
-            </label>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Conference</label>
+            <select
+              value={conferenceFilter}
+              onChange={(e) => setConferenceFilter(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+            >
+              <option value="">All conferences</option>
+              {conferences.map((conf) => (
+                <option key={conf.id} value={conf.id}>
+                  {conf.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Persona</label>
             <select
               value={personaFilter}
               onChange={(e) => setPersonaFilter(e.target.value)}
-              className="bg-black/30 border border-white/20 text-gray-100 rounded px-3 py-1.5 text-sm outline-none focus:border-white/30"
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
             >
-              <option value="">All Personas</option>
-              {PERSONAS.map((persona) => (
+              <option value="">All personas</option>
+              {personas.map((persona) => (
                 <option key={persona.id} value={persona.id}>
                   {persona.name}
                 </option>
               ))}
             </select>
           </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Difficulty</label>
+            <select
+              value={difficultyFilter}
+              onChange={(e) => setDifficultyFilter(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+            >
+              <option value="">All</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
         </div>
+
+        {stats && (
+          <p className="text-xs text-gray-400 mt-3">
+            Showing top {entries.length} of {stats.totalMatched} matching entries
+            {stats.totalStored > stats.totalMatched && (
+              <span> (filtered from {stats.totalStored} total)</span>
+            )}
+          </p>
+        )}
       </div>
 
       {/* Leaderboard Table */}
@@ -121,11 +207,17 @@ export default function LeaderboardPage() {
           <p className="text-gray-400">Loading leaderboard...</p>
         </div>
       ) : entries.length === 0 ? (
-        <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
+        <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center space-y-4">
           <p className="text-gray-400">
-            No scores yet. Complete a practice session to appear on the
-            leaderboard!
+            {stats && stats.totalStored === 0
+              ? "No scores yet. Be the first to complete a practice session!"
+              : "No scores match the selected filters."}
           </p>
+          <Link href="/">
+            <BrandButton variant="lime" className="inline-flex items-center gap-2">
+              <Play size={16} /> Practice Now
+            </BrandButton>
+          </Link>
         </div>
       ) : (
         <div className="rounded-lg border border-white/15 bg-white/7 shadow-sm overflow-hidden">
@@ -133,25 +225,28 @@ export default function LeaderboardPage() {
             <table className="w-full">
               <thead className="bg-white/5 border-b border-white/10">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Rank
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Score
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Grade
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    Conference
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Persona
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Difficulty
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Date
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Scorecard
                   </th>
                 </tr>
@@ -167,25 +262,30 @@ export default function LeaderboardPage() {
                       key={entry.token}
                       className="hover:bg-white/5 transition"
                     >
-                      <td className="px-4 py-3 text-sm text-gray-300 font-semibold">
+                      <td className="px-3 py-3 text-sm text-gray-300 font-semibold">
                         {rankEmoji} {rank}
                       </td>
-                      <td className="px-4 py-3 text-lg font-bold text-white">
+                      <td className="px-3 py-3 text-lg font-bold text-white">
                         {entry.score}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <GradeBadge grade={entry.grade} />
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-300">
-                        {entry.meta?.personaName || "—"}
+                      <td className="px-3 py-3 text-sm text-gray-300">
+                        {entry.conferenceName || "—"}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-400 capitalize">
-                        {entry.meta?.difficulty || "—"}
+                      <td className="px-3 py-3 text-sm text-gray-300">
+                        <div className="max-w-[180px] truncate" title={entry.personaDisplayName || undefined}>
+                          {entry.personaDisplayName || "—"}
+                        </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-400">
+                      <td className="px-3 py-3 text-sm text-gray-400 capitalize">
+                        {entry.difficulty || "—"}
+                      </td>
+                      <td className="px-3 py-3 text-sm text-gray-400">
                         {formatDate(entry.createdAt)}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-3 py-3 text-right">
                         <Link
                           href={`/share/${entry.token}`}
                           target="_blank"

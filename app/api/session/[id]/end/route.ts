@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession, saveSession } from '@/lib/storage';
 import { SIMULATOR_CONFIG } from '@/lib/simulator';
 import { randomUUID } from 'crypto';
-import { getInviteForSession } from '@/lib/invites';
+import { getInviteForSession, getInvite } from '@/lib/invites';
 import { scoreSession } from '@/lib/scoring';
 import { saveScore } from '@/lib/scoreStore';
 import { addToLeaderboardIndex } from '@/lib/leaderboardStore';
-import { getPersonaById } from '@/lib/personas';
+import { getPersona } from '@/lib/personaStore';
+import { getConference } from '@/lib/conferenceStore';
+import { buildPersonaTitle } from '@/lib/formatUtils';
 
 export async function POST(
   request: NextRequest,
@@ -106,13 +108,48 @@ Remember: Listen, discover pain, validate, then align to outcomes.
           breakdown: scoreRecord.breakdown,
         };
 
-        // Add to leaderboard index (Phase E)
-        let personaName: string | undefined;
-        if (scoreRecord.personaId) {
-          const persona = getPersonaById(scoreRecord.personaId);
-          if (persona) {
-            personaName = persona.name;
+        // Add to leaderboard index with full metadata (Phase F)
+        // Resolve conference and persona data from invite
+        let conferenceId: string | null = null;
+        let conferenceName: string | null = null;
+        let personaId: string | null = null;
+        let personaDisplayName: string | null = null;
+        let jobTitle: string | null = null;
+        let difficulty: "easy" | "medium" | "hard" | null = null;
+
+        try {
+          const invite = await getInvite(token);
+          if (invite) {
+            // Get conference data
+            if (invite.conferenceId) {
+              conferenceId = invite.conferenceId;
+              const conference = await getConference(invite.conferenceId);
+              if (conference) {
+                conferenceName = conference.name;
+              }
+            }
+
+            // Get persona data
+            if (invite.personaId) {
+              personaId = invite.personaId;
+              const persona = await getPersona(invite.personaId);
+              if (persona) {
+                personaDisplayName = buildPersonaTitle(
+                  persona.personaType,
+                  persona.modifiers,
+                  persona.toolingBias
+                );
+                jobTitle = persona.personaType;
+              }
+            }
           }
+
+          // Get difficulty from score record
+          if (scoreRecord.difficulty) {
+            difficulty = scoreRecord.difficulty as "easy" | "medium" | "hard";
+          }
+        } catch (e) {
+          console.warn('Failed to resolve leaderboard metadata:', e);
         }
 
         await addToLeaderboardIndex({
@@ -120,12 +157,12 @@ Remember: Listen, discover pain, validate, then align to outcomes.
           score: scoreRecord.score,
           grade: scoreRecord.grade,
           createdAt: scoreRecord.completedAt,
-          meta: {
-            personaId: scoreRecord.personaId,
-            personaName,
-            difficulty: scoreRecord.difficulty,
-            conferenceLabel: scoreRecord.conferenceContext,
-          },
+          conferenceId,
+          conferenceName,
+          personaId,
+          personaDisplayName,
+          jobTitle,
+          difficulty,
         });
       } catch (e) {
         console.error('Failed to save score:', e);
