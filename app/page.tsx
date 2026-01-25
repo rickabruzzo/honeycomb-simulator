@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Send, Play, Square, ChevronDown, ChevronUp } from "lucide-react";
 import { BrandButton } from "../components/ui/BrandButton";
+import { ChipInput } from "../components/ui/ChipInput";
 import type { Conference, Persona } from "../lib/scenarioTypes";
 
 interface Message {
@@ -46,13 +47,13 @@ export default function HoneycombSimulator() {
   const [showConferenceForm, setShowConferenceForm] = useState(false);
   const [newConference, setNewConference] = useState<{
     name: string;
-    themes: string;
+    themes: string[];
     seniorityMix: string;
     observabilityMaturity: "Low" | "Medium" | "High";
     urls: string;
   }>({
     name: "",
-    themes: "",
+    themes: [],
     seniorityMix: "",
     observabilityMaturity: "Medium",
     urls: "",
@@ -63,7 +64,7 @@ export default function HoneycombSimulator() {
   const [newPersona, setNewPersona] = useState<{
     name: string;
     personaType: string;
-    modifiers: string;
+    modifiers: string[];
     emotionalPosture: string;
     toolingBias: string;
     otelFamiliarity: "never" | "aware" | "considering" | "starting" | "active";
@@ -71,7 +72,7 @@ export default function HoneycombSimulator() {
   }>({
     name: "",
     personaType: "",
-    modifiers: "",
+    modifiers: [],
     emotionalPosture: "",
     toolingBias: "",
     otelFamiliarity: "never",
@@ -390,10 +391,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newConference.name,
-          themes: newConference.themes
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean),
+          themes: newConference.themes,
           seniorityMix: newConference.seniorityMix,
           observabilityMaturity: newConference.observabilityMaturity,
           sources: newConference.urls.trim()
@@ -415,7 +413,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
       setShowConferenceForm(false);
       setNewConference({
         name: "",
-        themes: "",
+        themes: [],
         seniorityMix: "",
         observabilityMaturity: "Medium",
         urls: "",
@@ -439,10 +437,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
         body: JSON.stringify({
           name: newPersona.name,
           personaType: newPersona.personaType,
-          modifiers: newPersona.modifiers
-            .split(",")
-            .map((m) => m.trim())
-            .filter(Boolean),
+          modifiers: newPersona.modifiers,
           emotionalPosture: newPersona.emotionalPosture,
           toolingBias: newPersona.toolingBias,
           otelFamiliarity: newPersona.otelFamiliarity,
@@ -461,7 +456,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
       setNewPersona({
         name: "",
         personaType: "",
-        modifiers: "",
+        modifiers: [],
         emotionalPosture: "",
         toolingBias: "",
         otelFamiliarity: "never",
@@ -688,15 +683,14 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
 
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">
-                    Themes (comma-separated)
+                    Themes
                   </label>
-                  <input
+                  <ChipInput
                     value={newConference.themes}
-                    onChange={(e) =>
-                      setNewConference((p) => ({ ...p, themes: e.target.value }))
+                    onChange={(themes) =>
+                      setNewConference((p) => ({ ...p, themes }))
                     }
-                    placeholder="e.g., Kubernetes, cloud native, CNCF"
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+                    placeholder="Type themes and press Enter or comma"
                   />
                 </div>
 
@@ -834,15 +828,14 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
 
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">
-                    Modifiers (comma-separated)
+                    Modifiers
                   </label>
-                  <input
+                  <ChipInput
                     value={newPersona.modifiers}
-                    onChange={(e) =>
-                      setNewPersona((p) => ({ ...p, modifiers: e.target.value }))
+                    onChange={(modifiers) =>
+                      setNewPersona((p) => ({ ...p, modifiers }))
                     }
-                    placeholder="e.g., Recent outage, alert fatigue"
-                    className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+                    placeholder="Type modifiers and press Enter or comma"
                   />
                 </div>
 
