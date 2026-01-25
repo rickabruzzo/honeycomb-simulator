@@ -1,6 +1,7 @@
 import { kv } from "@vercel/kv";
 import { Persona } from "./scenarioTypes";
 import { PERSONAS } from "./personas";
+import { buildPersonaSubtitle } from "./formatUtils";
 
 const inMemoryPersonas = new Map<string, Persona>();
 const inMemoryIndex: string[] = [];
@@ -171,6 +172,15 @@ export async function upsertPersona(
     behaviorBrief = parts.join(" — ") || "No brief provided";
   }
 
+  // Generate displaySubtitle for editor UI
+  const displaySubtitle = buildPersonaSubtitle(
+    persona.personaType ?? "Unknown",
+    persona.modifiers ?? [],
+    persona.toolingBias ?? "Various tools",
+    persona.emotionalPosture ?? "Neutral",
+    persona.otelFamiliarity ?? "never"
+  );
+
   const fullPersona: Persona = {
     id,
     name: persona.name,
@@ -181,6 +191,7 @@ export async function upsertPersona(
     otelFamiliarity: persona.otelFamiliarity ?? "never",
     sources: persona.sources,
     behaviorBrief,
+    displaySubtitle,
     createdAt: existing?.createdAt ?? now,
     createdBy: persona.createdBy ?? "admin",
     updatedAt: isUpdate ? now : undefined,

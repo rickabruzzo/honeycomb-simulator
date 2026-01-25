@@ -30,6 +30,7 @@ export type Persona = {
     notes?: string;
   };
   behaviorBrief?: string;
+  displaySubtitle?: string; // Full caption for display in editor lists
   createdAt: string;
   createdBy: "system" | "admin";
   updatedAt?: string;

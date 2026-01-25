@@ -9,7 +9,7 @@ import {
   listPersonas,
   upsertPersona,
 } from "@/lib/personaStore";
-import { toSentenceCase } from "@/lib/formatUtils";
+import { toSentenceCase, buildPersonaSubtitle } from "@/lib/formatUtils";
 
 // Helper to generate persona name
 function generatePersonaName(
@@ -110,8 +110,11 @@ export async function POST() {
         persona.toolingBias
       );
 
+      // Don't pass displaySubtitle - let upsertPersona compute it
+      const { displaySubtitle: _, ...personaWithoutSubtitle } = persona;
+
       const updated = {
-        ...persona,
+        ...personaWithoutSubtitle,
         name: newName,
         modifiers: persona.modifiers.map(toSentenceCase),
         emotionalPosture: toSentenceCase(persona.emotionalPosture),

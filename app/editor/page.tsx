@@ -6,7 +6,7 @@ import { Plus, Save, Archive, ExternalLink } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
 import { ChipInput } from "@/components/ui/ChipInput";
 import type { Conference, Persona } from "@/lib/scenarioTypes";
-import { toSentenceCase } from "@/lib/formatUtils";
+import { toSentenceCase, buildPersonaTitle } from "@/lib/formatUtils";
 
 // Helper function to abbreviate text (first 3 words, ~20 chars max)
 function abbreviate(text: string): string {
@@ -554,20 +554,29 @@ export default function ScenarioEditorPage() {
 
             {/* Persona List */}
             <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
-              {personas.map((persona) => (
-                <button
-                  key={persona.id}
-                  onClick={() => handleSelectPersona(persona)}
-                  className={`w-full text-left px-3 py-2 rounded transition ${
-                    selectedPersona?.id === persona.id
-                      ? "bg-[#51368D] text-white"
-                      : "bg-white/5 text-gray-300 hover:bg-white/10"
-                  }`}
-                >
-                  <div className="font-medium">{persona.name}</div>
-                  <div className="text-xs opacity-70">{persona.personaType}</div>
-                </button>
-              ))}
+              {personas.map((persona) => {
+                const displayTitle = buildPersonaTitle(
+                  persona.personaType,
+                  persona.modifiers,
+                  persona.toolingBias
+                );
+                return (
+                  <button
+                    key={persona.id}
+                    onClick={() => handleSelectPersona(persona)}
+                    className={`w-full text-left px-3 py-2 rounded transition ${
+                      selectedPersona?.id === persona.id
+                        ? "bg-[#51368D] text-white"
+                        : "bg-white/5 text-gray-300 hover:bg-white/10"
+                    }`}
+                  >
+                    <div className="font-medium text-sm line-clamp-1">{displayTitle}</div>
+                    <div className="text-xs opacity-70 line-clamp-1">
+                      {persona.displaySubtitle || persona.personaType}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Persona Form */}
