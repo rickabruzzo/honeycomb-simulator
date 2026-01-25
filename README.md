@@ -46,18 +46,29 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## OpenTelemetry & Observability
 
-This application is fully instrumented with OpenTelemetry and sends traces to Honeycomb.
+This application is fully instrumented with OpenTelemetry and sends traces to Honeycomb **from Vercel Production only**.
+
+### Environment-Based Tracing
+
+| Environment | Traces Exported? |
+|------------|------------------|
+| Local development | ❌ No |
+| Vercel Preview | ❌ No |
+| Vercel Production | ✅ Yes |
+
+This ensures:
+- Clean local development (no trace noise)
+- No test data in Honeycomb from previews
+- Production observability only
 
 ### Configuration
 
-The following environment variables control OpenTelemetry:
+**See [HONEYCOMB_SETUP.md](./HONEYCOMB_SETUP.md) for complete setup instructions.**
 
-```env
-OTEL_SERVICE_NAME="honeycomb-simulator"
-OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
-OTEL_EXPORTER_OTLP_ENDPOINT="https://api.honeycomb.io"
-OTEL_EXPORTER_OTLP_HEADERS="x-honeycomb-team=YOUR_API_KEY"
-```
+Quick summary:
+1. Set OTEL_* environment variables **only in Vercel Production**
+2. Do NOT set OTEL_* variables in `.env.local`
+3. The app automatically detects the environment and gates trace export
 
 ### Auto-Instrumentation
 
@@ -70,15 +81,17 @@ The app automatically instruments:
 
 ### Files
 
-- `tracing.js` - OpenTelemetry SDK initialization
+- `tracing.js` - OpenTelemetry SDK initialization with environment gating
 - `instrumentation.ts` - Next.js instrumentation hook
+- `HONEYCOMB_SETUP.md` - Complete setup and verification guide
 
 ### Viewing Traces
 
-1. Configure your Honeycomb API key in `.env.local`
-2. Run the app: `npm run dev`
-3. Make requests to generate traces
-4. View traces in your Honeycomb dashboard under the `honeycomb-simulator` dataset
+1. Deploy to Vercel Production with OTEL_* environment variables configured
+2. Browse your production site to generate traffic
+3. View traces in your Honeycomb dashboard under the `honeycomb-simulator` dataset
+
+**Note:** Local development will NOT send traces to Honeycomb
 
 ## Project Structure
 
