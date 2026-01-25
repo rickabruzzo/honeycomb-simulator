@@ -1,8 +1,8 @@
 // instrumentation.ts
-import { registerOTel } from "@vercel/otel";
-
-export function register() {
-  registerOTel({
-    serviceName: "honeycomb-simulator",
-  });
+export async function register() {
+  // Only run instrumentation in Node.js runtime (not Edge)
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Dynamically import tracing to ensure it runs before anything else
+    await import("./tracing.js");
+  }
 }
