@@ -23,6 +23,26 @@ function formatTime(timestamp: string) {
   });
 }
 
+/**
+ * Normalize transcript array to ensure all items are valid messages
+ * Filters out null, undefined, or malformed message objects
+ */
+function normalizeTranscript(transcript: any[]): Message[] {
+  if (!Array.isArray(transcript)) return [];
+
+  return transcript.filter((msg): msg is Message => {
+    return (
+      msg !== null &&
+      msg !== undefined &&
+      typeof msg === "object" &&
+      typeof msg.id === "string" &&
+      typeof msg.type === "string" &&
+      typeof msg.text === "string" &&
+      typeof msg.timestamp === "string"
+    );
+  });
+}
+
 function HoneycombSimulator() {
   const searchParams = useSearchParams();
 
@@ -133,7 +153,7 @@ function HoneycombSimulator() {
         }
 
         setSessionId(data.sessionId);
-        setMessages(data.transcript || []);
+        setMessages(normalizeTranscript(data.transcript || []));
         setCurrentState(data.currentState || "ICEBREAKER");
         setViolations(data.violations || []);
 
@@ -217,7 +237,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
       const data = await response.json();
 
       setSessionId(data.sessionId);
-      setMessages([data.message]);
+      setMessages(normalizeTranscript([data.message]));
       setCurrentState(data.currentState || "ICEBREAKER");
       setViolations([]);
 
@@ -286,7 +306,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
           text: userMessage,
           timestamp: new Date().toISOString(),
         },
-        data.message,
+        ...(data.message ? [data.message] : []),
       ]);
 
       setCurrentState(data.currentState || currentState);
@@ -553,7 +573,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
           </div>
         ) : (
           <div className="space-y-3">
-            {messages.map((m) => {
+            {(messages ?? []).filter(Boolean).map((m) => {
               const isTrainee = m.type === "trainee";
               const isAttendee = m.type === "attendee";
               const bubble = isTrainee
