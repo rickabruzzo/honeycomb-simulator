@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Award, TrendingUp, AlertCircle, Home } from "lucide-react";
+import { Award, TrendingUp, AlertCircle, Home, Trophy } from "lucide-react";
 import { BrandButton } from "../../../components/ui/BrandButton";
 
 interface ScoreRecord {
@@ -211,6 +211,13 @@ export default function ShareScorePage() {
 
         {/* Actions */}
         <div className="flex items-center justify-center gap-4">
+          <BrandButton
+            onClick={() => router.push("/leaderboard")}
+            variant="indigo"
+            className="px-6 py-3"
+          >
+            <Trophy size={16} /> View Leaderboard
+          </BrandButton>
           <BrandButton
             onClick={() => router.push("/")}
             variant="lime"

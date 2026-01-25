@@ -5,6 +5,8 @@ import { randomUUID } from 'crypto';
 import { getInviteForSession } from '@/lib/invites';
 import { scoreSession } from '@/lib/scoring';
 import { saveScore } from '@/lib/scoreStore';
+import { addToLeaderboardIndex } from '@/lib/leaderboardStore';
+import { getPersonaById } from '@/lib/personas';
 
 export async function POST(
   request: NextRequest,
@@ -103,6 +105,28 @@ Remember: Listen, discover pain, validate, then align to outcomes.
           grade: scoreRecord.grade,
           breakdown: scoreRecord.breakdown,
         };
+
+        // Add to leaderboard index (Phase E)
+        let personaName: string | undefined;
+        if (scoreRecord.personaId) {
+          const persona = getPersonaById(scoreRecord.personaId);
+          if (persona) {
+            personaName = persona.name;
+          }
+        }
+
+        await addToLeaderboardIndex({
+          token: scoreRecord.token,
+          score: scoreRecord.score,
+          grade: scoreRecord.grade,
+          createdAt: scoreRecord.completedAt,
+          meta: {
+            personaId: scoreRecord.personaId,
+            personaName,
+            difficulty: scoreRecord.difficulty,
+            conferenceLabel: scoreRecord.conferenceContext,
+          },
+        });
       } catch (e) {
         console.error('Failed to save score:', e);
       }
