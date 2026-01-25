@@ -6,6 +6,7 @@ import { Plus, Save, Archive, ExternalLink } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
 import { ChipInput } from "@/components/ui/ChipInput";
 import type { Conference, Persona } from "@/lib/scenarioTypes";
+import { toSentenceCase } from "@/lib/formatUtils";
 
 // Helper function to abbreviate text (first 3 words, ~20 chars max)
 function abbreviate(text: string): string {
@@ -52,6 +53,7 @@ function generatePersonaName(
 
 // Helper function to generate persona subtitle
 // Format: [full job title] | [full modifiers] | [full tooling bias] | [emotional posture] | OTel [familiarity]
+// All in sentence case
 function generatePersonaSubtitle(
   jobTitle: string,
   modifiers: string[],
@@ -61,12 +63,12 @@ function generatePersonaSubtitle(
 ): string {
   const parts: string[] = [];
 
-  if (jobTitle.trim()) parts.push(jobTitle.toLowerCase());
-  if (modifiers.length > 0) parts.push(modifiers.map(m => m.toLowerCase()).join(", "));
-  if (toolingBias.trim()) parts.push(toolingBias.toLowerCase());
-  if (emotionalPosture.trim()) parts.push(emotionalPosture.toLowerCase());
+  if (jobTitle.trim()) parts.push(toSentenceCase(jobTitle));
+  if (modifiers.length > 0) parts.push(modifiers.map(toSentenceCase).join(", "));
+  if (toolingBias.trim()) parts.push(toSentenceCase(toolingBias));
+  if (emotionalPosture.trim()) parts.push(toSentenceCase(emotionalPosture));
   if (otelFamiliarity.trim()) {
-    parts.push(`OTel ${otelFamiliarity.toLowerCase()}`);
+    parts.push(`OTel ${toSentenceCase(otelFamiliarity)}`);
   }
 
   return parts.join(" | ");
@@ -454,7 +456,7 @@ export default function ScenarioEditorPage() {
             {/* Conference Form */}
             <div className="space-y-3 border-t border-white/10 pt-4">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Name *</label>
+                <label className="block text-xs text-gray-400 mb-1">Conference Name *</label>
                 <input
                   value={conferenceForm.name}
                   onChange={(e) => setConferenceForm((p) => ({ ...p, name: e.target.value }))}
@@ -515,8 +517,8 @@ export default function ScenarioEditorPage() {
                   <label className="block text-xs text-gray-500 mb-1">Display name preview</label>
                   <div className="text-sm text-gray-300 font-medium">{conferenceForm.name}</div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {conferenceForm.themes.length > 0 && `${conferenceForm.themes.join(", ")} • `}
-                    {conferenceForm.observabilityMaturity} maturity
+                    {conferenceForm.themes.length > 0 && `${conferenceForm.themes.map(toSentenceCase).join(", ")} • `}
+                    {toSentenceCase(conferenceForm.observabilityMaturity)} maturity
                   </div>
                 </div>
               )}
