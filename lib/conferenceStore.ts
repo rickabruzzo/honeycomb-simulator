@@ -67,6 +67,29 @@ export async function getConference(id: string): Promise<Conference | null> {
 }
 
 /**
+ * Normalize name for duplicate detection (trim, lowercase, collapse whitespace)
+ */
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Find a conference by normalized name (excluding archived)
+ */
+export async function findConferenceByName(
+  name: string
+): Promise<Conference | null> {
+  const normalizedName = normalizeName(name);
+  const conferences = await listConferences(false); // Exclude archived
+
+  return (
+    conferences.find(
+      (conf) => normalizeName(conf.name) === normalizedName
+    ) ?? null
+  );
+}
+
+/**
  * Create or update a conference
  */
 export async function upsertConference(

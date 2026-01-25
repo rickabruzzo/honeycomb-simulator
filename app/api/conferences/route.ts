@@ -3,6 +3,8 @@ import {
   listConferences,
   upsertConference,
   ensureConferencesSeeded,
+  findConferenceByName,
+  archiveConference,
 } from "@/lib/conferenceStore";
 import { Conference } from "@/lib/scenarioTypes";
 
@@ -32,6 +34,27 @@ export async function POST(request: NextRequest) {
         { error: "Missing required field: name" },
         { status: 400 }
       );
+    }
+
+    // Check for overwrite when creating new conference (no id provided)
+    if (!body.id) {
+      const existing = await findConferenceByName(body.name);
+      if (existing) {
+        return NextResponse.json(
+          {
+            error: "Conference already exists",
+            existingId: existing.id,
+            existingConference: existing,
+            action: "overwrite",
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    // If archiveExistingId is provided, archive it first before creating new
+    if (body.archiveExistingId) {
+      await archiveConference(body.archiveExistingId);
     }
 
     // Upsert conference (creates if missing id, updates if present)

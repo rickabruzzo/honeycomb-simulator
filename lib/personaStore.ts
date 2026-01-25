@@ -124,6 +124,29 @@ export async function getPersona(id: string): Promise<Persona | null> {
 }
 
 /**
+ * Normalize name for duplicate detection (trim, lowercase, collapse whitespace)
+ */
+function normalizePersonaName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Find a persona by normalized name (excluding archived)
+ */
+export async function findPersonaByName(
+  name: string
+): Promise<Persona | null> {
+  const normalizedName = normalizePersonaName(name);
+  const personas = await listPersonas(false); // Exclude archived
+
+  return (
+    personas.find(
+      (persona) => normalizePersonaName(persona.name) === normalizedName
+    ) ?? null
+  );
+}
+
+/**
  * Create or update a persona
  */
 export async function upsertPersona(
