@@ -9,36 +9,59 @@ import { addToLeaderboardIndex } from '@/lib/leaderboardStore';
 import { getPersona } from '@/lib/personaStore';
 import { getConference } from '@/lib/conferenceStore';
 import { buildPersonaTitle } from '@/lib/formatUtils';
+import { withSpan } from '@/lib/telemetry';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id } = await params;
-    const session = await getSession(id);
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Session not found' },
-        { status: 404 }
-      );
-    }
+  return withSpan(
+    "hc.event.session_end",
+    async (span) => {
+      const { id } = await params;
 
-    session.active = false;
-    
-    // Calculate session duration
-    const duration = Math.floor(
-      (new Date().getTime() - new Date(session.startTime).getTime()) / 1000
-    );
-    
-    // Generate feedback
-    const states = Object.keys(SIMULATOR_CONFIG.states);
-    const reached = states.indexOf(session.currentState);
-    const total = states.length - 1;
-    
-    let outcome = 'POLITE_EXIT';
-    if (session.currentState === 'OUTCOME') outcome = 'DEMO_READY';
-    else if (session.currentState === 'SOLUTION_FRAMING') outcome = 'DEFERRED_INTEREST';
+      span.setAttribute("route", "/api/session/[id]/end");
+      span.setAttribute("method", "POST");
+      span.setAttribute("event_type", "session_end");
+      span.setAttribute("session_id", id);
+
+      try {
+        const session = await getSession(id);
+        if (!session) {
+          span.setAttribute("status", 404);
+          span.setAttribute("error", "session_not_found");
+          return NextResponse.json(
+            { error: 'Session not found' },
+            { status: 404 }
+          );
+        }
+
+        session.active = false;
+
+        span.setAttribute("final_state", session.currentState);
+        span.setAttribute("violations_count", session.violations.length);
+        span.setAttribute("transcript_length", session.transcript.length);
+        span.setAttribute("state_transitions", session.stateHistory.length);
+
+        // Calculate session duration
+        const duration = Math.floor(
+          (new Date().getTime() - new Date(session.startTime).getTime()) / 1000
+        );
+
+        span.setAttribute("session_duration_sec", duration);
+
+        // Generate feedback
+        const states = Object.keys(SIMULATOR_CONFIG.states);
+        const reached = states.indexOf(session.currentState);
+        const total = states.length - 1;
+
+        let outcome = 'POLITE_EXIT';
+        if (session.currentState === 'OUTCOME') outcome = 'DEMO_READY';
+        else if (session.currentState === 'SOLUTION_FRAMING') outcome = 'DEFERRED_INTEREST';
+
+        span.setAttribute("outcome", outcome);
+        span.setAttribute("states_reached", reached);
+        span.setAttribute("states_total", total);
     
     const feedback = `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -94,19 +117,23 @@ Remember: Listen, discover pain, validate, then align to outcomes.
       console.warn('Failed to resolve token for scoring:', e);
     }
 
-    // If we have a token, compute and save score
-    let shareUrl: string | null = null;
-    let scoreData = null;
-    if (token) {
-      try {
-        const scoreRecord = scoreSession(session, token);
-        await saveScore(scoreRecord);
-        shareUrl = `/share/${token}`;
-        scoreData = {
-          score: scoreRecord.score,
-          grade: scoreRecord.grade,
-          breakdown: scoreRecord.breakdown,
-        };
+        // If we have a token, compute and save score
+        let shareUrl: string | null = null;
+        let scoreData = null;
+        if (token) {
+          span.setAttribute("has_token", true);
+          try {
+            const scoreRecord = scoreSession(session, token);
+            await saveScore(scoreRecord);
+            shareUrl = `/share/${token}`;
+            scoreData = {
+              score: scoreRecord.score,
+              grade: scoreRecord.grade,
+              breakdown: scoreRecord.breakdown,
+            };
+
+            span.setAttribute("score", scoreRecord.score);
+            span.setAttribute("grade", scoreRecord.grade);
 
         // Add to leaderboard index with full metadata (Phase F)
         // Resolve conference and persona data from invite
@@ -152,40 +179,51 @@ Remember: Listen, discover pain, validate, then align to outcomes.
           console.warn('Failed to resolve leaderboard metadata:', e);
         }
 
-        await addToLeaderboardIndex({
-          token: scoreRecord.token,
-          score: scoreRecord.score,
-          grade: scoreRecord.grade,
-          createdAt: scoreRecord.completedAt,
-          conferenceId,
-          conferenceName,
-          personaId,
-          personaDisplayName,
-          jobTitle,
-          difficulty,
-          // Trainee snapshot from score record (Phase H1)
-          traineeId: scoreRecord.traineeId || null,
-          traineeNameShort: scoreRecord.traineeNameShort || null,
-        });
-      } catch (e) {
-        console.error('Failed to save score:', e);
-      }
-    }
+            await addToLeaderboardIndex({
+              token: scoreRecord.token,
+              score: scoreRecord.score,
+              grade: scoreRecord.grade,
+              createdAt: scoreRecord.completedAt,
+              conferenceId,
+              conferenceName,
+              personaId,
+              personaDisplayName,
+              jobTitle,
+              difficulty,
+              // Trainee snapshot from score record (Phase H1)
+              traineeId: scoreRecord.traineeId || null,
+              traineeNameShort: scoreRecord.traineeNameShort || null,
+            });
+          } catch (e) {
+            console.error('Failed to save score:', e);
+          }
+        } else {
+          span.setAttribute("has_token", false);
+        }
 
-    return NextResponse.json({
-      ok: true,
-      feedback: feedbackMsg,
-      outcome,
-      stateProgress: { reached, total },
-      violations: session.violations,
-      shareUrl,
-      score: scoreData,
-    });
-  } catch (error) {
-    console.error('End session error:', error);
-    return NextResponse.json(
-      { error: 'Failed to end session' },
-      { status: 500 }
-    );
-  }
+        span.setAttribute("status", 200);
+
+        return NextResponse.json({
+          ok: true,
+          feedback: feedbackMsg,
+          outcome,
+          stateProgress: { reached, total },
+          violations: session.violations,
+          shareUrl,
+          score: scoreData,
+        });
+      } catch (error) {
+        console.error('End session error:', error);
+
+        span.setAttribute("status", 500);
+        span.setAttribute("error_message", error instanceof Error ? error.message : "Unknown error");
+
+        return NextResponse.json(
+          { error: 'Failed to end session' },
+          { status: 500 }
+        );
+      }
+    },
+    { route: "/api/session/[id]/end", method: "POST", event_type: "session_end" }
+  );
 }
