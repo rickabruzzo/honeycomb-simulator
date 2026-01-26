@@ -10,6 +10,7 @@ import {
 import { randomUUID } from "crypto";
 import { getChatProvider, MockChatProvider } from "@/lib/llm/chatProvider";
 import type { ChatInput } from "@/lib/llm/chatTypes";
+import { withSpan, withChildSpan } from "@/lib/telemetry";
 
 /**
  * Simple canned responses keyed by simulator state.
@@ -52,137 +53,212 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> } // Next.js 15 style
 ) {
-  try {
-    const { id } = await params;
+  return withSpan(
+    "hc.event.message",
+    async (span) => {
+      const { id } = await params;
 
-    const session = await getSession(id);
-    if (!session || !session.active) {
-      return NextResponse.json(
-        { error: "Session not found or inactive" },
-        { status: 404 }
-      );
-    }
-
-    const { message } = await request.json();
-    if (!message || typeof message !== "string") {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 });
-    }
-
-    // 1) Add trainee message to transcript
-    const traineeMsg = {
-      id: randomUUID(),
-      type: "trainee" as const,
-      text: message,
-      timestamp: new Date().toISOString(),
-    };
-    session.transcript.push(traineeMsg);
-
-    // 2) Analyze trainee message (your rules engine)
-    const analysis = analyzeTraineeMessage(message, session.currentState);
-
-    // 3) Track violations (FIXED: removed stray '.' and use push(...spread))
-    if (analysis.issues?.length > 0) {
-      session.violations.push(...analysis.issues);
-    }
-
-    // 4) Build conversation history for ChatProvider (excluding system messages)
-    const conversationHistory = session.transcript
-      .filter((m) => m.type !== "system")
-      .map((m) => ({
-        role: m.type === "trainee" ? ("user" as const) : ("assistant" as const),
-        content: m.text,
-      }));
-
-    // 5) Generate attendee response using ChatProvider
-    let attendeeResponseText: string;
-    let chatMeta: { provider: string; model?: string } | undefined;
-
-    try {
-      // Build system prompt with enrichment if available
-      const systemPrompt = buildAttendeePrompt(
-        session.currentState,
-        session.kickoff.attendeeProfile,
-        session.kickoff.difficulty,
-        conversationHistory,
-        session.kickoff.enrichment
-      );
-
-      // Prepare chat input
-      const chatInput: ChatInput = {
-        systemPrompt,
-        conversation: conversationHistory,
-        sessionId: session.id,
-      };
-
-      // Get provider and generate response
-      const provider = getChatProvider();
-      const result = await provider.generate(chatInput);
-
-      attendeeResponseText = result.text;
-      chatMeta = {
-        provider: result.provider,
-        model: result.model,
-      };
-    } catch (error) {
-      // Fallback to mock provider if generation fails
-      console.warn("[chat] Provider generation failed, falling back to mock:", {
-        error: error instanceof Error ? error.message : "Unknown error",
-        sessionId: session.id,
-      });
+      span.setAttribute("route", "/api/session/[id]/message");
+      span.setAttribute("method", "POST");
+      span.setAttribute("event_type", "message");
+      span.setAttribute("session_id", id);
 
       try {
-        const mockProvider = new MockChatProvider();
-        const mockResult = await mockProvider.generate({
-          systemPrompt: "",
-          conversation: conversationHistory,
-          sessionId: session.id,
-        });
-        attendeeResponseText = mockResult.text;
-        chatMeta = { provider: "mock (fallback)" };
-      } catch (fallbackError) {
-        // Ultimate fallback: use canned response
-        console.error("[chat] Mock provider also failed:", fallbackError);
-        attendeeResponseText = pickMockResponse(session.currentState);
-        chatMeta = { provider: "canned (emergency fallback)" };
-      }
-    }
+        const session = await getSession(id);
+        if (!session || !session.active) {
+          span.setAttribute("status", 404);
+          span.setAttribute("error", "session_not_found");
+          return NextResponse.json(
+            { error: "Session not found or inactive" },
+            { status: 404 }
+          );
+        }
 
-    // 6) Add attendee response to transcript
-    const attendeeMsg = {
-      id: randomUUID(),
-      type: "attendee" as const,
-      text: attendeeResponseText,
-      timestamp: new Date().toISOString(),
-    };
-    session.transcript.push(attendeeMsg);
+        if (session.kickoff.conferenceId) {
+          span.setAttribute("conference_id", session.kickoff.conferenceId);
+        }
+        if (session.kickoff.personaId) {
+          span.setAttribute("persona_id", session.kickoff.personaId);
+        }
+        if (session.kickoff.traineeId) {
+          span.setAttribute("trainee_id", session.kickoff.traineeId);
+        }
+        span.setAttribute("difficulty", session.kickoff.difficulty);
+        span.setAttribute("current_state", session.currentState);
 
-    // 7) Advance state (server-side decision only)
-    if (shouldAdvanceState(session.currentState, analysis)) {
-      const nextState = getNextState(session.currentState);
-      if (nextState !== session.currentState) {
-        session.stateHistory.push({
-          from: session.currentState,
-          to: nextState,
+        const { message } = await request.json();
+        if (!message || typeof message !== "string") {
+          span.setAttribute("status", 400);
+          span.setAttribute("error", "message_required");
+          return NextResponse.json({ error: "Message is required" }, { status: 400 });
+        }
+
+        span.setAttribute("message_length", message.length);
+
+        // 1) Add trainee message to transcript
+        const traineeMsg = {
+          id: randomUUID(),
+          type: "trainee" as const,
+          text: message,
           timestamp: new Date().toISOString(),
+        };
+        session.transcript.push(traineeMsg);
+
+        // 2) Analyze trainee message (your rules engine)
+        const analysis = analyzeTraineeMessage(message, session.currentState);
+
+        // 3) Track violations (FIXED: removed stray '.' and use push(...spread))
+        if (analysis.issues?.length > 0) {
+          session.violations.push(...analysis.issues);
+          span.setAttribute("violations_count", session.violations.length);
+        }
+
+        // 4) Build conversation history for ChatProvider (excluding system messages)
+        const conversationHistory = session.transcript
+          .filter((m) => m.type !== "system")
+          .map((m) => ({
+            role: m.type === "trainee" ? ("user" as const) : ("assistant" as const),
+            content: m.text,
+          }));
+
+        span.setAttribute("conversation_length", conversationHistory.length);
+
+        // 5) Generate attendee response using ChatProvider
+        let attendeeResponseText: string;
+        let chatMeta: { provider: string; model?: string } | undefined;
+
+        try {
+          // Build system prompt with enrichment if available
+          const systemPrompt = buildAttendeePrompt(
+            session.currentState,
+            session.kickoff.attendeeProfile,
+            session.kickoff.difficulty,
+            conversationHistory,
+            session.kickoff.enrichment
+          );
+
+          // Prepare chat input
+          const chatInput: ChatInput = {
+            systemPrompt,
+            conversation: conversationHistory,
+            sessionId: session.id,
+          };
+
+          // Get provider and generate response with child span
+          const provider = getChatProvider();
+
+          const result = await withChildSpan(
+            "hc.dep.chat.generate",
+            async (childSpan) => {
+              childSpan.setAttribute("dep_type", "chat");
+              childSpan.setAttribute("session_id", session.id);
+              childSpan.setAttribute("current_state", session.currentState);
+              childSpan.setAttribute("conversation_length", conversationHistory.length);
+
+              const res = await provider.generate(chatInput);
+
+              childSpan.setAttribute("provider", res.provider);
+              if (res.model) {
+                childSpan.setAttribute("model", res.model);
+              }
+              childSpan.setAttribute("response_length", res.text.length);
+
+              return res;
+            },
+            { dep_type: "chat" }
+          );
+
+          attendeeResponseText = result.text;
+          chatMeta = {
+            provider: result.provider,
+            model: result.model,
+          };
+
+          span.setAttribute("chat_provider", result.provider);
+          if (result.model) {
+            span.setAttribute("chat_model", result.model);
+          }
+        } catch (error) {
+          // Fallback to mock provider if generation fails
+          console.warn("[chat] Provider generation failed, falling back to mock:", {
+            error: error instanceof Error ? error.message : "Unknown error",
+            sessionId: session.id,
+          });
+
+          span.setAttribute("chat_fallback", true);
+
+          try {
+            const mockProvider = new MockChatProvider();
+            const mockResult = await mockProvider.generate({
+              systemPrompt: "",
+              conversation: conversationHistory,
+              sessionId: session.id,
+            });
+            attendeeResponseText = mockResult.text;
+            chatMeta = { provider: "mock (fallback)" };
+            span.setAttribute("chat_provider", "mock_fallback");
+          } catch (fallbackError) {
+            // Ultimate fallback: use canned response
+            console.error("[chat] Mock provider also failed:", fallbackError);
+            attendeeResponseText = pickMockResponse(session.currentState);
+            chatMeta = { provider: "canned (emergency fallback)" };
+            span.setAttribute("chat_provider", "canned_emergency");
+          }
+        }
+
+        // 6) Add attendee response to transcript
+        const attendeeMsg = {
+          id: randomUUID(),
+          type: "attendee" as const,
+          text: attendeeResponseText,
+          timestamp: new Date().toISOString(),
+        };
+        session.transcript.push(attendeeMsg);
+
+        span.setAttribute("response_length", attendeeResponseText.length);
+
+        // 7) Advance state (server-side decision only)
+        let stateAdvanced = false;
+        if (shouldAdvanceState(session.currentState, analysis)) {
+          const nextState = getNextState(session.currentState);
+          if (nextState !== session.currentState) {
+            session.stateHistory.push({
+              from: session.currentState,
+              to: nextState,
+              timestamp: new Date().toISOString(),
+            });
+            session.currentState = nextState;
+            stateAdvanced = true;
+
+            span.setAttribute("state_advanced", true);
+            span.setAttribute("new_state", nextState);
+          }
+        }
+
+        // 8) Persist session
+        await saveSession(session);
+
+        span.setAttribute("status", 200);
+        span.setAttribute("transcript_length", session.transcript.length);
+
+        return NextResponse.json({
+          message: attendeeMsg,
+          currentState: session.currentState,
+          violations: session.violations,
+          chatMeta, // Provider metadata (optional, for debugging)
         });
-        session.currentState = nextState;
+      } catch (error) {
+        console.error("Message error:", error);
+
+        span.setAttribute("status", 500);
+        span.setAttribute("error_message", error instanceof Error ? error.message : "Unknown error");
+
+        return NextResponse.json(
+          { error: "Failed to process message" },
+          { status: 500 }
+        );
       }
-    }
-
-    // 8) Persist session
-    await saveSession(session);
-
-    return NextResponse.json({
-      message: attendeeMsg,
-      currentState: session.currentState,
-      violations: session.violations,
-      chatMeta, // Provider metadata (optional, for debugging)
-    });
-  } catch (error) {
-    console.error("Message error:", error);
-    return NextResponse.json(
-      { error: "Failed to process message" },
-      { status: 500 }
-    );
-  }
+    },
+    { route: "/api/session/[id]/message", method: "POST", event_type: "message" }
+  );
 }

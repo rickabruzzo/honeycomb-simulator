@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { listConferences, ensureConferencesSeeded } from "@/lib/conferenceStore";
 import { listPersonas, ensurePersonasSeeded } from "@/lib/personaStore";
-import { listTrainees } from "@/lib/traineeStore";
+import { listTrainees, ensureTraineesSeeded } from "@/lib/traineeStore";
 import type { Conference, Persona } from "@/lib/scenarioTypes";
 import type { Trainee } from "@/lib/traineeStore";
+import { withSpan } from "@/lib/telemetry";
 
 interface BootstrapData {
   conferences: Conference[];
@@ -26,83 +27,114 @@ const CACHE_TTL_MS = 30_000; // 30 seconds
  * In-memory cache prevents repeated KV reads during dev
  */
 export async function GET() {
-  const t0 = Date.now();
+  return withSpan(
+    "hc.event.bootstrap",
+    async (span) => {
+      const t0 = Date.now();
 
-  try {
-    // Check cache first (only in development)
-    const isDev = process.env.NODE_ENV === "development";
-    if (isDev && bootstrapCache && bootstrapCache.expiresAt > Date.now()) {
-      const elapsed = Date.now() - t0;
-      console.log(`[Bootstrap] Returning cached data (${elapsed}ms)`);
-      return NextResponse.json({
-        ...bootstrapCache.data,
-        _meta: {
-          ...bootstrapCache.data._meta,
-          cached: true,
-        },
-      });
-    }
-    // Seed data if needed (only runs once per store)
-    const tSeedStart = Date.now();
-    await Promise.all([
-      ensureConferencesSeeded(),
-      ensurePersonasSeeded(),
-    ]);
-    const tSeedEnd = Date.now();
-    console.log(`[Bootstrap] Seeding took ${tSeedEnd - tSeedStart}ms`);
+      span.setAttribute("route", "/api/bootstrap");
+      span.setAttribute("method", "GET");
+      span.setAttribute("event_type", "bootstrap");
 
-    // Fetch all data in parallel with individual timing
-    const tConfStart = Date.now();
-    const conferencesPromise = listConferences(false);
+      try {
+        // Check cache first (only in development)
+        const isDev = process.env.NODE_ENV === "development";
+        if (isDev && bootstrapCache && bootstrapCache.expiresAt > Date.now()) {
+          const elapsed = Date.now() - t0;
+          console.log(`[Bootstrap] Returning cached data (${elapsed}ms)`);
 
-    const tPersonaStart = Date.now();
-    const personasPromise = listPersonas(false);
+          span.setAttribute("cache_hit", true);
+          span.setAttribute("status", 200);
 
-    const tTraineeStart = Date.now();
-    const traineesPromise = listTrainees();
+          return NextResponse.json({
+            ...bootstrapCache.data,
+            _meta: {
+              ...bootstrapCache.data._meta,
+              cached: true,
+            },
+          });
+        }
 
-    const [conferences, personas, trainees] = await Promise.all([
-      conferencesPromise,
-      personasPromise,
-      traineesPromise,
-    ]);
+        span.setAttribute("cache_hit", false);
 
-    const tConfEnd = Date.now();
-    const tPersonaEnd = Date.now();
-    const tTraineeEnd = Date.now();
+        // Seed data if needed (only runs once per store)
+        const tSeedStart = Date.now();
+        await Promise.all([
+          ensureConferencesSeeded(),
+          ensurePersonasSeeded(),
+          ensureTraineesSeeded(),
+        ]);
+        const tSeedEnd = Date.now();
+        const seedDuration = tSeedEnd - tSeedStart;
+        console.log(`[Bootstrap] Seeding took ${seedDuration}ms`);
+        span.setAttribute("seed_duration_ms", seedDuration);
 
-    console.log(`[Bootstrap] Conferences: ${tConfEnd - tConfStart}ms`);
-    console.log(`[Bootstrap] Personas: ${tPersonaEnd - tPersonaStart}ms`);
-    console.log(`[Bootstrap] Trainees: ${tTraineeEnd - tTraineeStart}ms`);
+        // Fetch all data in parallel with individual timing
+        const tConfStart = Date.now();
+        const tPersonaStart = Date.now();
+        const tTraineeStart = Date.now();
 
-    const elapsed = Date.now() - t0;
-    console.log(`[Bootstrap] Total: ${elapsed}ms (${conferences.length} conferences, ${personas.length} personas, ${trainees.length} trainees)`);
+        const [conferences, personas, trainees] = await Promise.all([
+          listConferences(false),
+          listPersonas(false),
+          listTrainees(),
+        ]);
 
-    const responseData: BootstrapData = {
-      conferences,
-      personas,
-      trainees,
-      _meta: {
-        loadTimeMs: elapsed,
-        generatedAt: new Date().toISOString(),
-      },
-    };
+        const tConfEnd = Date.now();
+        const tPersonaEnd = Date.now();
+        const tTraineeEnd = Date.now();
 
-    // Cache for dev
-    if (isDev) {
-      bootstrapCache = {
-        data: responseData,
-        expiresAt: Date.now() + CACHE_TTL_MS,
-      };
-    }
+        const confDuration = tConfEnd - tConfStart;
+        const personaDuration = tPersonaEnd - tPersonaStart;
+        const traineeDuration = tTraineeEnd - tTraineeStart;
 
-    return NextResponse.json(responseData);
-  } catch (error) {
-    const elapsed = Date.now() - t0;
-    console.error(`[Bootstrap] Failed after ${elapsed}ms:`, error);
-    return NextResponse.json(
-      { error: "Failed to load bootstrap data" },
-      { status: 500 }
-    );
-  }
+        console.log(`[Bootstrap] Conferences: ${confDuration}ms (${conferences.length} items)`);
+        console.log(`[Bootstrap] Personas: ${personaDuration}ms (${personas.length} items)`);
+        console.log(`[Bootstrap] Trainees: ${traineeDuration}ms (${trainees.length} items)`);
+
+        span.setAttribute("conferences_count", conferences.length);
+        span.setAttribute("personas_count", personas.length);
+        span.setAttribute("trainees_count", trainees.length);
+        span.setAttribute("conferences_load_ms", confDuration);
+        span.setAttribute("personas_load_ms", personaDuration);
+        span.setAttribute("trainees_load_ms", traineeDuration);
+
+        const elapsed = Date.now() - t0;
+        console.log(`[Bootstrap] Total: ${elapsed}ms (${conferences.length} conferences, ${personas.length} personas, ${trainees.length} trainees)`);
+
+        const responseData: BootstrapData = {
+          conferences,
+          personas,
+          trainees,
+          _meta: {
+            loadTimeMs: elapsed,
+            generatedAt: new Date().toISOString(),
+          },
+        };
+
+        // Cache for dev
+        if (isDev) {
+          bootstrapCache = {
+            data: responseData,
+            expiresAt: Date.now() + CACHE_TTL_MS,
+          };
+        }
+
+        span.setAttribute("status", 200);
+        return NextResponse.json(responseData);
+      } catch (error) {
+        const elapsed = Date.now() - t0;
+        console.error(`[Bootstrap] Failed after ${elapsed}ms:`, error);
+
+        span.setAttribute("status", 500);
+        span.setAttribute("error_message", error instanceof Error ? error.message : "Unknown error");
+
+        return NextResponse.json(
+          { error: "Failed to load bootstrap data" },
+          { status: 500 }
+        );
+      }
+    },
+    { route: "/api/bootstrap", method: "GET", event_type: "bootstrap" }
+  );
 }

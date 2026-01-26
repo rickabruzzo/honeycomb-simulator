@@ -138,12 +138,28 @@ export default function ScenarioEditorPage() {
   // UI state
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  const [dataLoading, setDataLoading] = useState(true);
 
-  // Load data
+  // Load data using bootstrap endpoint
   useEffect(() => {
-    loadConferences();
-    loadPersonas();
-    loadTrainees();
+    const loadData = async () => {
+      try {
+        const res = await fetch("/api/bootstrap");
+        if (res.ok) {
+          const data = await res.json();
+          setConferences(data.conferences || []);
+          setPersonas(data.personas || []);
+          setTrainees(data.trainees || []);
+          console.log(`[Editor] Loaded bootstrap data (${data._meta?.loadTimeMs}ms)`);
+        }
+      } catch (e) {
+        console.error("Failed to load data:", e);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    loadData();
   }, []);
 
   // Auto-generate persona name when relevant fields change
@@ -185,6 +201,21 @@ export default function ScenarioEditorPage() {
       setTrainees(data.trainees || []);
     } catch (e) {
       console.error("Failed to load trainees:", e);
+    }
+  };
+
+  // Individual reload functions for after save/archive operations
+  const reloadBootstrap = async () => {
+    try {
+      const res = await fetch("/api/bootstrap");
+      if (res.ok) {
+        const data = await res.json();
+        setConferences(data.conferences || []);
+        setPersonas(data.personas || []);
+        setTrainees(data.trainees || []);
+      }
+    } catch (e) {
+      console.error("Failed to reload data:", e);
     }
   };
 
@@ -285,7 +316,7 @@ export default function ScenarioEditorPage() {
       if (!response.ok) throw new Error("Failed to save conference");
 
       const data = await response.json();
-      await loadConferences();
+      await reloadBootstrap();
       setSelectedConference(data.conference);
       setSuccessMessage(`Conference "${data.conference.name}" saved successfully!`);
       setTimeout(() => setSuccessMessage(""), 3000);
@@ -355,7 +386,7 @@ export default function ScenarioEditorPage() {
       if (!response.ok) throw new Error("Failed to save persona");
 
       const data = await response.json();
-      await loadPersonas();
+      await reloadBootstrap();
       setSelectedPersona(data.persona);
       setSuccessMessage(`Persona "${data.persona.name}" saved successfully!`);
       setTimeout(() => setSuccessMessage(""), 3000);
@@ -383,7 +414,7 @@ export default function ScenarioEditorPage() {
 
       if (!response.ok) throw new Error("Failed to archive conference");
 
-      await loadConferences();
+      await reloadBootstrap();
       handleNewConference();
       setSuccessMessage("Conference archived successfully");
       setTimeout(() => setSuccessMessage(""), 3000);
@@ -407,7 +438,7 @@ export default function ScenarioEditorPage() {
 
       if (!response.ok) throw new Error("Failed to archive persona");
 
-      await loadPersonas();
+      await reloadBootstrap();
       handleNewPersona();
       setSuccessMessage("Persona archived successfully");
       setTimeout(() => setSuccessMessage(""), 3000);
@@ -455,7 +486,7 @@ export default function ScenarioEditorPage() {
       if (!response.ok) throw new Error("Failed to save trainee");
 
       const data = await response.json();
-      await loadTrainees();
+      await reloadBootstrap();
       setSelectedTrainee(data.trainee);
       setSuccessMessage(`Trainee "${formatTraineeFull(data.trainee)}" saved successfully!`);
       setTimeout(() => setSuccessMessage(""), 3000);
@@ -481,7 +512,7 @@ export default function ScenarioEditorPage() {
 
       if (!response.ok) throw new Error("Failed to archive trainee");
 
-      await loadTrainees();
+      await reloadBootstrap();
       handleNewTrainee();
       setSuccessMessage("Trainee archived successfully");
       setTimeout(() => setSuccessMessage(""), 3000);

@@ -14,6 +14,9 @@ const inMemoryTrainees = new Map<string, Trainee>();
 const inMemoryIndex: string[] = [];
 const MAX_INDEX_SIZE = 500;
 
+// Seed-once guard to prevent repeated seeding
+let seedingPromise: Promise<void> | null = null;
+
 /**
  * Generate a readable ID from name with random suffix
  */
@@ -40,6 +43,25 @@ export function formatTraineeShort(trainee: Trainee): string {
  */
 export function formatTraineeFull(trainee: Trainee): string {
   return `${trainee.firstName} ${trainee.lastName}`;
+}
+
+/**
+ * Ensure trainees are seeded (once per process)
+ */
+export async function ensureTraineesSeeded(): Promise<void> {
+  if (!seedingPromise) {
+    seedingPromise = seedTraineesInternal();
+  }
+  return seedingPromise;
+}
+
+/**
+ * Internal seeding function (called once via ensureTraineesSeeded)
+ */
+async function seedTraineesInternal(): Promise<void> {
+  // No default trainees to seed - trainees are created by users
+  // This guard exists for consistency with other stores
+  console.log("[TraineeStore] Seeding complete (no default trainees)");
 }
 
 /**
