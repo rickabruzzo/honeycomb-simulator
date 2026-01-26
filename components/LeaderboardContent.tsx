@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Trophy, ExternalLink, Play } from "lucide-react";
 import type { LeaderboardEntry } from "@/lib/leaderboardStore";
 import type { Conference, Persona } from "@/lib/scenarioTypes";
+import type { Trainee } from "@/lib/traineeStore";
+import { formatTraineeShort } from "@/lib/traineeStore";
 import { BrandButton } from "@/components/ui/BrandButton";
 
 type RangeOption = "24h" | "7d" | "30d" | "all";
@@ -40,6 +42,7 @@ export function LeaderboardContent() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [conferences, setConferences] = useState<Conference[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<{
     totalMatched: number;
@@ -52,15 +55,16 @@ export function LeaderboardContent() {
   const [range, setRange] = useState<RangeOption>("7d"); // Default to 7 days
   const [conferenceFilter, setConferenceFilter] = useState<string>("");
   const [personaFilter, setPersonaFilter] = useState<string>("");
-  const [difficultyFilter, setDifficultyFilter] = useState<string>("");
+  const [traineeFilter, setTraineeFilter] = useState<string>("");
 
-  // Load conferences and personas for filters
+  // Load conferences, personas, and trainees for filters
   useEffect(() => {
     async function loadFilterData() {
       try {
-        const [confRes, personaRes] = await Promise.all([
+        const [confRes, personaRes, traineeRes] = await Promise.all([
           fetch("/api/conferences"),
           fetch("/api/personas"),
+          fetch("/api/trainees"),
         ]);
 
         if (confRes.ok) {
@@ -71,6 +75,11 @@ export function LeaderboardContent() {
         if (personaRes.ok) {
           const personaData = await personaRes.json();
           setPersonas(personaData.personas || []);
+        }
+
+        if (traineeRes.ok) {
+          const traineeData = await traineeRes.json();
+          setTrainees(traineeData.trainees || []);
         }
       } catch (error) {
         console.error("Failed to load filter data:", error);
@@ -92,8 +101,8 @@ export function LeaderboardContent() {
         if (personaFilter) {
           params.set("personaId", personaFilter);
         }
-        if (difficultyFilter) {
-          params.set("difficulty", difficultyFilter);
+        if (traineeFilter) {
+          params.set("traineeId", traineeFilter);
         }
 
         const response = await fetch(`/api/leaderboard?${params.toString()}`);
@@ -112,7 +121,7 @@ export function LeaderboardContent() {
       }
     }
     loadLeaderboard();
-  }, [range, conferenceFilter, personaFilter, difficultyFilter]);
+  }, [range, conferenceFilter, personaFilter, traineeFilter]);
 
   return (
     <>
@@ -166,16 +175,18 @@ export function LeaderboardContent() {
           </div>
 
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Difficulty</label>
+            <label className="block text-xs text-gray-400 mb-1">Trainee</label>
             <select
-              value={difficultyFilter}
-              onChange={(e) => setDifficultyFilter(e.target.value)}
+              value={traineeFilter}
+              onChange={(e) => setTraineeFilter(e.target.value)}
               className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
             >
-              <option value="">All</option>
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
+              <option value="">All trainees</option>
+              {trainees.map((trainee) => (
+                <option key={trainee.id} value={trainee.id}>
+                  {formatTraineeShort(trainee)}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -224,13 +235,13 @@ export function LeaderboardContent() {
                     Grade
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    Trainee
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Conference
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Persona
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                    Difficulty
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Date
@@ -261,15 +272,15 @@ export function LeaderboardContent() {
                         <GradeBadge grade={entry.grade} />
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-300">
+                        {entry.traineeNameShort || "—"}
+                      </td>
+                      <td className="px-3 py-3 text-sm text-gray-300">
                         {entry.conferenceName || "—"}
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-300">
                         <div className="max-w-[180px] truncate" title={entry.personaDisplayName || undefined}>
                           {entry.personaDisplayName || "—"}
                         </div>
-                      </td>
-                      <td className="px-3 py-3 text-sm text-gray-400 capitalize">
-                        {entry.difficulty || "—"}
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-400">
                         {formatDate(entry.createdAt)}

@@ -7,8 +7,8 @@ export async function GET(request: NextRequest) {
     const range = searchParams.get("range") || "7d"; // Default to 7d
     const conferenceId = searchParams.get("conferenceId") || undefined;
     const personaId = searchParams.get("personaId") || undefined;
+    const traineeId = searchParams.get("traineeId") || undefined;
     const jobTitle = searchParams.get("jobTitle") || undefined;
-    const difficulty = searchParams.get("difficulty") || undefined;
     const limitParam = searchParams.get("limit");
     const limit = limitParam ? Math.min(parseInt(limitParam, 10), 200) : 20;
 
@@ -56,17 +56,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Apply trainee filter
+    if (traineeId) {
+      entries = entries.filter(
+        (entry) => entry.traineeId === traineeId
+      );
+    }
+
     // Apply job title filter (convenience filter)
     if (jobTitle) {
       entries = entries.filter(
         (entry) => entry.jobTitle?.toLowerCase() === jobTitle.toLowerCase()
-      );
-    }
-
-    // Apply difficulty filter
-    if (difficulty) {
-      entries = entries.filter(
-        (entry) => entry.difficulty === difficulty
       );
     }
 
