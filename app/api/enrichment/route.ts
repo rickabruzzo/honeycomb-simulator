@@ -22,19 +22,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!body.conferenceContext || typeof body.conferenceContext !== "string") {
+    if (!body.conferenceContext) {
       return NextResponse.json(
         { error: "conferenceContext is required" },
         { status: 400 }
       );
     }
 
-    if (!body.attendeeProfile || typeof body.attendeeProfile !== "string") {
+    if (!body.attendeeProfile) {
       return NextResponse.json(
         { error: "attendeeProfile is required" },
         { status: 400 }
       );
     }
+
+    // Normalize inputs: accept both string and object formats
+    const conferenceContext =
+      typeof body.conferenceContext === "string"
+        ? body.conferenceContext
+        : JSON.stringify(body.conferenceContext);
+
+    const attendeeProfile =
+      typeof body.attendeeProfile === "string"
+        ? body.attendeeProfile
+        : JSON.stringify(body.attendeeProfile);
 
     // Check if enrichment already exists in cache
     const cached = await getEnrichment(body.conferenceId, body.personaId);
@@ -48,8 +59,8 @@ export async function POST(request: NextRequest) {
       conferenceId: body.conferenceId,
       personaId: body.personaId,
       traineeId: body.traineeId,
-      conferenceContext: body.conferenceContext,
-      attendeeProfile: body.attendeeProfile,
+      conferenceContext,
+      attendeeProfile,
     };
 
     const enrichment = await provider.enrich(input);
