@@ -8,6 +8,8 @@ import {
   buildAttendeePrompt,
 } from "@/lib/simulator";
 import { randomUUID } from "crypto";
+import { getChatProvider, MockChatProvider } from "@/lib/llm/chatProvider";
+import type { ChatInput } from "@/lib/llm/chatTypes";
 
 /**
  * Simple canned responses keyed by simulator state.
@@ -83,25 +85,21 @@ export async function POST(
       session.violations.push(...analysis.issues);
     }
 
-    // 4) Build conversation history for model (excluding system)
+    // 4) Build conversation history for ChatProvider (excluding system messages)
     const conversationHistory = session.transcript
       .filter((m) => m.type !== "system")
       .map((m) => ({
-        role: m.type === "trainee" ? "user" : "assistant",
+        role: m.type === "trainee" ? ("user" as const) : ("assistant" as const),
         content: m.text,
       }));
 
-    // 5) Decide whether to use mock LLM (Step 1.3)
-    const useMock =
-      process.env.USE_MOCK_LLM === "true" || !process.env.ANTHROPIC_API_KEY;
-
+    // 5) Generate attendee response using ChatProvider
     let attendeeResponseText: string;
+    let chatMeta: { provider: string; model?: string } | undefined;
 
-    if (useMock) {
-      attendeeResponseText = pickMockResponse(session.currentState);
-    } else {
-      // Build prompt with enrichment if available
-      const attendeePrompt = buildAttendeePrompt(
+    try {
+      // Build system prompt with enrichment if available
+      const systemPrompt = buildAttendeePrompt(
         session.currentState,
         session.kickoff.attendeeProfile,
         session.kickoff.difficulty,
@@ -109,35 +107,44 @@ export async function POST(
         session.kickoff.enrichment
       );
 
-      const apiKey = process.env.ANTHROPIC_API_KEY!;
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-20250514",
-          max_tokens: 800,
-          system: attendeePrompt,
-          // FIXED: removed stray '.' before conversationHistory
-          messages: [
-            ...conversationHistory,
-            { role: "user", content: message },
-          ],
-        }),
+      // Prepare chat input
+      const chatInput: ChatInput = {
+        systemPrompt,
+        conversation: conversationHistory,
+        sessionId: session.id,
+      };
+
+      // Get provider and generate response
+      const provider = getChatProvider();
+      const result = await provider.generate(chatInput);
+
+      attendeeResponseText = result.text;
+      chatMeta = {
+        provider: result.provider,
+        model: result.model,
+      };
+    } catch (error) {
+      // Fallback to mock provider if generation fails
+      console.warn("[chat] Provider generation failed, falling back to mock:", {
+        error: error instanceof Error ? error.message : "Unknown error",
+        sessionId: session.id,
       });
 
-      if (!response.ok) {
-        const errText = await response.text().catch(() => "");
-        throw new Error(
-          `Claude API error: ${response.status} ${response.statusText} ${errText}`
-        );
+      try {
+        const mockProvider = new MockChatProvider();
+        const mockResult = await mockProvider.generate({
+          systemPrompt: "",
+          conversation: conversationHistory,
+          sessionId: session.id,
+        });
+        attendeeResponseText = mockResult.text;
+        chatMeta = { provider: "mock (fallback)" };
+      } catch (fallbackError) {
+        // Ultimate fallback: use canned response
+        console.error("[chat] Mock provider also failed:", fallbackError);
+        attendeeResponseText = pickMockResponse(session.currentState);
+        chatMeta = { provider: "canned (emergency fallback)" };
       }
-
-      const data = await response.json();
-      attendeeResponseText = data?.content?.[0]?.text ?? "(No response)";
     }
 
     // 6) Add attendee response to transcript
@@ -169,7 +176,7 @@ export async function POST(
       message: attendeeMsg,
       currentState: session.currentState,
       violations: session.violations,
-      mockMode: useMock, // handy for UI/debug
+      chatMeta, // Provider metadata (optional, for debugging)
     });
   } catch (error) {
     console.error("Message error:", error);
