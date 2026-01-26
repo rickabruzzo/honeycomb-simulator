@@ -150,6 +150,39 @@ curl -X POST https://your-app.vercel.app/api/admin/seed-presets \
 
 This endpoint is idempotent and safe to run multiple times.
 
+## Cleanup Duplicates Endpoint
+
+The `/api/admin/cleanup` endpoint allows authorized users to clean up duplicate personas and old conferences.
+
+### What Gets Archived
+
+The cleanup endpoint archives:
+1. **Duplicate Personas** - Old scenario-labeled personas (e.g., "Platform Engineer (Scenario A)")
+2. **Old Conferences** - Standalone "KubeCon" conference (replaced by "KubeCon + CloudNativeCon")
+
+**Required Authentication:**
+Same as other admin endpoints - requires `x-admin-reset-token` header.
+
+**Usage:**
+```bash
+curl -X POST https://your-app.vercel.app/api/admin/cleanup \
+  -H "x-admin-reset-token: your-secure-random-token-here"
+```
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Cleanup completed successfully",
+  "archived": {
+    "personas": 8,
+    "conferences": 1
+  }
+}
+```
+
+This endpoint uses soft deletion (sets `isArchived: true`) rather than hard deletion, so records can be recovered if needed.
+
 ## Generating Admin Tokens
 
 To generate a secure admin reset token, use one of these methods:

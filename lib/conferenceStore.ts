@@ -197,19 +197,6 @@ export async function ensureConferencesSeeded(): Promise<void> {
       createdBy: "system",
     },
     {
-      id: "kubecon-2024",
-      name: "KubeCon",
-      themes: [
-        "Datadog cost pressure",
-        "Growing microservices",
-        "Platform engineering",
-      ],
-      seniorityMix: "Senior IC-heavy",
-      observabilityMaturity: "High",
-      createdAt: now,
-      createdBy: "system",
-    },
-    {
       id: "kubecon-cloudnativecon-2024",
       name: "KubeCon + CloudNativeCon",
       themes: ["OpenTelemetry", "Developer experience", "Debugging"],
@@ -219,8 +206,8 @@ export async function ensureConferencesSeeded(): Promise<void> {
       createdBy: "system",
     },
     {
-      id: "qcon-emea-2024",
-      name: "QCon EMEA",
+      id: "qcon-2024",
+      name: "QCon",
       themes: ["Distributed systems", "Engineering leadership", "Scaling startups"],
       seniorityMix: "CTO / founders",
       observabilityMaturity: "Low",

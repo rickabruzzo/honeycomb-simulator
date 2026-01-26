@@ -12,7 +12,7 @@ export async function seedScenarioPresets(): Promise<void> {
     // Scenario A: KubeCon / Platform Engineer
     {
       id: "scenario-a-platform-eng",
-      name: "Platform Engineer (Scenario A)",
+      name: "Platform Engineer",
       personaType: "Platform Engineer",
       modifiers: ["Datadog cost pressure", "Growing microservices"],
       emotionalPosture: "Wry, burned out",
@@ -26,7 +26,7 @@ export async function seedScenarioPresets(): Promise<void> {
     // Scenario B: SREcon / SRE
     {
       id: "scenario-b-sre",
-      name: "Site Reliability Engineer (Scenario B)",
+      name: "Site Reliability Engineer",
       personaType: "Site Reliability Engineer",
       modifiers: ["On-call war story", "Recent outage", "OSS-first"],
       emotionalPosture: "Skeptical, tired",
@@ -40,7 +40,7 @@ export async function seedScenarioPresets(): Promise<void> {
     // Scenario C: KubeCon + CloudNativeCon / Senior Fullstack Developer
     {
       id: "scenario-c-fullstack-dev",
-      name: "Senior Fullstack Developer (Scenario C)",
+      name: "Senior Fullstack Developer",
       personaType: "Senior Fullstack Developer",
       modifiers: ["Backend traces exist", "Frontend blamed"],
       emotionalPosture: "Candid, annoyed",
@@ -54,7 +54,7 @@ export async function seedScenarioPresets(): Promise<void> {
     // Scenario D: AWS re:Invent / Director of Engineering
     {
       id: "scenario-d-director-eng",
-      name: "Director of Engineering (Scenario D)",
+      name: "Director of Engineering",
       personaType: "Director of Engineering",
       modifiers: ["Migrating monolith to microservices", "Growing blind spots"],
       emotionalPosture: "Thoughtful, time-constrained",
@@ -68,7 +68,7 @@ export async function seedScenarioPresets(): Promise<void> {
     // Scenario E: AWS re:Invent / Technical Buyer
     {
       id: "scenario-e-tech-buyer",
-      name: "Technical Buyer (Scenario E)",
+      name: "Technical Buyer",
       personaType: "Technical Buyer",
       modifiers: ["Teams lack visibility", "Legacy tooling slows delivery"],
       emotionalPosture: "Curious, slightly defensive",
@@ -79,10 +79,10 @@ export async function seedScenarioPresets(): Promise<void> {
       createdAt: now,
       createdBy: "system",
     },
-    // Scenario F: QCon EMEA / CTO (Startup)
+    // Scenario F: QCon / CTO (Startup)
     {
       id: "scenario-f-cto-startup",
-      name: "CTO (Startup) (Scenario F)",
+      name: "CTO (Startup)",
       personaType: "CTO (Startup)",
       modifiers: ["Greenfield tooling decisions", "Strong OSS bias"],
       emotionalPosture: "Confident, analytical",
