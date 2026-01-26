@@ -1,8 +1,8 @@
 import { kv } from "@vercel/kv";
 import { Persona } from "./scenarioTypes";
-import { PERSONAS } from "./personas";
 import { buildPersonaSubtitle } from "./formatUtils";
 import { useKv } from "./kvConfig";
+import { seedScenarioPresets } from "./seedScenarioPresets";
 
 const inMemoryPersonas = new Map<string, Persona>();
 const inMemoryIndex: string[] = [];
@@ -22,62 +22,6 @@ function generatePersonaId(name: string): string {
     .substring(0, 30);
   const suffix = Math.random().toString(36).substring(2, 6);
   return `${slug}-${suffix}`;
-}
-
-/**
- * Parse persona fields from attendeeProfile string
- * Safe parsing - returns defaults if parsing fails
- */
-function parseAttendeeProfile(profile: string): {
-  personaType: string;
-  modifiers: string[];
-  emotionalPosture: string;
-  toolingBias: string;
-  otelFamiliarity: "never" | "aware" | "considering" | "starting" | "active";
-} {
-  const lines = profile.split("\n");
-  let personaType = "";
-  let modifiers: string[] = [];
-  let emotionalPosture = "";
-  let toolingBias = "";
-  let otelFamiliarity: "never" | "aware" | "considering" | "starting" | "active" = "never";
-
-  for (const line of lines) {
-    if (line.startsWith("Persona:")) {
-      personaType = line.replace("Persona:", "").trim();
-    } else if (line.startsWith("Modifiers:")) {
-      const modText = line.replace("Modifiers:", "").trim();
-      modifiers = modText.split(";").map((m) => m.trim()).filter(Boolean);
-    } else if (line.startsWith("Emotional posture:")) {
-      emotionalPosture = line.replace("Emotional posture:", "").trim();
-    } else if (line.startsWith("Tooling bias:")) {
-      toolingBias = line.replace("Tooling bias:", "").trim();
-    } else if (line.startsWith("OpenTelemetry familiarity:")) {
-      const famText = line
-        .replace("OpenTelemetry familiarity:", "")
-        .trim()
-        .toLowerCase();
-      if (famText.includes("never") || famText.includes("not heard")) {
-        otelFamiliarity = "never";
-      } else if (famText.includes("aware")) {
-        otelFamiliarity = "aware";
-      } else if (famText.includes("considering")) {
-        otelFamiliarity = "considering";
-      } else if (famText.includes("starting")) {
-        otelFamiliarity = "starting";
-      } else if (famText.includes("active")) {
-        otelFamiliarity = "active";
-      }
-    }
-  }
-
-  return {
-    personaType: personaType || "Unknown",
-    modifiers,
-    emotionalPosture: emotionalPosture || "Neutral",
-    toolingBias: toolingBias || "Various tools",
-    otelFamiliarity,
-  };
 }
 
 /**
@@ -246,56 +190,12 @@ export async function archivePersona(id: string): Promise<boolean> {
 }
 
 /**
- * Seed initial personas from existing presets
- */
-/**
- * Internal seeding logic
+ * Internal seeding logic - now delegates to seedScenarioPresets
  */
 async function seedPersonasInternal(): Promise<void> {
-  const existing = await listPersonas();
-  if (existing.length > 0) return; // Already seeded
-
-  const now = new Date().toISOString();
-
-  for (const preset of PERSONAS) {
-    try {
-      // Parse attendeeProfile safely
-      const parsed = parseAttendeeProfile(preset.attendeeProfile);
-
-      // Create structured persona (DO NOT store attendeeProfile)
-      const persona: Persona = {
-        id: preset.id,
-        name: preset.name,
-        personaType: parsed.personaType,
-        modifiers: parsed.modifiers,
-        emotionalPosture: parsed.emotionalPosture,
-        toolingBias: parsed.toolingBias,
-        otelFamiliarity: parsed.otelFamiliarity,
-        behaviorBrief: `${parsed.personaType} with ${parsed.emotionalPosture.toLowerCase()} posture. ${parsed.modifiers.join(", ")}`.trim(),
-        createdAt: now,
-        createdBy: "system",
-      };
-
-      await upsertPersona(persona);
-    } catch (e) {
-      console.error(`Failed to seed persona ${preset.id}:`, e);
-      // Continue with minimal object if parsing fails
-      await upsertPersona({
-        id: preset.id,
-        name: preset.name,
-        personaType: "Unknown",
-        modifiers: [],
-        emotionalPosture: "Neutral",
-        toolingBias: "Various tools",
-        otelFamiliarity: "never",
-        behaviorBrief: preset.name,
-        createdAt: now,
-        createdBy: "system",
-      });
-    }
-  }
-
-  console.log(`[PersonaStore] Seeded ${PERSONAS.length} personas`);
+  // Delegate to the idempotent scenario presets seeding
+  await seedScenarioPresets();
+  console.log("[PersonaStore] Persona seeding complete");
 }
 
 /**
