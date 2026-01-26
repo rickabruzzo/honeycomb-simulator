@@ -11,6 +11,10 @@ export interface InviteRecord {
   revoked?: boolean;
   expiresAt?: string;
   createdBy?: string;
+  // Snapshot fields for session initialization (Phase H1)
+  conferenceName?: string;
+  personaDisplayName?: string;
+  traineeNameShort?: string;
 }
 
 const inMemoryInvites = new Map<string, InviteRecord>();

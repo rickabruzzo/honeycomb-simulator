@@ -27,13 +27,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create session using shared helper with enrichment
+    // Create session using shared helper with enrichment (Phase H1: includes snapshot)
     const result = await createSessionWithEnrichment({
       personaId: body.personaId,
       conferenceId: body.conferenceId,
       conferenceContext: body.conferenceContext,
       attendeeProfile: body.attendeeProfile,
       difficulty: body.difficulty,
+      traineeId: body.traineeId,
     });
 
     if (result.error) {
@@ -43,9 +44,11 @@ export async function POST(request: NextRequest) {
     const session = result.session;
     await saveSession(session);
 
-    // Create invite token
+    // Create invite token with full snapshot data (Phase H1)
     const token = randomUUID();
     const createdAt = new Date().toISOString();
+
+    // Extract snapshot data from session kickoff
     const invite = {
       token,
       sessionId: session.id,
@@ -55,6 +58,10 @@ export async function POST(request: NextRequest) {
       traineeId: body.traineeId,
       traineeName: body.traineeName || `${trainee.firstName} ${trainee.lastName}`,
       createdBy: body.createdBy,
+      // Snapshot fields from session
+      conferenceName: session.kickoff.conferenceName,
+      personaDisplayName: session.kickoff.personaDisplayName,
+      traineeNameShort: session.kickoff.traineeNameShort,
     };
 
     await saveInvite(invite);

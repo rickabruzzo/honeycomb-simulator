@@ -20,6 +20,12 @@ export interface ScoreRecord {
   violations: string[];
   createdAt: string;
   completedAt: string;
+  // Snapshot fields (Phase H1)
+  conferenceId?: string;
+  conferenceName?: string;
+  personaDisplayName?: string;
+  traineeId?: string;
+  traineeNameShort?: string;
 }
 
 /**
@@ -186,5 +192,11 @@ export function scoreSession(
     violations: session.violations,
     createdAt: session.startTime,
     completedAt: now,
+    // Snapshot fields from session (Phase H1)
+    conferenceId: session.kickoff.conferenceId,
+    conferenceName: session.kickoff.conferenceName,
+    personaDisplayName: session.kickoff.personaDisplayName,
+    traineeId: session.kickoff.traineeId,
+    traineeNameShort: session.kickoff.traineeNameShort,
   };
 }

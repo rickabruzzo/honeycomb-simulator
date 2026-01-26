@@ -163,6 +163,9 @@ Remember: Listen, discover pain, validate, then align to outcomes.
           personaDisplayName,
           jobTitle,
           difficulty,
+          // Trainee snapshot from score record (Phase H1)
+          traineeId: scoreRecord.traineeId || null,
+          traineeNameShort: scoreRecord.traineeNameShort || null,
         });
       } catch (e) {
         console.error('Failed to save score:', e);

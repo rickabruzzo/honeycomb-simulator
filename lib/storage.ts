@@ -18,6 +18,12 @@ export interface SessionState {
     difficulty: string;
     personaId?: string;
     enrichment?: EnrichmentResult;
+    // Snapshot fields (Phase H1)
+    conferenceId?: string;
+    conferenceName?: string;
+    personaDisplayName?: string;
+    traineeId?: string;
+    traineeNameShort?: string;
   };
   startTime: string;
   active: boolean;

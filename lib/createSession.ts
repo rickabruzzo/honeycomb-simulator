@@ -4,6 +4,10 @@ import { getPersonaById } from "./personas";
 import { getEnrichment, saveEnrichment } from "./llm/enrichmentStore";
 import { getEnrichmentProvider } from "./llm/provider";
 import type { EnrichmentInput } from "./llm/enrichmentTypes";
+import { getConference } from "./conferenceStore";
+import { getPersona } from "./personaStore";
+import { buildPersonaTitle } from "./formatUtils";
+import { getTrainee, formatTraineeShort } from "./traineeStore";
 
 export interface CreateSessionInput {
   personaId?: string;
@@ -11,6 +15,11 @@ export interface CreateSessionInput {
   conferenceContext?: string;
   attendeeProfile?: string;
   difficulty?: "easy" | "medium" | "hard";
+  // Snapshot fields (Phase H1)
+  conferenceName?: string;
+  personaDisplayName?: string;
+  traineeId?: string;
+  traineeNameShort?: string;
 }
 
 export interface CreateSessionResult {
@@ -80,6 +89,12 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
       attendeeProfile,
       difficulty,
       personaId,
+      // Snapshot fields (Phase H1)
+      conferenceId: input.conferenceId,
+      conferenceName: input.conferenceName,
+      personaDisplayName: input.personaDisplayName,
+      traineeId: input.traineeId,
+      traineeNameShort: input.traineeNameShort,
     },
     startTime: now,
     active: true,
@@ -90,12 +105,52 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
 
 /**
  * Async wrapper that includes enrichment generation if conferenceId and personaId are available
+ * Phase H1: Also resolves display names for snapshot if not already provided
  */
 export async function createSessionWithEnrichment(
   input: CreateSessionInput
 ): Promise<CreateSessionResult> {
-  // Create the base session first
-  const result = createSession(input);
+  // Resolve display names if IDs provided but names missing (Phase H1)
+  let conferenceName = input.conferenceName;
+  let personaDisplayName = input.personaDisplayName;
+  let traineeNameShort = input.traineeNameShort;
+
+  try {
+    if (input.conferenceId && !conferenceName) {
+      const conference = await getConference(input.conferenceId);
+      if (conference) {
+        conferenceName = conference.name;
+      }
+    }
+
+    if (input.personaId && !personaDisplayName) {
+      const persona = await getPersona(input.personaId);
+      if (persona) {
+        personaDisplayName = buildPersonaTitle(
+          persona.personaType,
+          persona.modifiers,
+          persona.toolingBias
+        );
+      }
+    }
+
+    if (input.traineeId && !traineeNameShort) {
+      const trainee = await getTrainee(input.traineeId);
+      if (trainee) {
+        traineeNameShort = formatTraineeShort(trainee);
+      }
+    }
+  } catch (error) {
+    console.error("Failed to resolve display names:", error);
+  }
+
+  // Create the base session with resolved names
+  const result = createSession({
+    ...input,
+    conferenceName,
+    personaDisplayName,
+    traineeNameShort,
+  });
 
   if (result.error) {
     return result;

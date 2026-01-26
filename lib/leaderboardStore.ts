@@ -12,6 +12,9 @@ export type LeaderboardEntry = {
   personaDisplayName: string | null;
   jobTitle: string | null;
   difficulty: "easy" | "medium" | "hard" | null;
+  // Trainee snapshot (Phase H1)
+  traineeId?: string | null;
+  traineeNameShort?: string | null;
 };
 
 const inMemoryLeaderboard: LeaderboardEntry[] = [];
