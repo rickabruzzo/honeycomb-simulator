@@ -19,10 +19,12 @@ export function BrandButton({
   variant = "neutral",
   className = "",
   children,
+  type = "button",
   ...props
 }: BrandButtonProps) {
   return (
     <button
+      type={type}
       className={`inline-flex items-center gap-2 px-4 py-2 rounded-md font-medium shadow-sm disabled:opacity-50 focus:outline-none focus:ring-2 transition-colors ${variantStyles[variant]} ${className}`}
       {...props}
     >
@@ -30,3 +32,4 @@ export function BrandButton({
     </button>
   );
 }
+

@@ -5,13 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { Send, Play, Square, ChevronDown, ChevronUp } from "lucide-react";
 import { BrandButton } from "../components/ui/BrandButton";
 import type { Conference, Persona } from "../lib/scenarioTypes";
+import { normalizeTranscript, type TranscriptMessage } from "../lib/normalizeTranscript";
 
-interface Message {
-  id: string;
-  type: "system" | "trainee" | "attendee";
-  text: string;
-  timestamp: string;
-}
+type Message = TranscriptMessage;
 
 const SESSION_STORAGE_KEY = "honeycomb_simulator_session_id";
 
@@ -20,26 +16,6 @@ function formatTime(timestamp: string) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-  });
-}
-
-/**
- * Normalize transcript array to ensure all items are valid messages
- * Filters out null, undefined, or malformed message objects
- */
-function normalizeTranscript(transcript: any[]): Message[] {
-  if (!Array.isArray(transcript)) return [];
-
-  return transcript.filter((msg): msg is Message => {
-    return (
-      msg !== null &&
-      msg !== undefined &&
-      typeof msg === "object" &&
-      typeof msg.id === "string" &&
-      typeof msg.type === "string" &&
-      typeof msg.text === "string" &&
-      typeof msg.timestamp === "string"
-    );
   });
 }
 
@@ -153,7 +129,7 @@ function HoneycombSimulator() {
         }
 
         setSessionId(data.sessionId);
-        setMessages(normalizeTranscript(data.transcript || []));
+        setMessages(normalizeTranscript(data.transcript ?? []));
         setCurrentState(data.currentState || "ICEBREAKER");
         setViolations(data.violations || []);
 
@@ -208,47 +184,48 @@ Tooling bias: ${persona.toolingBias}
 OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
   };
 
-  const handleStartSession = async () => {
-    const conferenceContext = buildConferenceContext();
-    const attendeeProfile = buildAttendeeProfile();
+const handleStartSession = async () => {
+  const conferenceContext = buildConferenceContext();
+  const attendeeProfile = buildAttendeeProfile();
 
-    if (!conferenceContext.trim() || !attendeeProfile.trim()) {
-      alert("Please select both conference and persona");
-      return;
+  if (!conferenceContext.trim() || !attendeeProfile.trim()) {
+    alert("Please select both conference and persona");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const response = await fetch("/api/session/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conferenceContext,
+        attendeeProfile,
+        difficulty,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Session start failed: ${response.status}`);
     }
 
-    setLoading(true);
+    // ✅ DEFINE `data` ONCE
+    const data = await response.json();
 
-    try {
-      const response = await fetch("/api/session/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conferenceContext,
-          attendeeProfile,
-          difficulty,
-        }),
-      });
+    setSessionId(data.sessionId);
+    setMessages(normalizeTranscript(data.transcript ?? []));
+    setCurrentState(data.currentState || "ICEBREAKER");
+    setViolations([]);
 
-      if (!response.ok) {
-        throw new Error(`Session start failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      setSessionId(data.sessionId);
-      setMessages(normalizeTranscript([data.message]));
-      setCurrentState(data.currentState || "ICEBREAKER");
-      setViolations([]);
-
-      window.localStorage.setItem(SESSION_STORAGE_KEY, data.sessionId);
-    } catch (error) {
-      console.error("Failed to start session:", error);
-      alert("Failed to start session");
-    } finally {
-      setLoading(false);
-    }
-  };
+    window.localStorage.setItem(SESSION_STORAGE_KEY, data.sessionId);
+  } catch (error) {
+    console.error("Failed to start session:", error);
+    alert("Failed to start session");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleEndSession = async () => {
     if (!sessionId || loading) return;
@@ -384,11 +361,10 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
             State: <span className="font-semibold">{currentState}</span>
           </div>
           <div
-            className={`px-3 py-1 rounded-full text-sm ${
-              active
-                ? "bg-emerald-500/15 text-emerald-200 border border-emerald-400/20"
-                : "bg-white/10 text-white/70 border border-white/10"
-            }`}
+            className={`px-3 py-1 rounded-full text-sm ${active
+              ? "bg-emerald-500/15 text-emerald-200 border border-emerald-400/20"
+              : "bg-white/10 text-white/70 border border-white/10"
+              }`}
           >
             {active ? "● Active" : "● Inactive"}
           </div>
@@ -459,11 +435,10 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
                   setTimeout(() => setCopied(false), 1500);
                 }
               }}
-              className={`rounded-md border px-3 py-2 text-sm font-medium transition whitespace-nowrap ${
-                copied
-                  ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
-                  : "border-white/10 bg-white/10 hover:bg-white/15 text-gray-100"
-              }`}
+              className={`rounded-md border px-3 py-2 text-sm font-medium transition whitespace-nowrap ${copied
+                ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
+                : "border-white/10 bg-white/10 hover:bg-white/15 text-gray-100"
+                }`}
             >
               {copied ? "Copied ✓" : "Copy"}
             </button>
