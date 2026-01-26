@@ -7,6 +7,7 @@ const tabs = [
   { name: "Scenario Builder", href: "/" },
   { name: "Scenario Tracker", href: "/admin" },
   { name: "Scenario Editor", href: "/editor" },
+  { name: "Leaderboard", href: "/leaderboard" },
 ];
 
 export function TabsNav() {
