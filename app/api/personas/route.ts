@@ -7,11 +7,15 @@ import {
   archivePersona,
 } from "@/lib/personaStore";
 import { Persona } from "@/lib/scenarioTypes";
+import { seedScenarioPresets } from "@/lib/seedScenarioPresets";
 
 export async function GET() {
   try {
     // Ensure seeded on first access
     await ensurePersonasSeeded();
+
+    // Also ensure scenario presets (A-F) are seeded
+    await seedScenarioPresets();
 
     const personas = await listPersonas(false); // Exclude archived
     return NextResponse.json({ personas });

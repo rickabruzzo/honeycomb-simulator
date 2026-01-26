@@ -100,6 +100,16 @@ The app automatically instruments:
 - `/lib` - Shared utilities, storage, and business logic
 - `/public/brand` - Honeycomb brand assets
 
+## Admin Tools
+
+For managing demo data and scenario presets, see [ADMIN_TOOLS.md](./ADMIN_TOOLS.md).
+
+Key admin endpoints:
+- `/api/admin/reset-demo` - Clear all demo data (invites, sessions, scores, leaderboard)
+- `/api/admin/seed-presets` - Manually trigger seeding of scenario preset data
+
+Both endpoints require authentication via `x-admin-reset-token` header.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

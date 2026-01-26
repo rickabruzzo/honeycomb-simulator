@@ -167,18 +167,16 @@ export async function archiveConference(id: string): Promise<boolean> {
 
 /**
  * Seed initial conferences from common conference contexts
+ * Idempotent: Only creates conferences that don't already exist by normalized name
  */
 export async function ensureConferencesSeeded(): Promise<void> {
-  const existing = await listConferences();
-  if (existing.length > 0) return; // Already seeded
-
   const now = new Date().toISOString();
 
   const seedConferences: Conference[] = [
     {
       id: "srecon-2024",
       name: "SREcon",
-      themes: ["SLOs", "incident response", "reducing toil", "reliability"],
+      themes: ["SLOs", "Incident response", "Reducing toil"],
       seniorityMix: "Senior IC-heavy",
       observabilityMaturity: "High",
       createdAt: now,
@@ -188,12 +186,12 @@ export async function ensureConferencesSeeded(): Promise<void> {
       id: "aws-reinvent-2024",
       name: "AWS re:Invent",
       themes: [
-        "cloud migration",
-        "microservices",
-        "customer experience",
-        "scaling",
+        "Cloud migration",
+        "Microservices",
+        "Customer experience",
+        "Scaling architecture",
       ],
-      seniorityMix: "Mixed leadership and ICs",
+      seniorityMix: "Director / VP-heavy",
       observabilityMaturity: "Medium",
       createdAt: now,
       createdBy: "system",
@@ -202,21 +200,50 @@ export async function ensureConferencesSeeded(): Promise<void> {
       id: "kubecon-2024",
       name: "KubeCon",
       themes: [
-        "Kubernetes",
-        "cloud native",
-        "containers",
-        "platform engineering",
+        "Datadog cost pressure",
+        "Growing microservices",
+        "Platform engineering",
       ],
-      seniorityMix: "IC-heavy with platform leads",
+      seniorityMix: "Senior IC-heavy",
       observabilityMaturity: "High",
+      createdAt: now,
+      createdBy: "system",
+    },
+    {
+      id: "kubecon-cloudnativecon-2024",
+      name: "KubeCon + CloudNativeCon",
+      themes: ["OpenTelemetry", "Developer experience", "Debugging"],
+      seniorityMix: "Senior IC-heavy",
+      observabilityMaturity: "High",
+      createdAt: now,
+      createdBy: "system",
+    },
+    {
+      id: "qcon-emea-2024",
+      name: "QCon EMEA",
+      themes: ["Distributed systems", "Engineering leadership", "Scaling startups"],
+      seniorityMix: "CTO / founders",
+      observabilityMaturity: "Low",
       createdAt: now,
       createdBy: "system",
     },
   ];
 
+  let seededCount = 0;
   for (const conf of seedConferences) {
+    // Check if conference exists by normalized name
+    const existing = await findConferenceByName(conf.name);
+    if (existing) {
+      // Already exists, skip
+      continue;
+    }
+
+    // Create new conference
     await upsertConference(conf);
+    seededCount++;
   }
 
-  console.log(`[ConferenceStore] Seeded ${seedConferences.length} conferences`);
+  if (seededCount > 0) {
+    console.log(`[ConferenceStore] Seeded ${seededCount} conferences`);
+  }
 }
