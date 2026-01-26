@@ -67,10 +67,19 @@ export async function POST(request: NextRequest) {
     await saveInvite(invite);
     await addInviteToIndex(token, createdAt);
 
+    // Extract enrichment metadata if available
+    const enrichmentMeta = session.kickoff.enrichment
+      ? {
+          provider: session.kickoff.enrichment.provider || "mock",
+          cached: false, // Always fresh when creating new session
+        }
+      : null;
+
     return NextResponse.json({
       token,
       sessionId: session.id,
       url: `/s/${token}`,
+      enrichment: enrichmentMeta,
     });
   } catch (error) {
     console.error("Create invite error:", error);

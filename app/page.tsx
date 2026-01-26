@@ -49,6 +49,10 @@ function HoneycombSimulator() {
   const [inviteError, setInviteError] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
+  // Enrichment status
+  const [enrichmentProvider, setEnrichmentProvider] = useState<"openai" | "mock" | null>(null);
+  const [enrichmentStatus, setEnrichmentStatus] = useState<"fresh" | "cached" | "none">("none");
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const active = Boolean(sessionId);
 
@@ -353,6 +357,15 @@ const handleStartSession = async () => {
       const fullUrl = `${window.location.origin}/s/${data.token}`;
       setInviteUrl(fullUrl);
       setInviteToken(data.token);
+
+      // Update enrichment status
+      if (data.enrichment) {
+        setEnrichmentProvider(data.enrichment.provider);
+        setEnrichmentStatus(data.enrichment.cached ? "cached" : "fresh");
+      } else {
+        setEnrichmentProvider(null);
+        setEnrichmentStatus("none");
+      }
     } catch (error: any) {
       console.error("Failed to create invite:", error);
       setInviteError(error.message || "Failed to create invite");
@@ -380,6 +393,17 @@ const handleStartSession = async () => {
         </div>
 
         <div className="flex items-center gap-3">
+          {enrichmentProvider && (
+            <div className="text-xs text-gray-400 border border-white/10 rounded px-2 py-1">
+              <span className="font-mono">
+                {enrichmentProvider}
+              </span>
+              {" | "}
+              <span className={enrichmentStatus === "fresh" ? "text-green-400" : enrichmentStatus === "cached" ? "text-blue-400" : "text-gray-500"}>
+                {enrichmentStatus}
+              </span>
+            </div>
+          )}
           <div className="text-sm text-gray-300">
             State: <span className="font-semibold">{currentState}</span>
           </div>

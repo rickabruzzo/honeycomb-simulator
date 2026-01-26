@@ -7,6 +7,7 @@ export interface EnrichmentResult {
   conferenceId: string;
   personaId: string;
   traineeId?: string | null;
+  provider?: "openai" | "mock"; // Which provider generated this enrichment
   attendeeStyleGuide: {
     tone: string;
     brevity: "short" | "medium";

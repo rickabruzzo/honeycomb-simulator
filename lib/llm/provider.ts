@@ -87,6 +87,7 @@ export class MockEnrichmentProvider implements EnrichmentProvider {
       conferenceId: input.conferenceId,
       personaId: input.personaId,
       traineeId: input.traineeId,
+      provider: "mock",
       attendeeStyleGuide: {
         tone,
         brevity,
@@ -362,11 +363,12 @@ export class MockEnrichmentProvider implements EnrichmentProvider {
 }
 
 /**
- * OpenAI enrichment provider stub
- * Only used when OPENAI_API_KEY is present
+ * OpenAI enrichment provider
+ * Uses OpenAI API to generate enrichment data for personas
  */
 export class OpenAIEnrichmentProvider implements EnrichmentProvider {
   private apiKey: string;
+  private model: string;
 
   constructor(apiKey?: string) {
     if (!apiKey) {
@@ -375,13 +377,174 @@ export class OpenAIEnrichmentProvider implements EnrichmentProvider {
       );
     }
     this.apiKey = apiKey;
+    this.model = process.env.OPENAI_ENRICHMENT_MODEL || "gpt-4o-mini";
   }
 
   async enrich(input: EnrichmentInput): Promise<EnrichmentResult> {
-    // TODO: Implement OpenAI-based enrichment
-    throw new Error(
-      "OpenAI enrichment not yet implemented. Use mock provider for now."
-    );
+    const OpenAI = (await import("openai")).default;
+    const client = new OpenAI({ apiKey: this.apiKey });
+
+    const prompt = this.buildPrompt(input);
+
+    try {
+      const completion = await client.chat.completions.create({
+        model: this.model,
+        temperature: 0.2,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are an expert at analyzing conference personas and generating behavioral enrichment data. Always respond with valid JSON only, no additional text.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const content = completion.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No content in OpenAI response");
+      }
+
+      // Parse and validate JSON
+      const parsed = JSON.parse(content);
+      const validated = this.validateAndTransform(parsed, input);
+
+      return {
+        version: "1.0",
+        generatedAt: new Date().toISOString(),
+        conferenceId: input.conferenceId,
+        personaId: input.personaId,
+        traineeId: input.traineeId,
+        provider: "openai",
+        ...validated,
+      };
+    } catch (error) {
+      // Log error without exposing API key
+      console.error("OpenAI enrichment failed:", {
+        error: error instanceof Error ? error.message : "Unknown error",
+        model: this.model,
+        conferenceId: input.conferenceId,
+        personaId: input.personaId,
+      });
+      throw error;
+    }
+  }
+
+  private buildPrompt(input: EnrichmentInput): string {
+    return `
+Analyze the following conference attendee profile and generate behavioral enrichment data.
+
+Conference Context:
+${input.conferenceContext}
+
+Attendee Profile:
+${input.attendeeProfile}
+
+Generate a JSON object with the following structure:
+{
+  "attendeeStyleGuide": {
+    "tone": "string describing their conversational tone (e.g., 'reserved, cautious' or 'warm, conversational')",
+    "brevity": "short or medium (short = 1-2 sentences, medium = 2-4 sentences)",
+    "skepticism": "low, medium, or high"
+  },
+  "domainContext": {
+    "keyConcerns": ["array of main pain points and challenges they face"],
+    "commonTools": ["array of tools/technologies they typically use"]
+  },
+  "personaBehavior": {
+    "objections": ["array of likely objections or concerns they'll raise"],
+    "revealConditions": ["array of what information they'll only reveal after trust is built"],
+    "ventingTriggers": ["array of topics that make them want to vent frustration"]
+  },
+  "vocabHints": {
+    "prefer": ["terms they naturally use and want mirrored"],
+    "avoid": ["jargon or terms that will confuse or annoy them"]
+  },
+  "promptAddendum": "A concise paragraph (3-5 sentences) summarizing how an AI should behave when simulating this persona in conversation"
+}
+
+Return ONLY the JSON object, no additional text.
+`.trim();
+  }
+
+  private validateAndTransform(
+    parsed: any,
+    input: EnrichmentInput
+  ): Omit<EnrichmentResult, "version" | "generatedAt" | "conferenceId" | "personaId" | "traineeId" | "provider"> {
+    // Validate structure
+    if (!parsed.attendeeStyleGuide || typeof parsed.attendeeStyleGuide !== "object") {
+      throw new Error("Missing or invalid attendeeStyleGuide");
+    }
+    if (!parsed.domainContext || typeof parsed.domainContext !== "object") {
+      throw new Error("Missing or invalid domainContext");
+    }
+    if (!parsed.personaBehavior || typeof parsed.personaBehavior !== "object") {
+      throw new Error("Missing or invalid personaBehavior");
+    }
+    if (!parsed.vocabHints || typeof parsed.vocabHints !== "object") {
+      throw new Error("Missing or invalid vocabHints");
+    }
+    if (typeof parsed.promptAddendum !== "string") {
+      throw new Error("Missing or invalid promptAddendum");
+    }
+
+    // Validate and normalize brevity
+    let brevity: "short" | "medium" = "medium";
+    if (parsed.attendeeStyleGuide.brevity === "short" || parsed.attendeeStyleGuide.brevity === "medium") {
+      brevity = parsed.attendeeStyleGuide.brevity;
+    }
+
+    // Validate and normalize skepticism
+    let skepticism: "low" | "medium" | "high" = "medium";
+    if (
+      parsed.attendeeStyleGuide.skepticism === "low" ||
+      parsed.attendeeStyleGuide.skepticism === "medium" ||
+      parsed.attendeeStyleGuide.skepticism === "high"
+    ) {
+      skepticism = parsed.attendeeStyleGuide.skepticism;
+    }
+
+    // Transform OpenAI output to our internal structure
+    return {
+      attendeeStyleGuide: {
+        tone: String(parsed.attendeeStyleGuide.tone || "professional, measured"),
+        brevity,
+        skepticism,
+        ventingTriggers: Array.isArray(parsed.personaBehavior.ventingTriggers)
+          ? parsed.personaBehavior.ventingTriggers.map(String)
+          : [],
+      },
+      domainContext: {
+        themes: Array.isArray(parsed.domainContext.keyConcerns)
+          ? parsed.domainContext.keyConcerns.map(String)
+          : [],
+        typicalTopics: Array.isArray(parsed.domainContext.commonTools)
+          ? parsed.domainContext.commonTools.map(String)
+          : [],
+      },
+      personaBehavior: {
+        revealWhenEarned: Array.isArray(parsed.personaBehavior.revealConditions)
+          ? parsed.personaBehavior.revealConditions.map(String)
+          : [],
+        resistIfPitched: ["direct sales pitches", "feature lists without context"], // Default resistance
+        objections: Array.isArray(parsed.personaBehavior.objections)
+          ? parsed.personaBehavior.objections.map(String)
+          : [],
+      },
+      vocabHints: {
+        mirrorTerms: Array.isArray(parsed.vocabHints.prefer)
+          ? parsed.vocabHints.prefer.map(String)
+          : [],
+        avoidTerms: Array.isArray(parsed.vocabHints.avoid)
+          ? parsed.vocabHints.avoid.map(String)
+          : [],
+      },
+      promptAddendum: String(parsed.promptAddendum),
+    };
   }
 }
 

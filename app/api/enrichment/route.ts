@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     // Check if enrichment already exists in cache
     const cached = await getEnrichment(body.conferenceId, body.personaId);
     if (cached) {
-      return NextResponse.json({ enrichment: cached });
+      return NextResponse.json({ enrichment: cached, fromCache: true });
     }
 
     // Generate new enrichment
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     // Save to cache
     await saveEnrichment(enrichment);
 
-    return NextResponse.json({ enrichment });
+    return NextResponse.json({ enrichment, fromCache: false });
   } catch (error) {
     console.error("Enrichment generation error:", error);
     return NextResponse.json(
