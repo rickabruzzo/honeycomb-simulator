@@ -59,9 +59,32 @@ export async function ensureTraineesSeeded(): Promise<void> {
  * Internal seeding function (called once via ensureTraineesSeeded)
  */
 async function seedTraineesInternal(): Promise<void> {
-  // No default trainees to seed - trainees are created by users
-  // This guard exists for consistency with other stores
-  console.log("[TraineeStore] Seeding complete (no default trainees)");
+  // Seed demo trainees in development only
+  const isDev = process.env.NODE_ENV === "development";
+
+  if (!isDev) {
+    console.log("[TraineeStore] Seeding complete (production - no demo trainees)");
+    return;
+  }
+
+  // Check if demo trainees already exist
+  const existing = await listTrainees(false);
+  if (existing.length > 0) {
+    console.log("[TraineeStore] Demo trainees already exist, skipping seed");
+    return;
+  }
+
+  // Seed two demo trainees for development
+  const demoTrainees = [
+    { firstName: "Rick", lastName: "Abruzzo" },
+    { firstName: "Maggie", lastName: "Ennis" },
+  ];
+
+  for (const trainee of demoTrainees) {
+    await upsertTrainee(trainee);
+  }
+
+  console.log("[TraineeStore] Seeded 2 demo trainees for development");
 }
 
 /**

@@ -39,7 +39,14 @@ export async function GET() {
       try {
         // Check cache first (only in development)
         const isDev = process.env.NODE_ENV === "development";
-        if (isDev && bootstrapCache && bootstrapCache.expiresAt > Date.now()) {
+
+        // Cache validation: ensure cache has reasonable data before using it
+        const isCacheValid = bootstrapCache &&
+          bootstrapCache.expiresAt > Date.now() &&
+          bootstrapCache.data.conferences.length > 0 &&
+          bootstrapCache.data.personas.length >= 6; // We expect 6 scenario personas
+
+        if (isDev && isCacheValid && bootstrapCache) {
           const elapsed = Date.now() - t0;
           console.log(`[Bootstrap] Returning cached data (${elapsed}ms)`);
 
@@ -53,6 +60,10 @@ export async function GET() {
               cached: true,
             },
           });
+        }
+
+        if (isDev && bootstrapCache && !isCacheValid) {
+          console.log("[Bootstrap] Cache invalidated (insufficient data)");
         }
 
         span.setAttribute("cache_hit", false);
@@ -88,8 +99,8 @@ export async function GET() {
         const personaDuration = tPersonaEnd - tPersonaStart;
         const traineeDuration = tTraineeEnd - tTraineeStart;
 
-        console.log(`[Bootstrap] Conferences: ${confDuration}ms (${conferences.length} items)`);
-        console.log(`[Bootstrap] Personas: ${personaDuration}ms (${personas.length} items)`);
+        console.log(`[Bootstrap] Conferences: ${confDuration}ms (${conferences.length} items) - IDs: ${conferences.map(c => c.id).slice(0, 3).join(', ')}`);
+        console.log(`[Bootstrap] Personas: ${personaDuration}ms (${personas.length} items) - IDs: ${personas.map(p => p.id).slice(0, 3).join(', ')}`);
         console.log(`[Bootstrap] Trainees: ${traineeDuration}ms (${trainees.length} items)`);
 
         span.setAttribute("conferences_count", conferences.length);

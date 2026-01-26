@@ -19,10 +19,13 @@ function normalizeName(name: string): string {
 /**
  * Clean up duplicate personas and old scenario-labeled personas
  * Archives any persona that:
- * 1. Has a role prefix + colon pattern (e.g., "SRE:", "Dir Eng:", "Director of Engineer:")
- * 2. Contains " | " (pipe separator) AND is not one of the clean seeded names
- * 3. Has "(Scenario X)" suffix in the name
+ * 1. Has a specific legacy ID (direng_migration_medium, sre_alert_fatigue_hard)
+ * 2. Has a role prefix + colon pattern (e.g., "SRE:", "Dir Eng:", "Director of Engineer:")
+ * 3. Contains " | " (pipe separator) AND is not one of the clean seeded names
+ * 4. Has "(Scenario X)" suffix in the name
+ * 5. Does NOT start with "scenario-" (those are the clean ones we keep)
  *
+ * Clean seeded IDs to preserve (scenario-a through scenario-f)
  * Clean seeded names to preserve:
  * - Platform Engineer
  * - Site Reliability Engineer
@@ -40,6 +43,12 @@ export async function cleanupDuplicatePersonas(): Promise<number> {
   const personas = await listPersonas(false); // Exclude already archived
   let archivedCount = 0;
 
+  // Specific legacy persona IDs to remove
+  const legacyIds = new Set([
+    "direng_migration_medium",
+    "sre_alert_fatigue_hard",
+  ]);
+
   // Clean seeded names to preserve (normalized)
   const cleanNames = new Set([
     "platform engineer",
@@ -51,6 +60,11 @@ export async function cleanupDuplicatePersonas(): Promise<number> {
   ]);
 
   for (const persona of personas) {
+    // NEVER archive scenario-* personas (those are the clean seeded ones)
+    if (persona.id.startsWith("scenario-")) {
+      continue;
+    }
+
     const normalizedName = normalizeName(persona.name);
 
     // Skip if it's a clean seeded name
@@ -60,6 +74,12 @@ export async function cleanupDuplicatePersonas(): Promise<number> {
 
     let shouldArchive = false;
     let reason = "";
+
+    // Check if it's a specific legacy ID
+    if (legacyIds.has(persona.id)) {
+      shouldArchive = true;
+      reason = `legacy ID (${persona.id})`;
+    }
 
     // Check if it has (Scenario X) suffix
     if (persona.name.includes("(Scenario ") && persona.name.includes(")")) {
