@@ -2,17 +2,14 @@ import { kv } from "@vercel/kv";
 import { Persona } from "./scenarioTypes";
 import { PERSONAS } from "./personas";
 import { buildPersonaSubtitle } from "./formatUtils";
+import { useKv } from "./kvConfig";
 
 const inMemoryPersonas = new Map<string, Persona>();
 const inMemoryIndex: string[] = [];
 const MAX_INDEX_SIZE = 500;
 
-/**
- * KV is configured when Vercel/Upstash env vars are present.
- */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
+// Seed-once guard to prevent repeated seeding
+let seedingPromise: Promise<void> | null = null;
 
 /**
  * Generate a readable slug-based ID with random suffix
@@ -251,7 +248,10 @@ export async function archivePersona(id: string): Promise<boolean> {
 /**
  * Seed initial personas from existing presets
  */
-export async function ensurePersonasSeeded(): Promise<void> {
+/**
+ * Internal seeding logic
+ */
+async function seedPersonasInternal(): Promise<void> {
   const existing = await listPersonas();
   if (existing.length > 0) return; // Already seeded
 
@@ -296,4 +296,14 @@ export async function ensurePersonasSeeded(): Promise<void> {
   }
 
   console.log(`[PersonaStore] Seeded ${PERSONAS.length} personas`);
+}
+
+/**
+ * Public API - ensures seeding happens exactly once per process
+ */
+export async function ensurePersonasSeeded(): Promise<void> {
+  if (!seedingPromise) {
+    seedingPromise = seedPersonasInternal();
+  }
+  return seedingPromise;
 }

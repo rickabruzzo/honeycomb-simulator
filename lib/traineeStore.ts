@@ -1,4 +1,5 @@
 import { kv } from "@vercel/kv";
+import { useKv } from "./kvConfig";
 
 export interface Trainee {
   id: string;
@@ -12,13 +13,6 @@ export interface Trainee {
 const inMemoryTrainees = new Map<string, Trainee>();
 const inMemoryIndex: string[] = [];
 const MAX_INDEX_SIZE = 500;
-
-/**
- * KV is configured when Vercel/Upstash env vars are present.
- */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
 
 /**
  * Generate a readable ID from name with random suffix

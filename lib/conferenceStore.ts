@@ -1,16 +1,13 @@
 import { kv } from "@vercel/kv";
 import { Conference } from "./scenarioTypes";
+import { useKv } from "./kvConfig";
 
 const inMemoryConferences = new Map<string, Conference>();
 const inMemoryIndex: string[] = [];
 const MAX_INDEX_SIZE = 500;
 
-/**
- * KV is configured when Vercel/Upstash env vars are present.
- */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
+// Seed-once guard to prevent repeated seeding
+let seedingPromise: Promise<void> | null = null;
 
 /**
  * Generate a readable slug-based ID with random suffix
@@ -168,8 +165,9 @@ export async function archiveConference(id: string): Promise<boolean> {
 /**
  * Seed initial conferences from common conference contexts
  * Idempotent: Only creates conferences that don't already exist by normalized name
+ * Seed-once: Ensures seeding only happens once per process
  */
-export async function ensureConferencesSeeded(): Promise<void> {
+async function seedConferencesInternal(): Promise<void> {
   const now = new Date().toISOString();
 
   const seedConferences: Conference[] = [
@@ -233,4 +231,14 @@ export async function ensureConferencesSeeded(): Promise<void> {
   if (seededCount > 0) {
     console.log(`[ConferenceStore] Seeded ${seededCount} conferences`);
   }
+}
+
+/**
+ * Public API - ensures seeding happens exactly once per process
+ */
+export async function ensureConferencesSeeded(): Promise<void> {
+  if (!seedingPromise) {
+    seedingPromise = seedConferencesInternal();
+  }
+  return seedingPromise;
 }
