@@ -4,6 +4,7 @@ import { getSession, SessionState } from "./storage";
 import { getScore } from "./scoreStore";
 import { getConference } from "./conferenceStore";
 import { getPersona } from "./personaStore";
+import { getTrainee, formatTraineeShort } from "./traineeStore";
 import { buildPersonaTitle } from "./formatUtils";
 
 export type AdminInviteRow = {
@@ -14,6 +15,8 @@ export type AdminInviteRow = {
   personaId: string | null;
   personaDisplayName: string | null;
   jobTitle: string | null;
+  traineeId: string | null;
+  traineeShortName: string | null; // "First L." format
   difficulty: "easy" | "medium" | "hard" | null;
   createdAt: string;
   status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
@@ -119,6 +122,20 @@ export async function getAdminInvites(limit = 200): Promise<AdminInviteRow[]> {
         }
       }
 
+      // Get trainee data
+      let traineeId: string | null = null;
+      let traineeShortName: string | null = null;
+      if (invite.traineeId) {
+        traineeId = invite.traineeId;
+        const trainee = await getTrainee(invite.traineeId);
+        if (trainee) {
+          traineeShortName = formatTraineeShort(trainee);
+        } else if (invite.traineeName) {
+          // Fallback to stored name if trainee no longer exists
+          traineeShortName = invite.traineeName;
+        }
+      }
+
       // Get difficulty (from session kickoff or persona)
       let difficulty: "easy" | "medium" | "hard" | null = null;
       if (session?.kickoff?.difficulty) {
@@ -143,6 +160,8 @@ export async function getAdminInvites(limit = 200): Promise<AdminInviteRow[]> {
         personaId,
         personaDisplayName,
         jobTitle,
+        traineeId,
+        traineeShortName,
         difficulty,
         createdAt: invite.createdAt,
         status,

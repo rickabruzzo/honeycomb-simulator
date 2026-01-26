@@ -6,6 +6,8 @@ import { Plus, Save, Archive, ExternalLink } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
 import { ChipInput } from "@/components/ui/ChipInput";
 import type { Conference, Persona } from "@/lib/scenarioTypes";
+import type { Trainee } from "@/lib/traineeStore";
+import { formatTraineeFull } from "@/lib/traineeStore";
 import { toSentenceCase, buildPersonaTitle } from "@/lib/formatUtils";
 
 // Helper function to abbreviate text (first 3 words, ~20 chars max)
@@ -121,6 +123,18 @@ export default function ScenarioEditorPage() {
     behaviorBrief: "",
   });
 
+  // Trainees state
+  const [trainees, setTrainees] = useState<Trainee[]>([]);
+  const [selectedTrainee, setSelectedTrainee] = useState<Trainee | null>(null);
+  const [traineeForm, setTraineeForm] = useState<{
+    id?: string;
+    firstName: string;
+    lastName: string;
+  }>({
+    firstName: "",
+    lastName: "",
+  });
+
   // UI state
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -129,6 +143,7 @@ export default function ScenarioEditorPage() {
   useEffect(() => {
     loadConferences();
     loadPersonas();
+    loadTrainees();
   }, []);
 
   // Auto-generate persona name when relevant fields change
@@ -160,6 +175,16 @@ export default function ScenarioEditorPage() {
       setPersonas(data.personas || []);
     } catch (e) {
       console.error("Failed to load personas:", e);
+    }
+  };
+
+  const loadTrainees = async () => {
+    try {
+      const res = await fetch("/api/trainees");
+      const data = await res.json();
+      setTrainees(data.trainees || []);
+    } catch (e) {
+      console.error("Failed to load trainees:", e);
     }
   };
 
@@ -392,13 +417,87 @@ export default function ScenarioEditorPage() {
     }
   };
 
+  const handleSelectTrainee = (trainee: Trainee) => {
+    setSelectedTrainee(trainee);
+    setTraineeForm({
+      id: trainee.id,
+      firstName: trainee.firstName,
+      lastName: trainee.lastName,
+    });
+  };
+
+  const handleNewTrainee = () => {
+    setSelectedTrainee(null);
+    setTraineeForm({
+      firstName: "",
+      lastName: "",
+    });
+  };
+
+  const handleSaveTrainee = async () => {
+    if (!traineeForm.firstName.trim() || !traineeForm.lastName.trim()) {
+      alert("First name and last name are required");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await fetch("/api/trainees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: traineeForm.id,
+          firstName: traineeForm.firstName,
+          lastName: traineeForm.lastName,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to save trainee");
+
+      const data = await response.json();
+      await loadTrainees();
+      setSelectedTrainee(data.trainee);
+      setSuccessMessage(`Trainee "${formatTraineeFull(data.trainee)}" saved successfully!`);
+      setTimeout(() => setSuccessMessage(""), 3000);
+    } catch (error) {
+      console.error("Failed to save trainee:", error);
+      alert("Failed to save trainee");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleArchiveTrainee = async () => {
+    if (!selectedTrainee) return;
+
+    if (!confirm(`Archive trainee "${formatTraineeFull(selectedTrainee)}"? It will be hidden from lists.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/trainees/${selectedTrainee.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) throw new Error("Failed to archive trainee");
+
+      await loadTrainees();
+      handleNewTrainee();
+      setSuccessMessage("Trainee archived successfully");
+      setTimeout(() => setSuccessMessage(""), 3000);
+    } catch (error) {
+      console.error("Failed to archive trainee:", error);
+      alert("Failed to archive trainee");
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold">Scenario Editor</h1>
         <p className="text-white/70 text-sm">
-          Create and manage conferences and personas for training scenarios
+          Create and manage conferences, personas, and trainees for training scenarios
         </p>
       </div>
 
@@ -424,7 +523,7 @@ export default function ScenarioEditorPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Conferences Section */}
         <div className="space-y-4">
           <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
@@ -707,6 +806,74 @@ export default function ScenarioEditorPage() {
                 </BrandButton>
                 {selectedPersona && (
                   <BrandButton onClick={handleArchivePersona} variant="neutral">
+                    <Archive size={16} /> Archive
+                  </BrandButton>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Trainees Section */}
+        <div className="space-y-4">
+          <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Trainees</h2>
+              <BrandButton onClick={handleNewTrainee} variant="lime" className="text-sm">
+                <Plus size={16} /> Create New
+              </BrandButton>
+            </div>
+
+            {/* Trainee List */}
+            <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+              {trainees.map((trainee) => (
+                <button
+                  key={trainee.id}
+                  onClick={() => handleSelectTrainee(trainee)}
+                  className={`w-full text-left px-3 py-2 rounded transition ${
+                    selectedTrainee?.id === trainee.id
+                      ? "bg-[#51368D] text-white"
+                      : "bg-white/5 text-gray-300 hover:bg-white/10"
+                  }`}
+                >
+                  <div className="font-medium">{formatTraineeFull(trainee)}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Trainee Form */}
+            <div className="space-y-3 border-t border-white/10 pt-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">First Name *</label>
+                <input
+                  value={traineeForm.firstName}
+                  onChange={(e) => setTraineeForm((p) => ({ ...p, firstName: e.target.value }))}
+                  placeholder="e.g., Alex"
+                  className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Last Name *</label>
+                <input
+                  value={traineeForm.lastName}
+                  onChange={(e) => setTraineeForm((p) => ({ ...p, lastName: e.target.value }))}
+                  placeholder="e.g., Smith"
+                  className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <BrandButton
+                  onClick={handleSaveTrainee}
+                  disabled={saving}
+                  variant="lime"
+                  className="flex-1"
+                >
+                  <Save size={16} /> {saving ? "Saving..." : "Save"}
+                </BrandButton>
+                {selectedTrainee && (
+                  <BrandButton onClick={handleArchiveTrainee} variant="neutral">
                     <Archive size={16} /> Archive
                   </BrandButton>
                 )}

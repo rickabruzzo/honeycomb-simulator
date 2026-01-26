@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import type { AdminInviteRow } from "../../lib/adminInvites";
 import type { Conference, Persona } from "../../lib/scenarioTypes";
+import type { Trainee } from "../../lib/traineeStore";
 import { ExternalLink, Copy } from "lucide-react";
 
 function StatusBadge({ status }: { status: AdminInviteRow["status"] }) {
@@ -110,7 +111,42 @@ function CopyUrlButton({ url }: { url: string }) {
         <>✓ Copied</>
       ) : (
         <>
-          <Copy size={12} /> Copy
+          <Copy size={12} /> Copy URL
+        </>
+      )}
+    </button>
+  );
+}
+
+function CopyTokenButton({ token }: { token: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded transition ${
+        copied
+          ? "bg-emerald-500/20 text-emerald-200"
+          : "bg-white/10 hover:bg-white/15 text-gray-300"
+      }`}
+      title="Copy token"
+    >
+      {copied ? (
+        <>✓</>
+      ) : (
+        <>
+          <Copy size={12} /> Token
         </>
       )}
     </button>
@@ -121,11 +157,13 @@ export default function AdminPage() {
   const [invites, setInvites] = useState<AdminInviteRow[]>([]);
   const [conferences, setConferences] = useState<Conference[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filter state
   const [filterConferenceId, setFilterConferenceId] = useState<string>("");
   const [filterPersonaId, setFilterPersonaId] = useState<string>("");
+  const [filterTraineeId, setFilterTraineeId] = useState<string>("");
   const [filterDifficulty, setFilterDifficulty] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterTimeRange, setFilterTimeRange] = useState<string>("7d");
@@ -133,10 +171,11 @@ export default function AdminPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [invitesRes, conferencesRes, personasRes] = await Promise.all([
+        const [invitesRes, conferencesRes, personasRes, traineesRes] = await Promise.all([
           fetch("/api/admin/invites"),
           fetch("/api/conferences"),
           fetch("/api/personas"),
+          fetch("/api/trainees"),
         ]);
 
         if (invitesRes.ok) {
@@ -152,6 +191,11 @@ export default function AdminPage() {
         if (personasRes.ok) {
           const personaData = await personasRes.json();
           setPersonas(personaData.personas || []);
+        }
+
+        if (traineesRes.ok) {
+          const traineeData = await traineesRes.json();
+          setTrainees(traineeData.trainees || []);
         }
       } catch (error) {
         console.error("Failed to load data:", error);
@@ -190,6 +234,11 @@ export default function AdminPage() {
       filtered = filtered.filter((inv) => inv.personaId === filterPersonaId);
     }
 
+    // Trainee filter
+    if (filterTraineeId) {
+      filtered = filtered.filter((inv) => inv.traineeId === filterTraineeId);
+    }
+
     // Difficulty filter
     if (filterDifficulty) {
       filtered = filtered.filter((inv) => inv.difficulty === filterDifficulty);
@@ -206,7 +255,7 @@ export default function AdminPage() {
     );
 
     return filtered.slice(0, 200);
-  }, [invites, filterConferenceId, filterPersonaId, filterDifficulty, filterStatus, filterTimeRange]);
+  }, [invites, filterConferenceId, filterPersonaId, filterTraineeId, filterDifficulty, filterStatus, filterTimeRange]);
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-4">
@@ -220,7 +269,7 @@ export default function AdminPage() {
 
       {/* Filter Bar */}
       <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <div>
             <label className="block text-xs text-gray-400 mb-1">Conference</label>
             <select
@@ -248,6 +297,22 @@ export default function AdminPage() {
               {personas.map((persona) => (
                 <option key={persona.id} value={persona.id}>
                   {persona.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Trainee</label>
+            <select
+              value={filterTraineeId}
+              onChange={(e) => setFilterTraineeId(e.target.value)}
+              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
+            >
+              <option value="">All trainees</option>
+              {trainees.map((trainee) => (
+                <option key={trainee.id} value={trainee.id}>
+                  {trainee.firstName} {trainee.lastName}
                 </option>
               ))}
             </select>
@@ -324,7 +389,7 @@ export default function AdminPage() {
               <thead className="bg-white/5 border-b border-white/10">
                 <tr>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                    Token
+                    Trainee
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Conference
@@ -358,8 +423,8 @@ export default function AdminPage() {
                     key={invite.token}
                     className="hover:bg-white/5 transition"
                   >
-                    <td className="px-3 py-3">
-                      <TokenDisplay token={invite.token} />
+                    <td className="px-3 py-3 text-sm text-gray-300">
+                      {invite.traineeShortName || "—"}
                     </td>
                     <td className="px-3 py-3 text-sm text-gray-300">
                       {invite.conferenceName || "—"}
@@ -416,6 +481,7 @@ export default function AdminPage() {
                           </span>
                         )}
                         <CopyUrlButton url={invite.traineeUrl} />
+                        <CopyTokenButton token={invite.token} />
                       </div>
                     </td>
                   </tr>

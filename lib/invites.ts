@@ -6,6 +6,8 @@ export interface InviteRecord {
   createdAt: string;
   conferenceId?: string; // Added for admin tracker
   personaId?: string; // Added for admin tracker
+  traineeId?: string; // Trainee who will use this invite
+  traineeName?: string; // Full trainee name for display
   revoked?: boolean;
   expiresAt?: string;
   createdBy?: string;

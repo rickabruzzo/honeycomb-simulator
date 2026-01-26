@@ -6,6 +6,8 @@ import { Send, Play, Square, ChevronDown, ChevronUp } from "lucide-react";
 import { BrandButton } from "../components/ui/BrandButton";
 import type { Conference, Persona } from "../lib/scenarioTypes";
 import { normalizeTranscript, type TranscriptMessage } from "../lib/normalizeTranscript";
+import type { Trainee } from "../lib/traineeStore";
+import { formatTraineeFull } from "../lib/traineeStore";
 
 type Message = TranscriptMessage;
 
@@ -34,8 +36,10 @@ function HoneycombSimulator() {
   // Selection state
   const [conferences, setConferences] = useState<Conference[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [selectedConferenceId, setSelectedConferenceId] = useState<string>("");
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>("");
+  const [selectedTraineeId, setSelectedTraineeId] = useState<string>("");
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
 
   // Invite state
@@ -67,13 +71,14 @@ function HoneycombSimulator() {
     scrollToBottom();
   }, [messages]);
 
-  // Load conferences and personas
+  // Load conferences, personas, and trainees
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [confRes, personaRes] = await Promise.all([
+        const [confRes, personaRes, traineeRes] = await Promise.all([
           fetch("/api/conferences"),
           fetch("/api/personas"),
+          fetch("/api/trainees"),
         ]);
 
         if (confRes.ok) {
@@ -84,6 +89,11 @@ function HoneycombSimulator() {
         if (personaRes.ok) {
           const personaData = await personaRes.json();
           setPersonas(personaData.personas || []);
+        }
+
+        if (traineeRes.ok) {
+          const traineeData = await traineeRes.json();
+          setTrainees(traineeData.trainees || []);
         }
       } catch (e) {
         console.error("Failed to load data:", e);
@@ -305,6 +315,17 @@ const handleStartSession = async () => {
       return;
     }
 
+    if (!selectedTraineeId) {
+      setInviteError("Please select a trainee");
+      return;
+    }
+
+    const selectedTrainee = trainees.find((t) => t.id === selectedTraineeId);
+    if (!selectedTrainee) {
+      setInviteError("Selected trainee not found");
+      return;
+    }
+
     setIsCreatingInvite(true);
     setInviteError("");
 
@@ -318,6 +339,8 @@ const handleStartSession = async () => {
           difficulty,
           conferenceId: selectedConferenceId,
           personaId: selectedPersonaId,
+          traineeId: selectedTraineeId,
+          traineeName: formatTraineeFull(selectedTrainee),
         }),
       });
 
@@ -520,6 +543,31 @@ const handleStartSession = async () => {
                   </>
                 );
               })()}
+            </div>
+          )}
+        </div>
+
+        {/* Trainee Selection */}
+        <div>
+          <label className="block text-sm text-gray-300 mb-2 font-medium">
+            Trainee *
+          </label>
+          <select
+            value={selectedTraineeId}
+            onChange={(e) => setSelectedTraineeId(e.target.value)}
+            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
+          >
+            <option value="">Select a trainee...</option>
+            {trainees.map((t) => (
+              <option key={t.id} value={t.id}>
+                {formatTraineeFull(t)}
+              </option>
+            ))}
+          </select>
+
+          {selectedTraineeId && (
+            <div className="text-xs text-gray-400 space-y-1 pl-2 mt-2">
+              Required for creating invite links
             </div>
           )}
         </div>
