@@ -18,10 +18,18 @@ function normalizeName(name: string): string {
 
 /**
  * Clean up duplicate personas and old scenario-labeled personas
- * Archives personas with these exact names (case-insensitive):
- * - "Director of Engineer: Migrating monolith t, Growing blind spots | Legacy apm +"
- * - "SRE: Recent outage, Alert fatigue | Prometheus +"
- * - Any persona with "(Scenario X)" suffix in the name
+ * Archives any persona that:
+ * 1. Has a role prefix + colon pattern (e.g., "SRE:", "Dir Eng:", "Director of Engineer:")
+ * 2. Contains " | " (pipe separator) AND is not one of the clean seeded names
+ * 3. Has "(Scenario X)" suffix in the name
+ *
+ * Clean seeded names to preserve:
+ * - Platform Engineer
+ * - Site Reliability Engineer
+ * - Senior Fullstack Developer
+ * - Director of Engineering
+ * - Technical Buyer
+ * - CTO (Startup)
  */
 export async function cleanupDuplicatePersonas(): Promise<number> {
   if (!useKv()) {
@@ -32,27 +40,49 @@ export async function cleanupDuplicatePersonas(): Promise<number> {
   const personas = await listPersonas(false); // Exclude already archived
   let archivedCount = 0;
 
-  // List of exact duplicate names to remove
-  const duplicatesToRemove = [
-    "director of engineer: migrating monolith t, growing blind spots | legacy apm +",
-    "sre: recent outage, alert fatigue | prometheus +",
-  ];
+  // Clean seeded names to preserve (normalized)
+  const cleanNames = new Set([
+    "platform engineer",
+    "site reliability engineer",
+    "senior fullstack developer",
+    "director of engineering",
+    "technical buyer",
+    "cto (startup)",
+  ]);
 
   for (const persona of personas) {
     const normalizedName = normalizeName(persona.name);
 
-    // Check if it's an exact duplicate match
-    if (duplicatesToRemove.includes(normalizedName)) {
-      await archivePersona(persona.id);
-      console.log(`[CleanupDuplicates] Archived duplicate persona: ${persona.name}`);
-      archivedCount++;
+    // Skip if it's a clean seeded name
+    if (cleanNames.has(normalizedName)) {
       continue;
     }
 
+    let shouldArchive = false;
+    let reason = "";
+
     // Check if it has (Scenario X) suffix
     if (persona.name.includes("(Scenario ") && persona.name.includes(")")) {
+      shouldArchive = true;
+      reason = "has (Scenario X) suffix";
+    }
+
+    // Check for role prefix + colon pattern (e.g., "SRE:", "Dir Eng:", "Director of Engineer:")
+    const rolePrefixPattern = /^(sre|dir eng|director of engineer|platform eng|devops|cloud eng|engineering manager|software eng):/i;
+    if (rolePrefixPattern.test(persona.name)) {
+      shouldArchive = true;
+      reason = "has role prefix + colon pattern";
+    }
+
+    // Check for pipe separator (legacy format) and not a clean name
+    if (persona.name.includes(" | ")) {
+      shouldArchive = true;
+      reason = "has pipe separator (legacy format)";
+    }
+
+    if (shouldArchive) {
       await archivePersona(persona.id);
-      console.log(`[CleanupDuplicates] Archived old scenario persona: ${persona.name}`);
+      console.log(`[CleanupDuplicates] Archived persona: ${persona.name} (${reason})`);
       archivedCount++;
     }
   }
@@ -65,8 +95,10 @@ export async function cleanupDuplicatePersonas(): Promise<number> {
 }
 
 /**
- * Clean up old standalone "KubeCon" conference
- * Archives any conference with the exact name "KubeCon" (standalone, not "KubeCon + CloudNativeCon")
+ * Clean up old conferences
+ * Archives:
+ * - Standalone "KubeCon" (replaced by "KubeCon + CloudNativeCon")
+ * - "QCon EMEA" (renamed to "QCon")
  */
 export async function cleanupOldConferences(): Promise<number> {
   if (!useKv()) {
@@ -82,6 +114,14 @@ export async function cleanupOldConferences(): Promise<number> {
 
     // Archive standalone "KubeCon" only (not "KubeCon + CloudNativeCon")
     if (normalizedName === "kubecon") {
+      await archiveConference(conf.id);
+      console.log(`[CleanupDuplicates] Archived old conference: ${conf.name}`);
+      archivedCount++;
+      continue;
+    }
+
+    // Archive "QCon EMEA" (renamed to "QCon")
+    if (normalizedName === "qcon emea") {
       await archiveConference(conf.id);
       console.log(`[CleanupDuplicates] Archived old conference: ${conf.name}`);
       archivedCount++;
