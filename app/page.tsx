@@ -41,6 +41,8 @@ function HoneycombSimulator() {
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>("");
   const [selectedTraineeId, setSelectedTraineeId] = useState<string>("");
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataRefreshing, setDataRefreshing] = useState(false);
 
   // Invite state
   const [inviteUrl, setInviteUrl] = useState<string>("");
@@ -54,6 +56,7 @@ function HoneycombSimulator() {
   const [enrichmentStatus, setEnrichmentStatus] = useState<"fresh" | "cached" | "none">("none");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const didLoadBootstrap = useRef(false);
   const active = Boolean(sessionId);
 
   const difficultyLabel = useMemo(() => {
@@ -75,36 +78,80 @@ function HoneycombSimulator() {
     scrollToBottom();
   }, [messages]);
 
-  // Load conferences, personas, and trainees
+  // Load conferences, personas, and trainees with caching
   useEffect(() => {
-    const loadData = async () => {
+    const CACHE_KEY = "hc_bootstrap_v1";
+    const CACHE_TIMESTAMP_KEY = "hc_bootstrap_v1_ts";
+    const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+    // Prevent double-fetch in StrictMode
+    if (didLoadBootstrap.current) return;
+    didLoadBootstrap.current = true;
+
+    const loadData = async (isRefresh = false) => {
       try {
-        const [confRes, personaRes, traineeRes] = await Promise.all([
-          fetch("/api/conferences"),
-          fetch("/api/personas"),
-          fetch("/api/trainees"),
-        ]);
+        // Try to load from sessionStorage cache first
+        if (!isRefresh && typeof window !== "undefined") {
+          const cached = sessionStorage.getItem(CACHE_KEY);
+          const cachedTs = sessionStorage.getItem(CACHE_TIMESTAMP_KEY);
 
-        if (confRes.ok) {
-          const confData = await confRes.json();
-          setConferences(confData.conferences || []);
+          if (cached && cachedTs) {
+            const age = Date.now() - parseInt(cachedTs, 10);
+            const data = JSON.parse(cached);
+
+            // Use cached data immediately
+            setConferences(data.conferences || []);
+            setPersonas(data.personas || []);
+            setTrainees(data.trainees || []);
+            setDataLoading(false);
+
+            // If cache is fresh enough, we're done
+            if (age < CACHE_MAX_AGE_MS) {
+              console.log(`[Bootstrap] Using cached data (${Math.round(age / 1000)}s old)`);
+              return;
+            }
+
+            // Cache is stale, refresh in background
+            console.log(`[Bootstrap] Cache stale, refreshing in background`);
+            setDataRefreshing(true);
+          }
         }
 
-        if (personaRes.ok) {
-          const personaData = await personaRes.json();
-          setPersonas(personaData.personas || []);
-        }
+        // Fetch fresh data
+        const controller = new AbortController();
+        const res = await fetch("/api/bootstrap", { signal: controller.signal });
 
-        if (traineeRes.ok) {
-          const traineeData = await traineeRes.json();
-          setTrainees(traineeData.trainees || []);
+        if (res.ok) {
+          const data = await res.json();
+
+          setConferences(data.conferences || []);
+          setPersonas(data.personas || []);
+          setTrainees(data.trainees || []);
+
+          // Update cache
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+            sessionStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
+          }
+
+          console.log(`[Bootstrap] Loaded fresh data (${data._meta?.loadTimeMs}ms)`);
         }
       } catch (e) {
-        console.error("Failed to load data:", e);
+        if ((e as Error).name !== "AbortError") {
+          console.error("Failed to load data:", e);
+        }
+      } finally {
+        setDataLoading(false);
+        setDataRefreshing(false);
       }
     };
 
     loadData();
+
+    return () => {
+      // Cleanup on unmount
+      didLoadBootstrap.current = false;
+    };
   }, []);
 
   // Handle query params for auto-selection (only if items exist and are not archived)
@@ -507,13 +554,15 @@ const handleStartSession = async () => {
         <div>
           <label className="block text-sm text-gray-300 mb-2 font-medium">
             Conference
+            {dataRefreshing && <span className="ml-2 text-xs text-gray-500">(Refreshing...)</span>}
           </label>
           <select
             value={selectedConferenceId}
             onChange={(e) => setSelectedConferenceId(e.target.value)}
-            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
+            disabled={dataLoading}
+            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <option value="">Select a conference...</option>
+            <option value="">{dataLoading ? "Loading conferences..." : "Select a conference..."}</option>
             {conferences.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -544,9 +593,10 @@ const handleStartSession = async () => {
           <select
             value={selectedPersonaId}
             onChange={(e) => setSelectedPersonaId(e.target.value)}
-            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
+            disabled={dataLoading}
+            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <option value="">Select a persona...</option>
+            <option value="">{dataLoading ? "Loading personas..." : "Select a persona..."}</option>
             {personas.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -579,9 +629,10 @@ const handleStartSession = async () => {
           <select
             value={selectedTraineeId}
             onChange={(e) => setSelectedTraineeId(e.target.value)}
-            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
+            disabled={dataLoading}
+            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <option value="">Select a trainee...</option>
+            <option value="">{dataLoading ? "Loading trainees..." : "Select a trainee..."}</option>
             {trainees.map((t) => (
               <option key={t.id} value={t.id}>
                 {formatTraineeFull(t)}
