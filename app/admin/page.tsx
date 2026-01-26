@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { AdminInviteRow } from "../../lib/adminInvites";
 import type { Conference, Persona } from "../../lib/scenarioTypes";
 import type { Trainee } from "../../lib/traineeStore";
-import { ExternalLink, Copy } from "lucide-react";
+import { ExternalLink, Copy, Eye } from "lucide-react";
 
 function StatusBadge({ status }: { status: AdminInviteRow["status"] }) {
   const styles = {
@@ -480,6 +480,12 @@ export default function AdminPage() {
                             <ExternalLink size={12} /> Score
                           </span>
                         )}
+                        <Link
+                          href={`/review/${invite.token}`}
+                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-cyan-700/50 hover:bg-cyan-600/50 text-white transition"
+                        >
+                          <Eye size={12} /> Review
+                        </Link>
                         <CopyUrlButton url={invite.traineeUrl} />
                         <CopyTokenButton token={invite.token} />
                       </div>
