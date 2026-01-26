@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getConference, archiveConference } from "@/lib/conferenceStore";
+import { getConference, archiveConference, ensureConferencesSeeded } from "@/lib/conferenceStore";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureConferencesSeeded();
     const { id } = await params;
     const conference = await getConference(id);
 

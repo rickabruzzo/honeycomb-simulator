@@ -6,8 +6,8 @@ import { getInviteForSession, getInvite } from '@/lib/invites';
 import { scoreSession } from '@/lib/scoring';
 import { saveScore } from '@/lib/scoreStore';
 import { addToLeaderboardIndex } from '@/lib/leaderboardStore';
-import { getPersona } from '@/lib/personaStore';
-import { getConference } from '@/lib/conferenceStore';
+import { getPersona, ensurePersonasSeeded } from '@/lib/personaStore';
+import { getConference, ensureConferencesSeeded } from '@/lib/conferenceStore';
 import { buildPersonaTitle } from '@/lib/formatUtils';
 import { withSpan } from '@/lib/telemetry';
 
@@ -145,6 +145,12 @@ Remember: Listen, discover pain, validate, then align to outcomes.
         let difficulty: "easy" | "medium" | "hard" | null = null;
 
         try {
+          // Ensure stores are seeded before lookups
+          await Promise.all([
+            ensureConferencesSeeded(),
+            ensurePersonasSeeded(),
+          ]);
+
           const invite = await getInvite(token);
           if (invite) {
             // Get conference data

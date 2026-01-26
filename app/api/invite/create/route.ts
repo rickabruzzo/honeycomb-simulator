@@ -4,11 +4,20 @@ import { createSessionWithEnrichment } from "@/lib/createSession";
 import { saveSession } from "@/lib/storage";
 import { saveInvite } from "@/lib/invites";
 import { addInviteToIndex } from "@/lib/inviteIndex";
-import { getTrainee } from "@/lib/traineeStore";
+import { getTrainee, ensureTraineesSeeded } from "@/lib/traineeStore";
+import { ensurePersonasSeeded } from "@/lib/personaStore";
+import { ensureConferencesSeeded } from "@/lib/conferenceStore";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+
+    // Ensure all stores are seeded (critical for in-memory dev mode)
+    await Promise.all([
+      ensureConferencesSeeded(),
+      ensurePersonasSeeded(),
+      ensureTraineesSeeded(),
+    ]);
 
     // Validate traineeId is present
     if (!body.traineeId || typeof body.traineeId !== "string") {

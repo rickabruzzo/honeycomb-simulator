@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPersona, archivePersona } from "@/lib/personaStore";
+import { getPersona, archivePersona, ensurePersonasSeeded } from "@/lib/personaStore";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensurePersonasSeeded();
     const { id } = await params;
     const persona = await getPersona(id);
 
