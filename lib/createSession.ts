@@ -1,9 +1,13 @@
 import { randomUUID } from "crypto";
 import { SessionState } from "./storage";
 import { getPersonaById } from "./personas";
+import { getEnrichment, saveEnrichment } from "./llm/enrichmentStore";
+import { getEnrichmentProvider } from "./llm/provider";
+import type { EnrichmentInput } from "./llm/enrichmentTypes";
 
 export interface CreateSessionInput {
   personaId?: string;
+  conferenceId?: string;
   conferenceContext?: string;
   attendeeProfile?: string;
   difficulty?: "easy" | "medium" | "hard";
@@ -82,4 +86,50 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
   };
 
   return { session };
+}
+
+/**
+ * Async wrapper that includes enrichment generation if conferenceId and personaId are available
+ */
+export async function createSessionWithEnrichment(
+  input: CreateSessionInput
+): Promise<CreateSessionResult> {
+  // Create the base session first
+  const result = createSession(input);
+
+  if (result.error) {
+    return result;
+  }
+
+  // Try to add enrichment if we have the IDs
+  if (input.conferenceId && input.personaId) {
+    try {
+      // Check cache first
+      let enrichment = await getEnrichment(input.conferenceId, input.personaId);
+
+      // Generate if not cached
+      if (!enrichment && input.conferenceContext && input.attendeeProfile) {
+        const provider = getEnrichmentProvider();
+        const enrichmentInput: EnrichmentInput = {
+          conferenceId: input.conferenceId,
+          personaId: input.personaId,
+          conferenceContext: input.conferenceContext,
+          attendeeProfile: input.attendeeProfile,
+        };
+
+        enrichment = await provider.enrich(enrichmentInput);
+        await saveEnrichment(enrichment);
+      }
+
+      // Add enrichment to session
+      if (enrichment) {
+        result.session.kickoff.enrichment = enrichment;
+      }
+    } catch (error) {
+      // Log error but don't fail session creation
+      console.error("Failed to generate enrichment:", error);
+    }
+  }
+
+  return result;
 }

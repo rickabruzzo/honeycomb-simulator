@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { createSession } from "@/lib/createSession";
+import { createSessionWithEnrichment } from "@/lib/createSession";
 import { saveSession } from "@/lib/storage";
 import { saveInvite } from "@/lib/invites";
 import { addInviteToIndex } from "@/lib/inviteIndex";
@@ -27,9 +27,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create session using shared helper
-    const result = createSession({
+    // Create session using shared helper with enrichment
+    const result = await createSessionWithEnrichment({
       personaId: body.personaId,
+      conferenceId: body.conferenceId,
       conferenceContext: body.conferenceContext,
       attendeeProfile: body.attendeeProfile,
       difficulty: body.difficulty,

@@ -100,12 +100,13 @@ export async function POST(
     if (useMock) {
       attendeeResponseText = pickMockResponse(session.currentState);
     } else {
-      // Build prompt
+      // Build prompt with enrichment if available
       const attendeePrompt = buildAttendeePrompt(
         session.currentState,
         session.kickoff.attendeeProfile,
         session.kickoff.difficulty,
-        conversationHistory
+        conversationHistory,
+        session.kickoff.enrichment
       );
 
       const apiKey = process.env.ANTHROPIC_API_KEY!;

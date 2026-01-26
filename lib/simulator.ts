@@ -1,5 +1,6 @@
 // lib/simulator.ts
 import config from "./simulator.config.json";
+import type { EnrichmentResult } from "./llm/enrichmentTypes";
 
 export const SIMULATOR_CONFIG = config as any;
 
@@ -103,7 +104,8 @@ export function buildAttendeePrompt(
   currentState: string,
   attendeeProfile: string,
   difficulty: string,
-  conversationHistory: Array<{ role: string; content: string }>
+  conversationHistory: Array<{ role: string; content: string }>,
+  enrichment?: EnrichmentResult | null
 ): string {
   const stateConfig = SIMULATOR_CONFIG.states?.[currentState];
   const stateDescription = stateConfig?.description ?? "";
@@ -112,12 +114,17 @@ export function buildAttendeePrompt(
   const behaviorText =
     Array.isArray(attendeeBehavior) && attendeeBehavior.length > 0
       ? `Your behavior in this state: ${attendeeBehavior.join(", ")}.`
-      : `The conversation is concluding. Choose an outcome that matches the trainee’s behavior.`;
+      : `The conversation is concluding. Choose an outcome that matches the trainee's behavior.`;
 
   // Keep history short to reduce token usage / noise
   const recentHistory = conversationHistory.slice(-12);
 
   const bannedKeywords = SIMULATOR_CONFIG.keyword_restrictions?.banned_product_keywords ?? [];
+
+  // Build enrichment section if available
+  const enrichmentSection = enrichment?.promptAddendum
+    ? `\n\nENRICHMENT GUIDANCE:\n${enrichment.promptAddendum}`
+    : "";
 
   return `You are roleplaying as a realistic tech conference attendee at the Honeycomb booth.
 
@@ -140,7 +147,7 @@ ${behaviorText}
 DIFFICULTY: ${difficulty}
 
 YOUR HIDDEN PROFILE (do not reveal directly):
-${attendeeProfile}
+${attendeeProfile}${enrichmentSection}
 
 RECENT CONVERSATION (most recent last):
 ${recentHistory.map((m) => `${m.role === "user" ? "Trainee" : "Attendee"}: ${m.content}`).join("\n")}

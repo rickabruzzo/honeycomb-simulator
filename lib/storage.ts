@@ -1,4 +1,5 @@
 import { kv } from "@vercel/kv";
+import type { EnrichmentResult } from "./llm/enrichmentTypes";
 
 export interface SessionState {
   id: string;
@@ -16,6 +17,7 @@ export interface SessionState {
     attendeeProfile: string;
     difficulty: string;
     personaId?: string;
+    enrichment?: EnrichmentResult;
   };
   startTime: string;
   active: boolean;

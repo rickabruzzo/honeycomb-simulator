@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveSession } from '@/lib/storage';
-import { createSession } from '@/lib/createSession';
+import { createSessionWithEnrichment } from '@/lib/createSession';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const result = createSession({
+    const result = await createSessionWithEnrichment({
       personaId: body.personaId,
+      conferenceId: body.conferenceId,
       conferenceContext: body.conferenceContext,
       attendeeProfile: body.attendeeProfile,
       difficulty: body.difficulty,
