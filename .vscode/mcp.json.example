@@ -1,0 +1,16 @@
+{
+	"servers": {
+		"honeycomb": {
+			"command": "npx",
+			"args": [
+				"mcp-remote",
+				"https://mcp.honeycomb.io/mcp"
+			],
+			"type": "stdio",
+			"env": {
+				"HONEYCOMB_API_KEY": "your-honeycomb-api-key-here"
+			}
+		}
+	},
+	"inputs": []
+}
