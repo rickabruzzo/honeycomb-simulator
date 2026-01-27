@@ -8,6 +8,7 @@ import {
 } from "@/lib/personaStore";
 import { Persona } from "@/lib/scenarioTypes";
 import { seedScenarioPresets } from "@/lib/seedScenarioPresets";
+import { invalidateBootstrapCache } from "@/lib/memoryStore";
 
 export async function GET() {
   try {
@@ -63,6 +64,9 @@ export async function POST(request: NextRequest) {
 
     // Upsert persona (creates if missing id, updates if present)
     const persona = await upsertPersona(body as Partial<Persona> & { name: string });
+
+    // Invalidate bootstrap cache so changes appear immediately
+    invalidateBootstrapCache();
 
     return NextResponse.json({ persona });
   } catch (error) {

@@ -3,10 +3,18 @@ import { Persona } from "./scenarioTypes";
 import { buildPersonaSubtitle } from "./formatUtils";
 import { useKv } from "./kvConfig";
 import { seedScenarioPresets } from "./seedScenarioPresets";
+import { getMemStore } from "./memoryStore";
 
-const inMemoryPersonas = new Map<string, Persona>();
-const inMemoryIndex: string[] = [];
 const MAX_INDEX_SIZE = 500;
+
+// Helper to get in-memory store (now uses global shared store)
+function getInMemoryStore() {
+  const mem = getMemStore();
+  return {
+    personas: mem.personas,
+    index: mem.personaIndex,
+  };
+}
 
 // Seed-once guard to prevent repeated seeding
 let seedingPromise: Promise<void> | null = null;
@@ -45,8 +53,8 @@ export async function listPersonas(
   } else {
     // In-memory fallback
     const personas: Persona[] = [];
-    for (const id of inMemoryIndex) {
-      const persona = inMemoryPersonas.get(id);
+    for (const id of getInMemoryStore().index) {
+      const persona = getInMemoryStore().personas.get(id);
       if (persona && (includeArchived || !persona.isArchived)) {
         personas.push(persona);
       }
@@ -62,7 +70,7 @@ export async function getPersona(id: string): Promise<Persona | null> {
   if (useKv()) {
     return (await kv.get<Persona>(`persona:${id}`)) ?? null;
   }
-  return inMemoryPersonas.get(id) ?? null;
+  return getInMemoryStore().personas.get(id) ?? null;
 }
 
 /**
@@ -152,14 +160,15 @@ export async function upsertPersona(
     }
   } else {
     // In-memory fallback
-    inMemoryPersonas.set(id, fullPersona);
+    getInMemoryStore().personas.set(id, fullPersona);
 
     if (!isUpdate) {
-      const filtered = inMemoryIndex.filter((i) => i !== id);
-      inMemoryIndex.length = 0;
-      inMemoryIndex.push(id, ...filtered);
-      if (inMemoryIndex.length > MAX_INDEX_SIZE) {
-        inMemoryIndex.length = MAX_INDEX_SIZE;
+      const { index } = getInMemoryStore();
+      const filtered = index.filter((i) => i !== id);
+      index.length = 0;
+      index.push(id, ...filtered);
+      if (index.length > MAX_INDEX_SIZE) {
+        index.length = MAX_INDEX_SIZE;
       }
     }
   }
@@ -183,7 +192,7 @@ export async function archivePersona(id: string): Promise<boolean> {
   if (useKv()) {
     await kv.set(`persona:${id}`, archived);
   } else {
-    inMemoryPersonas.set(id, archived);
+    getInMemoryStore().personas.set(id, archived);
   }
 
   return true;

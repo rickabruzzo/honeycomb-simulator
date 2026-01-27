@@ -4,6 +4,7 @@ import {
   upsertTrainee,
 } from "@/lib/traineeStore";
 import { Trainee } from "@/lib/traineeStore";
+import { invalidateBootstrapCache } from "@/lib/memoryStore";
 
 export async function GET() {
   try {
@@ -39,6 +40,9 @@ export async function POST(request: NextRequest) {
 
     // Upsert trainee (creates if missing id, updates if present)
     const trainee = await upsertTrainee(body as Partial<Trainee> & { firstName: string; lastName: string });
+
+    // Invalidate bootstrap cache so new trainee appears in Builder immediately
+    invalidateBootstrapCache();
 
     return NextResponse.json({ trainee });
   } catch (error) {

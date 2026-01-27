@@ -1,13 +1,21 @@
 import { kv } from "@vercel/kv";
 import { Conference } from "./scenarioTypes";
 import { useKv } from "./kvConfig";
+import { getMemStore } from "./memoryStore";
 
-const inMemoryConferences = new Map<string, Conference>();
-const inMemoryIndex: string[] = [];
 const MAX_INDEX_SIZE = 500;
 
 // Seed-once guard to prevent repeated seeding
 let seedingPromise: Promise<void> | null = null;
+
+// Helper to get in-memory store (now uses global shared store)
+function getInMemoryStore() {
+  const mem = getMemStore();
+  return {
+    conferences: mem.conferences,
+    index: mem.conferenceIndex,
+  };
+}
 
 /**
  * Generate a readable slug-based ID with random suffix
@@ -41,10 +49,11 @@ export async function listConferences(
 
     return conferences;
   } else {
-    // In-memory fallback
+    // In-memory fallback (uses global shared store)
+    const { conferences: confMap, index } = getInMemoryStore();
     const conferences: Conference[] = [];
-    for (const id of inMemoryIndex) {
-      const conf = inMemoryConferences.get(id);
+    for (const id of index) {
+      const conf = confMap.get(id);
       if (conf && (includeArchived || !conf.isArchived)) {
         conferences.push(conf);
       }
@@ -60,7 +69,8 @@ export async function getConference(id: string): Promise<Conference | null> {
   if (useKv()) {
     return (await kv.get<Conference>(`conference:${id}`)) ?? null;
   }
-  return inMemoryConferences.get(id) ?? null;
+  const { conferences } = getInMemoryStore();
+  return conferences.get(id) ?? null;
 }
 
 /**
@@ -124,15 +134,16 @@ export async function upsertConference(
       await kv.set("conferences:index", updated);
     }
   } else {
-    // In-memory fallback
-    inMemoryConferences.set(id, fullConference);
+    // In-memory fallback (uses global shared store)
+    const { conferences, index } = getInMemoryStore();
+    conferences.set(id, fullConference);
 
     if (!isUpdate) {
-      const filtered = inMemoryIndex.filter((i) => i !== id);
-      inMemoryIndex.length = 0;
-      inMemoryIndex.push(id, ...filtered);
-      if (inMemoryIndex.length > MAX_INDEX_SIZE) {
-        inMemoryIndex.length = MAX_INDEX_SIZE;
+      const filtered = index.filter((i) => i !== id);
+      index.length = 0;
+      index.push(id, ...filtered);
+      if (index.length > MAX_INDEX_SIZE) {
+        index.length = MAX_INDEX_SIZE;
       }
     }
   }
@@ -156,7 +167,8 @@ export async function archiveConference(id: string): Promise<boolean> {
   if (useKv()) {
     await kv.set(`conference:${id}`, archived);
   } else {
-    inMemoryConferences.set(id, archived);
+    const { conferences } = getInMemoryStore();
+    conferences.set(id, archived);
   }
 
   return true;

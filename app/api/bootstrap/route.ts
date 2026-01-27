@@ -5,6 +5,7 @@ import { listTrainees, ensureTraineesSeeded } from "@/lib/traineeStore";
 import type { Conference, Persona } from "@/lib/scenarioTypes";
 import type { Trainee } from "@/lib/traineeStore";
 import { withSpan } from "@/lib/telemetry";
+import { getMemStore } from "@/lib/memoryStore";
 
 interface BootstrapData {
   conferences: Conference[];
@@ -17,9 +18,26 @@ interface BootstrapData {
   };
 }
 
-// In-memory cache for development (30 second TTL)
-let bootstrapCache: { data: BootstrapData; expiresAt: number } | null = null;
+// Use shared global cache for development (30 second TTL)
 const CACHE_TTL_MS = 30_000; // 30 seconds
+
+function getBootstrapCache() {
+  const store = getMemStore();
+  if (!store.meta.bootstrapCache || !store.meta.bootstrapCacheAt) {
+    return null;
+  }
+
+  return {
+    data: store.meta.bootstrapCache as BootstrapData,
+    expiresAt: store.meta.bootstrapCacheAt,
+  };
+}
+
+function setBootstrapCache(data: BootstrapData) {
+  const store = getMemStore();
+  store.meta.bootstrapCache = data;
+  store.meta.bootstrapCacheAt = Date.now() + CACHE_TTL_MS;
+}
 
 /**
  * Bootstrap endpoint - returns all initial data in one request
@@ -39,6 +57,8 @@ export async function GET() {
       try {
         // Check cache first (only in development)
         const isDev = process.env.NODE_ENV === "development";
+
+        const bootstrapCache = getBootstrapCache();
 
         // Cache validation: ensure cache has reasonable data before using it
         const isCacheValid = bootstrapCache &&
@@ -123,12 +143,9 @@ export async function GET() {
           },
         };
 
-        // Cache for dev
+        // Cache for dev using shared store
         if (isDev) {
-          bootstrapCache = {
-            data: responseData,
-            expiresAt: Date.now() + CACHE_TTL_MS,
-          };
+          setBootstrapCache(responseData);
         }
 
         span.setAttribute("status", 200);

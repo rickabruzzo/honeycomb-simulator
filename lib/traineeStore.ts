@@ -1,5 +1,6 @@
 import { kv } from "@vercel/kv";
 import { useKv } from "./kvConfig";
+import { getMemStore } from "./memoryStore";
 
 export interface Trainee {
   id: string;
@@ -10,12 +11,21 @@ export interface Trainee {
   updatedAt?: string;
 }
 
-const inMemoryTrainees = new Map<string, Trainee>();
-const inMemoryIndex: string[] = [];
 const MAX_INDEX_SIZE = 500;
 
 // Seed-once guard to prevent repeated seeding
 let seedingPromise: Promise<void> | null = null;
+
+// Helper to get in-memory store (now uses global shared store)
+function getInMemoryStore() {
+  const mem = getMemStore();
+  return {
+    trainees: mem.trainees,
+    index: mem.traineeIndex,
+  };
+}
+
+// Seed-once guard to prevent repeated seeding
 
 /**
  * Generate a readable ID from name with random suffix
@@ -108,8 +118,8 @@ export async function listTrainees(
   } else {
     // In-memory fallback
     const trainees: Trainee[] = [];
-    for (const id of inMemoryIndex) {
-      const trainee = inMemoryTrainees.get(id);
+    for (const id of getInMemoryStore().index) {
+      const trainee = getInMemoryStore().trainees.get(id);
       if (trainee && (includeArchived || !trainee.isArchived)) {
         trainees.push(trainee);
       }
@@ -125,7 +135,7 @@ export async function getTrainee(id: string): Promise<Trainee | null> {
   if (useKv()) {
     return (await kv.get<Trainee>(`trainee:${id}`)) ?? null;
   }
-  return inMemoryTrainees.get(id) ?? null;
+  return getInMemoryStore().trainees.get(id) ?? null;
 }
 
 /**
@@ -163,14 +173,15 @@ export async function upsertTrainee(
     }
   } else {
     // In-memory fallback
-    inMemoryTrainees.set(id, fullTrainee);
+    getInMemoryStore().trainees.set(id, fullTrainee);
 
     if (!isUpdate) {
-      const filtered = inMemoryIndex.filter((i) => i !== id);
-      inMemoryIndex.length = 0;
-      inMemoryIndex.push(id, ...filtered);
-      if (inMemoryIndex.length > MAX_INDEX_SIZE) {
-        inMemoryIndex.length = MAX_INDEX_SIZE;
+      const { index } = getInMemoryStore();
+      const filtered = index.filter((i) => i !== id);
+      index.length = 0;
+      index.push(id, ...filtered);
+      if (index.length > MAX_INDEX_SIZE) {
+        index.length = MAX_INDEX_SIZE;
       }
     }
   }
@@ -194,7 +205,7 @@ export async function archiveTrainee(id: string): Promise<boolean> {
   if (useKv()) {
     await kv.set(`trainee:${id}`, archived);
   } else {
-    inMemoryTrainees.set(id, archived);
+    getInMemoryStore().trainees.set(id, archived);
   }
 
   return true;

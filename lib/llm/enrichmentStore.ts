@@ -1,13 +1,19 @@
 import { kv } from "@vercel/kv";
 import type { EnrichmentResult } from "./enrichmentTypes";
-
-const inMemoryCache = new Map<string, EnrichmentResult>();
+import { getMemStore } from "../memoryStore";
 
 /**
  * KV is configured when Vercel/Upstash env vars are present.
  */
 function useKv(): boolean {
   return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+}
+
+/**
+ * Helper to get in-memory store (now uses global shared store)
+ */
+function getInMemoryStore() {
+  return getMemStore().enrichments;
 }
 
 /**
@@ -30,7 +36,7 @@ export async function getEnrichment(
     return (await kv.get<EnrichmentResult>(key)) ?? null;
   }
 
-  return inMemoryCache.get(key) ?? null;
+  return getInMemoryStore().get(key) ?? null;
 }
 
 /**
@@ -44,7 +50,7 @@ export async function saveEnrichment(
   if (useKv()) {
     await kv.set(key, result);
   } else {
-    inMemoryCache.set(key, result);
+    getInMemoryStore().set(key, result);
   }
 }
 
@@ -60,6 +66,6 @@ export async function invalidateEnrichment(
   if (useKv()) {
     await kv.del(key);
   } else {
-    inMemoryCache.delete(key);
+    getInMemoryStore().delete(key);
   }
 }

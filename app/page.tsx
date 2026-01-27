@@ -80,8 +80,8 @@ function HoneycombSimulator() {
 
   // Load conferences, personas, and trainees with caching
   useEffect(() => {
-    const CACHE_KEY = "hc_bootstrap_v1";
-    const CACHE_TIMESTAMP_KEY = "hc_bootstrap_v1_ts";
+    const CACHE_KEY = "hc_bootstrap_v2";
+    const CACHE_TIMESTAMP_KEY = "hc_bootstrap_v2_ts";
     const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
     // Prevent double-fetch in StrictMode

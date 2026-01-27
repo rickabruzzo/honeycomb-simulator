@@ -7,6 +7,7 @@ import {
   archiveConference,
 } from "@/lib/conferenceStore";
 import { Conference } from "@/lib/scenarioTypes";
+import { invalidateBootstrapCache } from "@/lib/memoryStore";
 
 export async function GET() {
   try {
@@ -61,6 +62,9 @@ export async function POST(request: NextRequest) {
     const conference = await upsertConference(
       body as Partial<Conference> & { name: string }
     );
+
+    // Invalidate bootstrap cache so changes appear immediately
+    invalidateBootstrapCache();
 
     return NextResponse.json({ conference });
   } catch (error) {
