@@ -20,6 +20,8 @@ export interface CreateSessionInput {
   personaDisplayName?: string;
   traineeId?: string;
   traineeNameShort?: string;
+  // Performance: skip enrichment generation (check cache only)
+  skipEnrichmentGeneration?: boolean;
 }
 
 export interface CreateSessionResult {
@@ -209,8 +211,8 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`;
       // Check cache first
       let enrichment = await getEnrichment(input.conferenceId, input.personaId);
 
-      // Generate if not cached
-      if (!enrichment && input.conferenceContext && input.attendeeProfile) {
+      // Only generate if not cached AND not skipping generation
+      if (!enrichment && !input.skipEnrichmentGeneration && input.conferenceContext && input.attendeeProfile) {
         const provider = getEnrichmentProvider();
         const enrichmentInput: EnrichmentInput = {
           conferenceId: input.conferenceId,
@@ -223,13 +225,13 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`;
         await saveEnrichment(enrichment);
       }
 
-      // Add enrichment to session
+      // Add enrichment to session (may be null if skipping)
       if (enrichment) {
         result.session.kickoff.enrichment = enrichment;
       }
     } catch (error) {
       // Log error but don't fail session creation
-      console.error("Failed to generate enrichment:", error);
+      console.error("Failed to load enrichment:", error);
     }
   }
 

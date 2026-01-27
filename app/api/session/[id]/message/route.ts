@@ -11,6 +11,9 @@ import { randomUUID } from "crypto";
 import { getChatProvider, MockChatProvider } from "@/lib/llm/chatProvider";
 import type { ChatInput } from "@/lib/llm/chatTypes";
 import { withSpan, withChildSpan } from "@/lib/telemetry";
+import { getEnrichment, saveEnrichment } from "@/lib/llm/enrichmentStore";
+import { getEnrichmentProvider } from "@/lib/llm/provider";
+import type { EnrichmentInput } from "@/lib/llm/enrichmentTypes";
 
 /**
  * Simple canned responses keyed by simulator state.
@@ -85,6 +88,56 @@ export async function POST(
         }
         span.setAttribute("difficulty", session.kickoff.difficulty);
         span.setAttribute("current_state", session.currentState);
+
+        // On-demand enrichment: if missing, try to load from cache or generate
+        if (!session.kickoff.enrichment && session.kickoff.conferenceId && session.kickoff.personaId) {
+          try {
+            let enrichment = await getEnrichment(
+              session.kickoff.conferenceId,
+              session.kickoff.personaId
+            );
+
+            // If not in cache, generate on-demand (this CAN block message, but invite was fast)
+            if (!enrichment && session.kickoff.conferenceContext && session.kickoff.attendeeProfile) {
+              console.log("[message] Generating enrichment on-demand for session:", id);
+
+              const provider = getEnrichmentProvider();
+              const enrichmentInput: EnrichmentInput = {
+                conferenceId: session.kickoff.conferenceId,
+                personaId: session.kickoff.personaId,
+                conferenceContext: session.kickoff.conferenceContext,
+                attendeeProfile: session.kickoff.attendeeProfile,
+              };
+
+              // Generate with 8s timeout
+              const timeoutPromise = new Promise<null>((_, reject) =>
+                setTimeout(() => reject(new Error("Enrichment timeout")), 8000)
+              );
+
+              try {
+                enrichment = await Promise.race([
+                  provider.enrich(enrichmentInput),
+                  timeoutPromise,
+                ]);
+
+                if (enrichment) {
+                  await saveEnrichment(enrichment);
+                  session.kickoff.enrichment = enrichment;
+                  span.setAttribute("enrichment_generated_on_demand", true);
+                }
+              } catch (err) {
+                console.error("[message] On-demand enrichment failed:", err);
+                span.setAttribute("enrichment_generation_failed", true);
+              }
+            } else if (enrichment) {
+              // Found in cache - add to session
+              session.kickoff.enrichment = enrichment;
+              span.setAttribute("enrichment_loaded_from_cache", true);
+            }
+          } catch (error) {
+            console.error("[message] Failed to load enrichment:", error);
+          }
+        }
 
         const { message } = await request.json();
         if (!message || typeof message !== "string") {
