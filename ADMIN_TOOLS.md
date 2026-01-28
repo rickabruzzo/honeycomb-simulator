@@ -183,6 +183,180 @@ curl -X POST https://your-app.vercel.app/api/admin/cleanup \
 
 This endpoint uses soft deletion (sets `isArchived: true`) rather than hard deletion, so records can be recovered if needed.
 
+## Cleanup Trainees Endpoint
+
+The `/api/admin/cleanup-trainees` endpoint resets the trainees list to only contain the default demo trainees (Rick Abruzzo and Maggie Ennis). All other trainees are archived.
+
+### Purpose
+
+Use this endpoint to:
+- Clean up test trainees after demos or workshops
+- Reset to baseline state for new training sessions
+- Remove trainees created during development/testing
+
+### Safety Features
+
+- **Requires Authentication:** Must include `x-admin-reset-token` header matching `ADMIN_RESET_TOKEN` env var
+- **Production Safety:** In production (`VERCEL_ENV=production`), requires `ALLOW_ADMIN_RESET=true` to be set
+- **Soft Deletes:** Archives trainees (sets `isArchived: true`) - no permanent data loss
+- **Idempotent:** Safe to run multiple times - creates Rick and Maggie if missing
+- **Cache Invalidation:** Automatically invalidates bootstrap cache so changes appear immediately
+
+### Usage
+
+**Dry Run (Preview Changes):**
+```bash
+# Local - see what would be archived without making changes
+curl -X POST "http://localhost:3000/api/admin/cleanup-trainees?dryRun=true" \
+  -H "x-admin-reset-token: dev-reset-token"
+
+# Production
+curl -X POST "https://honeycomb-simulator.vercel.app/api/admin/cleanup-trainees?dryRun=true" \
+  -H "x-admin-reset-token: $ADMIN_RESET_TOKEN"
+```
+
+**Actual Cleanup:**
+```bash
+# Local Development
+curl -X POST http://localhost:3000/api/admin/cleanup-trainees \
+  -H "x-admin-reset-token: dev-reset-token"
+
+# Production
+curl -X POST https://honeycomb-simulator.vercel.app/api/admin/cleanup-trainees \
+  -H "x-admin-reset-token: $ADMIN_RESET_TOKEN"
+```
+
+### Response
+
+**Success (Actual Cleanup):**
+```json
+{
+  "success": true,
+  "kept": [
+    { "id": "rick-abruzzo-xyz", "name": "Rick Abruzzo" },
+    { "id": "maggie-ennis-abc", "name": "Maggie Ennis" }
+  ],
+  "archivedCount": 15,
+  "createdCount": 0,
+  "total": 17,
+  "dryRun": false
+}
+```
+
+**Success (Dry Run):**
+```json
+{
+  "success": true,
+  "kept": [
+    { "id": "rick-abruzzo-xyz", "name": "Rick Abruzzo" },
+    { "id": "maggie-ennis-abc", "name": "Maggie Ennis" }
+  ],
+  "toArchive": [
+    { "id": "test-person-xyz", "name": "Test Person" },
+    { "id": "another-user-abc", "name": "Another User" }
+  ],
+  "archivedCount": 15,
+  "createdCount": 0,
+  "total": 17,
+  "dryRun": true
+}
+```
+
+**Fields:**
+- `kept`: Array of trainees that were kept (Rick and Maggie)
+- `toArchive`: Array of trainees that would be archived (only in dry run)
+- `archivedCount`: Number of trainees that were archived (or would be in dry run)
+- `createdCount`: Number of trainees that were created (if Rick/Maggie didn't exist)
+- `total`: Total number of trainees processed (non-archived only)
+- `dryRun`: Boolean indicating if this was a dry run
+
+**Error Responses:**
+
+Missing/Invalid Token (401):
+```json
+{
+  "error": "Unauthorized - invalid or missing x-admin-reset-token"
+}
+```
+
+Production Safety Block (403):
+```json
+{
+  "error": "Admin reset disabled in production (ALLOW_ADMIN_RESET not true)",
+  "hint": "Set ALLOW_ADMIN_RESET=true env var to enable"
+}
+```
+
+### Acceptance Criteria
+
+✅ **Correct Archive Count:** `archivedCount` should equal `total - 2` (all trainees except Rick and Maggie)
+
+✅ **Only Rick and Maggie Remain:** `/api/trainees` returns only Rick Abruzzo and Maggie Ennis
+
+✅ **Idempotent:** Re-running returns `archivedCount: 0` on second run (no trainees left to archive)
+
+✅ **Soft Delete:** Uses `isArchived: true` (no permanent deletion)
+
+✅ **Dry Run Safe:** `?dryRun=true` shows preview without making changes
+
+### Verification
+
+After running cleanup, verify the results:
+
+```bash
+# Check trainees list (API)
+curl -s http://localhost:3000/api/trainees | jq '.trainees[] | "\(.firstName) \(.lastName)"'
+
+# Check bootstrap (what Scenario Builder sees)
+curl -s "http://localhost:3000/api/bootstrap?ts=$(date +%s)" | jq '.trainees[] | "\(.firstName) \(.lastName)"'
+```
+
+Both should return only:
+```
+"Rick Abruzzo"
+"Maggie Ennis"
+```
+
+Or in production:
+```bash
+# Check production trainees
+curl -s https://honeycomb-simulator.vercel.app/api/trainees | jq '.trainees[] | "\(.firstName) \(.lastName)"'
+```
+
+### Production Checklist
+
+Before running in production:
+
+1. **Backup:** Ensure KV data is backed up (Upstash dashboard)
+2. **Token:** Verify `ADMIN_RESET_TOKEN` is set securely in Vercel env vars
+3. **Enable:** Set `ALLOW_ADMIN_RESET=true` in Vercel env vars
+4. **Deploy:** Redeploy to pick up new env vars (if just added)
+5. **Execute:** Run the cleanup command with correct token
+6. **Verify:** Check trainees in UI and via API endpoints
+7. **Cleanup:** Remove `ALLOW_ADMIN_RESET=true` after operation
+
+## Archive Trainees by Name
+
+The `/api/admin/archive-trainees-by-name` endpoint allows bulk archiving specific trainees by name.
+
+**Note:** This is a legacy endpoint that does NOT require admin token authentication. For production cleanup, prefer `/api/admin/cleanup-trainees`.
+
+**Usage:**
+```bash
+curl -X POST http://localhost:3000/api/admin/archive-trainees-by-name \
+  -H "Content-Type: application/json" \
+  -d '{"names": ["Test Person", "Another User", "Demo Trainee"]}'
+```
+
+**Response:**
+```json
+{
+  "archivedCount": 2,
+  "archivedIds": ["test-person-xyz", "another-user-abc"],
+  "notFound": ["Demo Trainee"]
+}
+```
+
 ## Generating Admin Tokens
 
 To generate a secure admin reset token, use one of these methods:
