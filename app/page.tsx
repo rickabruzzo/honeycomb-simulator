@@ -83,15 +83,20 @@ function HoneycombSimulator() {
     const CACHE_KEY = "hc_bootstrap_v2";
     const CACHE_TIMESTAMP_KEY = "hc_bootstrap_v2_ts";
     const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+    const isProduction = process.env.NODE_ENV === "production";
+    const tsParam = searchParams?.get("ts");
 
-    // Prevent double-fetch in StrictMode
-    if (didLoadBootstrap.current) return;
-    didLoadBootstrap.current = true;
+    // Prevent double-fetch in StrictMode (ONLY in development)
+    // In production, always allow refetch when ts param changes
+    if (!isProduction && didLoadBootstrap.current && !tsParam) return;
+    if (!isProduction && !tsParam) {
+      didLoadBootstrap.current = true;
+    }
 
     const loadData = async (isRefresh = false) => {
       try {
-        // Try to load from sessionStorage cache first
-        if (!isRefresh && typeof window !== "undefined") {
+        // Try to load from sessionStorage cache first (ONLY in development)
+        if (!isRefresh && !isProduction && typeof window !== "undefined") {
           const cached = sessionStorage.getItem(CACHE_KEY);
           const cachedTs = sessionStorage.getItem(CACHE_TIMESTAMP_KEY);
 
@@ -117,9 +122,13 @@ function HoneycombSimulator() {
           }
         }
 
-        // Fetch fresh data
+        // Fetch fresh data with cache-buster and no-store
         const controller = new AbortController();
-        const res = await fetch("/api/bootstrap", { signal: controller.signal });
+        const cacheBuster = Date.now();
+        const res = await fetch(`/api/bootstrap?ts=${cacheBuster}`, {
+          signal: controller.signal,
+          cache: "no-store"
+        });
 
         if (res.ok) {
           const data = await res.json();
@@ -128,8 +137,8 @@ function HoneycombSimulator() {
           setPersonas(data.personas || []);
           setTrainees(data.trainees || []);
 
-          // Update cache
-          if (typeof window !== "undefined") {
+          // Update cache (ONLY in development)
+          if (!isProduction && typeof window !== "undefined") {
             sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
             sessionStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
           }
@@ -148,11 +157,24 @@ function HoneycombSimulator() {
 
     loadData();
 
+    // Add visibility change handler to refresh when tab becomes visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log("[Bootstrap] Tab became visible, refreshing data");
+        loadData(true); // Force refresh
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       // Cleanup on unmount
-      didLoadBootstrap.current = false;
+      if (!isProduction) {
+        didLoadBootstrap.current = false;
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [searchParams]); // Re-run when searchParams changes (including ts param)
 
   // Handle query params for auto-selection (only if items exist and are not archived)
   useEffect(() => {
