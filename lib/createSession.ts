@@ -9,6 +9,87 @@ import { getPersona, ensurePersonasSeeded, listPersonas } from "./personaStore";
 import { buildPersonaTitle } from "./formatUtils";
 import { getTrainee, formatTraineeShort, ensureTraineesSeeded } from "./traineeStore";
 
+/**
+ * Generate dynamic opening line based on emotional posture and modifiers.
+ *
+ * @param attendeeProfile - Persona profile string
+ * @returns Opening action line
+ */
+function generateOpeningLine(attendeeProfile: string): string {
+  const lower = attendeeProfile.toLowerCase();
+
+  // Parse emotional posture
+  let emotionalPosture = "neutral";
+  const postureMatch = lower.match(/emotional posture:\s*([^\n]+)/);
+  if (postureMatch) {
+    emotionalPosture = postureMatch[1].trim();
+  }
+
+  // Parse modifiers
+  let modifiers = "";
+  const modifiersMatch = lower.match(/modifiers:\s*([^\n]+)/);
+  if (modifiersMatch) {
+    modifiers = modifiersMatch[1].trim();
+  }
+
+  // Map emotional posture + modifiers to opening lines
+  // Guarded
+  if (emotionalPosture.includes("guard") || emotionalPosture.includes("blunt")) {
+    if (modifiers.includes("outage") || modifiers.includes("firefighting")) {
+      return "*walks up, looks tense—like they've been firefighting*";
+    }
+    return "*walks up, glances at badge, keeps it brief*";
+  }
+
+  // Rushed / time-constrained
+  if (emotionalPosture.includes("rush") || emotionalPosture.includes("hurr") || modifiers.includes("time-constrained")) {
+    return "*approaches quickly, checking phone, clearly in a hurry*";
+  }
+
+  // Burned out / exhausted
+  if (emotionalPosture.includes("burn") || emotionalPosture.includes("exhaust") || emotionalPosture.includes("tired")) {
+    return "*sighs, half-smiles, looks tired*";
+  }
+
+  // Curious / engaged
+  if (emotionalPosture.includes("curious") || emotionalPosture.includes("eager") || emotionalPosture.includes("engaged")) {
+    return "*leans in, scanning the booth display*";
+  }
+
+  // Skeptical
+  if (emotionalPosture.includes("skeptic") || emotionalPosture.includes("critical")) {
+    return "*approaches with arms crossed, evaluating*";
+  }
+
+  // Thoughtful / analytical
+  if (emotionalPosture.includes("thought") || emotionalPosture.includes("analyt") || emotionalPosture.includes("consider")) {
+    return "*pauses at the booth, thoughtful expression*";
+  }
+
+  // Friendly / open
+  if (emotionalPosture.includes("friend") || emotionalPosture.includes("open") || emotionalPosture.includes("warm")) {
+    return "*walks up with a friendly nod*";
+  }
+
+  // Frustrated / stressed
+  if (emotionalPosture.includes("frustrat") || emotionalPosture.includes("stress") || modifiers.includes("alert fatigue")) {
+    return "*approaches looking visibly frustrated*";
+  }
+
+  // Cost-focused / budget-conscious
+  if (modifiers.includes("cost") || modifiers.includes("budget") || modifiers.includes("procurement")) {
+    return "*stops by, clearly evaluating options*";
+  }
+
+  // Migration / change context
+  if (modifiers.includes("migrat") || modifiers.includes("transition") || modifiers.includes("growing")) {
+    return "*approaches with a curious but cautious look*";
+  }
+
+  // Default fallback
+  return "*approaches booth casually*";
+}
+
 export interface CreateSessionInput {
   personaId?: string;
   conferenceId?: string;
@@ -52,6 +133,12 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
   const sessionId = randomUUID();
   const now = new Date().toISOString();
 
+  // Generate dynamic opening line based on emotional posture
+  const openingLine = generateOpeningLine(attendeeProfile);
+
+  // Generate deterministic outcome seed for persona-aware variance
+  const outcomeSeed = `${sessionId}:${input.personaId || 'unknown'}:${input.conferenceId || 'unknown'}`;
+
   const session: SessionState = {
     id: sessionId,
     currentState: "ICEBREAKER",
@@ -66,7 +153,7 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
       {
         id: randomUUID(),
         type: "attendee",
-        text: "*approaches booth casually*",
+        text: openingLine,
         timestamp: now,
       },
     ],
@@ -85,6 +172,7 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
     },
     startTime: now,
     active: true,
+    outcomeSeed,
   };
 
   return { session };

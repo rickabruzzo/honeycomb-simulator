@@ -159,6 +159,7 @@ export default function AdminPage() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Filter state
   const [filterConferenceId, setFilterConferenceId] = useState<string>("");
@@ -168,41 +169,48 @@ export default function AdminPage() {
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterTimeRange, setFilterTimeRange] = useState<string>("7d");
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [invitesRes, conferencesRes, personasRes, traineesRes] = await Promise.all([
-          fetch("/api/admin/invites"),
-          fetch("/api/conferences"),
-          fetch("/api/personas"),
-          fetch("/api/trainees"),
-        ]);
+  const loadData = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [invitesRes, conferencesRes, personasRes, traineesRes] = await Promise.all([
+        fetch("/api/admin/invites", { cache: 'no-store' }),
+        fetch("/api/conferences", { cache: 'no-store' }),
+        fetch("/api/personas", { cache: 'no-store' }),
+        fetch("/api/trainees", { cache: 'no-store' }),
+      ]);
 
-        if (invitesRes.ok) {
-          const invitesData = await invitesRes.json();
-          setInvites(invitesData);
-        }
-
-        if (conferencesRes.ok) {
-          const confData = await conferencesRes.json();
-          setConferences(confData.conferences || []);
-        }
-
-        if (personasRes.ok) {
-          const personaData = await personasRes.json();
-          setPersonas(personaData.personas || []);
-        }
-
-        if (traineesRes.ok) {
-          const traineeData = await traineesRes.json();
-          setTrainees(traineeData.trainees || []);
-        }
-      } catch (error) {
-        console.error("Failed to load data:", error);
-      } finally {
-        setLoading(false);
+      if (invitesRes.ok) {
+        const invitesData = await invitesRes.json();
+        setInvites(Array.isArray(invitesData) ? invitesData : []);
+      } else {
+        console.error("Failed to load invites:", invitesRes.status, invitesRes.statusText);
+        setLoadError("Failed to load invites");
       }
+
+      if (conferencesRes.ok) {
+        const confData = await conferencesRes.json();
+        setConferences(confData.conferences || []);
+      }
+
+      if (personasRes.ok) {
+        const personaData = await personasRes.json();
+        setPersonas(personaData.personas || []);
+      }
+
+      if (traineesRes.ok) {
+        const traineeData = await traineesRes.json();
+        setTrainees(traineeData.trainees || []);
+      }
+    } catch (error) {
+      console.error("Failed to load data:", error);
+      setLoadError(error instanceof Error ? error.message : "Failed to load data");
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     loadData();
   }, []);
 
@@ -373,6 +381,16 @@ export default function AdminPage() {
       {loading ? (
         <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
           <p className="text-gray-400">Loading invites...</p>
+        </div>
+      ) : loadError ? (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-8 shadow-sm text-center">
+          <p className="text-red-400 mb-4">{loadError}</p>
+          <button
+            onClick={loadData}
+            className="px-4 py-2 rounded bg-red-500/20 text-red-200 hover:bg-red-500/30 transition"
+          >
+            Retry
+          </button>
         </div>
       ) : filteredInvites.length === 0 ? (
         <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">

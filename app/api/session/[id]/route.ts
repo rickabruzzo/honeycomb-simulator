@@ -25,9 +25,11 @@ export async function GET(req: Request, ctx: any) {
     sessionId: session.id,
     transcript: session.transcript,
     currentState: session.currentState,
+    stateHistory: session.stateHistory ?? [],
     violations: session.violations ?? [],
     active: session.active,
     kickoff: session.kickoff,
     startTime: session.startTime,
+    decisionTrace: session.decisionTrace,
   });
 }
