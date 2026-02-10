@@ -98,35 +98,32 @@ export async function POST(
           );
         }
 
-        if (session.kickoff.conferenceId) {
-          span.setAttribute("conference_id", session.kickoff.conferenceId);
-        }
         if (session.kickoff.personaId) {
           span.setAttribute("persona_id", session.kickoff.personaId);
         }
         if (session.kickoff.traineeId) {
           span.setAttribute("trainee_id", session.kickoff.traineeId);
         }
-        span.setAttribute("difficulty", session.kickoff.difficulty);
         span.setAttribute("current_state", session.currentState);
 
         // On-demand enrichment: if missing, try to load from cache or generate
-        if (!session.kickoff.enrichment && session.kickoff.conferenceId && session.kickoff.personaId) {
+        if (!session.kickoff.enrichment && session.kickoff.personaId) {
           try {
+            const cacheKey = `persona:${session.kickoff.personaId}`;
             let enrichment = await getEnrichment(
-              session.kickoff.conferenceId,
+              cacheKey,
               session.kickoff.personaId
             );
 
             // If not in cache, generate on-demand (this CAN block message, but invite was fast)
-            if (!enrichment && session.kickoff.conferenceContext && session.kickoff.attendeeProfile) {
+            if (!enrichment && session.kickoff.attendeeProfile) {
               console.log("[message] Generating enrichment on-demand for session:", id);
 
               const provider = getEnrichmentProvider();
               const enrichmentInput: EnrichmentInput = {
-                conferenceId: session.kickoff.conferenceId,
+                conferenceId: cacheKey,
                 personaId: session.kickoff.personaId,
-                conferenceContext: session.kickoff.conferenceContext,
+                conferenceContext: "Tech conference booth",
                 attendeeProfile: session.kickoff.attendeeProfile,
               };
 
@@ -189,7 +186,7 @@ export async function POST(
 
         // 3a) Check turn limits
         const traineeMessageCount = session.transcript.filter((m) => m.type === "trainee").length;
-        const turnLimitExceeded = hasExceededTurnLimit(traineeMessageCount, session.kickoff.difficulty);
+        const turnLimitExceeded = hasExceededTurnLimit(traineeMessageCount);
 
         if (turnLimitExceeded) {
           span.setAttribute("turn_limit_exceeded", true);
@@ -295,10 +292,6 @@ export async function POST(
           }
 
           const runtimeContext: PromptRuntimeContext = {
-            conference: {
-              name: session.kickoff.conferenceName || "Unknown Conference",
-              themes: session.kickoff.conferenceContext || "General tech topics",
-            },
             persona: {
               title: profileParsed["Persona"] || "Unknown",
               modifiers: profileParsed["Modifiers"] || "None",
@@ -306,7 +299,6 @@ export async function POST(
               toolingBias: profileParsed["Tooling bias"] || "None specified",
               otelFamiliarity: profileParsed["OpenTelemetry familiarity"] || "Unknown",
             },
-            difficulty: session.kickoff.difficulty,
             enrichment: session.kickoff.enrichment || null,
             sessionState: session.currentState,
             trainerGuidance: session.trainerFeedback?.guidance || null,

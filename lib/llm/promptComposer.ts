@@ -154,11 +154,6 @@ function buildScenarioContext(context: PromptRuntimeContext): string {
 
   sections.push(`SCENARIO CONTEXT:`);
 
-  sections.push(`Conference: ${context.conference.name}`);
-  sections.push(`Conference themes: ${context.conference.themes}`);
-
-  sections.push(`\nDIFFICULTY: ${context.difficulty}`);
-
   sections.push(`\nYOUR HIDDEN PROFILE (do not reveal directly):`);
   sections.push(`Title: ${context.persona.title}`);
   sections.push(`Modifiers: ${context.persona.modifiers}`);
@@ -231,10 +226,6 @@ function parseLegacyAttendeeProfile(
   }
 
   return {
-    conference: {
-      name: "Unknown Conference",
-      themes: "General tech topics",
-    },
     persona: {
       title: parsed["Persona"] || "Unknown",
       modifiers: parsed["Modifiers"] || "None",
@@ -242,7 +233,6 @@ function parseLegacyAttendeeProfile(
       toolingBias: parsed["Tooling bias"] || "None specified",
       otelFamiliarity: parsed["OpenTelemetry familiarity"] || "Unknown",
     },
-    difficulty,
     enrichment: enrichment || null,
     sessionState: currentState,
     trainerGuidance: null,

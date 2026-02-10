@@ -7,7 +7,6 @@ import { scoreSession } from '@/lib/scoring';
 import { saveScore } from '@/lib/scoreStore';
 import { addToLeaderboardIndex } from '@/lib/leaderboardStore';
 import { getPersona, ensurePersonasSeeded } from '@/lib/personaStore';
-import { getConference, ensureConferencesSeeded } from '@/lib/conferenceStore';
 import { buildPersonaTitle } from '@/lib/formatUtils';
 import { withSpan } from '@/lib/telemetry';
 
@@ -81,7 +80,7 @@ ${session.violations.length > 0 ? session.violations.map(v => '• ' + v).join('
 ${reached < 3 ? '• Focus on discovery before solution framing' : ''}
 
 🎭 Persona Alignment:
-Hidden profile was used to generate responses appropriate to difficulty level: ${session.kickoff.difficulty}
+Hidden persona profile was used to generate realistic attendee responses.
 
 📈 Overall Assessment:
 ${outcome === 'DEMO_READY' ? 'Strong execution! You earned genuine interest.' : outcome === 'DEFERRED_INTEREST' ? 'Good progress. More discovery could have sealed it.' : 'Conversation ended early. Review failure modes.'}
@@ -135,33 +134,18 @@ Remember: Listen, discover pain, validate, then align to outcomes.
             span.setAttribute("score", scoreRecord.score);
             span.setAttribute("grade", scoreRecord.grade);
 
-        // Add to leaderboard index with full metadata (Phase F)
-        // Resolve conference and persona data from invite
-        let conferenceId: string | null = null;
-        let conferenceName: string | null = null;
+        // Add to leaderboard index with full metadata
+        // Resolve persona data from invite
         let personaId: string | null = null;
         let personaDisplayName: string | null = null;
         let jobTitle: string | null = null;
-        let difficulty: "easy" | "medium" | "hard" | null = null;
 
         try {
           // Ensure stores are seeded before lookups
-          await Promise.all([
-            ensureConferencesSeeded(),
-            ensurePersonasSeeded(),
-          ]);
+          await ensurePersonasSeeded();
 
           const invite = await getInvite(token);
           if (invite) {
-            // Get conference data
-            if (invite.conferenceId) {
-              conferenceId = invite.conferenceId;
-              const conference = await getConference(invite.conferenceId);
-              if (conference) {
-                conferenceName = conference.name;
-              }
-            }
-
             // Get persona data
             if (invite.personaId) {
               personaId = invite.personaId;
@@ -176,11 +160,6 @@ Remember: Listen, discover pain, validate, then align to outcomes.
               }
             }
           }
-
-          // Get difficulty from score record
-          if (scoreRecord.difficulty) {
-            difficulty = scoreRecord.difficulty as "easy" | "medium" | "hard";
-          }
         } catch (e) {
           console.warn('Failed to resolve leaderboard metadata:', e);
         }
@@ -190,13 +169,10 @@ Remember: Listen, discover pain, validate, then align to outcomes.
               score: scoreRecord.score,
               grade: scoreRecord.grade,
               createdAt: scoreRecord.completedAt,
-              conferenceId,
-              conferenceName,
               personaId,
               personaDisplayName,
               jobTitle,
-              difficulty,
-              // Trainee snapshot from score record (Phase H1)
+              // Trainee snapshot from score record
               traineeId: scoreRecord.traineeId || null,
               traineeNameShort: scoreRecord.traineeNameShort || null,
             });

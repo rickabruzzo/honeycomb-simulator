@@ -1,10 +1,8 @@
 import { randomUUID } from "crypto";
 import { SessionState } from "./storage";
-import { getPersonaById, PERSONAS } from "./personas";
 import { getEnrichment, saveEnrichment } from "./llm/enrichmentStore";
 import { getEnrichmentProvider } from "./llm/provider";
 import type { EnrichmentInput } from "./llm/enrichmentTypes";
-import { getConference, ensureConferencesSeeded } from "./conferenceStore";
 import { getPersona, ensurePersonasSeeded, listPersonas } from "./personaStore";
 import { buildPersonaTitle } from "./formatUtils";
 import { getTrainee, formatTraineeShort, ensureTraineesSeeded } from "./traineeStore";
@@ -91,13 +89,9 @@ function generateOpeningLine(attendeeProfile: string): string {
 }
 
 export interface CreateSessionInput {
-  personaId?: string;
-  conferenceId?: string;
-  conferenceContext?: string;
+  personaId: string;
   attendeeProfile?: string;
-  difficulty?: "easy" | "medium" | "hard";
-  // Snapshot fields (Phase H1)
-  conferenceName?: string;
+  // Snapshot fields
   personaDisplayName?: string;
   traineeId?: string;
   traineeNameShort?: string;
@@ -111,22 +105,17 @@ export interface CreateSessionResult {
 }
 
 /**
- * Shared helper to create a new session from kickoff data
- * Note: conferenceContext, attendeeProfile, and difficulty must be provided
- * (persona lookup should be done by the caller if needed)
+ * Create a new session from persona
  */
 export function createSession(input: CreateSessionInput): CreateSessionResult {
-  const conferenceContext = input.conferenceContext;
   const attendeeProfile = input.attendeeProfile;
-  const difficulty = input.difficulty;
   const personaId = input.personaId;
 
   // Validate required fields
-  if (!conferenceContext?.trim() || !attendeeProfile?.trim() || !difficulty) {
+  if (!attendeeProfile?.trim()) {
     return {
       session: null as any,
-      error:
-        "Missing required fields: conferenceContext, attendeeProfile, and difficulty are required.",
+      error: "Missing required field: attendeeProfile is required.",
     };
   }
 
@@ -137,7 +126,7 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
   const openingLine = generateOpeningLine(attendeeProfile);
 
   // Generate deterministic outcome seed for persona-aware variance
-  const outcomeSeed = `${sessionId}:${input.personaId || 'unknown'}:${input.conferenceId || 'unknown'}`;
+  const outcomeSeed = `${sessionId}:${personaId}`;
 
   const session: SessionState = {
     id: sessionId,
@@ -147,7 +136,7 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
       {
         id: randomUUID(),
         type: "system",
-        text: `Session started at ${conferenceContext}. Current state: ICEBREAKER`,
+        text: `Session started. Current state: ICEBREAKER`,
         timestamp: now,
       },
       {
@@ -159,13 +148,8 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
     ],
     violations: [],
     kickoff: {
-      conferenceContext,
       attendeeProfile,
-      difficulty,
       personaId,
-      // Snapshot fields (Phase H1)
-      conferenceId: input.conferenceId,
-      conferenceName: input.conferenceName,
       personaDisplayName: input.personaDisplayName,
       traineeId: input.traineeId,
       traineeNameShort: input.traineeNameShort,
@@ -179,51 +163,27 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
 }
 
 /**
- * Async wrapper that includes enrichment generation if conferenceId and personaId are available
- * Phase H1: Also resolves display names for snapshot if not already provided
+ * Async wrapper that resolves persona data and enrichment
  */
 export async function createSessionWithEnrichment(
   input: CreateSessionInput
 ): Promise<CreateSessionResult> {
   // Ensure all stores are seeded (critical for in-memory dev mode with Turbopack)
   await Promise.all([
-    ensureConferencesSeeded(),
     ensurePersonasSeeded(),
     ensureTraineesSeeded(),
   ]);
 
   // Resolve kickoff data and display names
-  let conferenceContext = input.conferenceContext;
   let attendeeProfile = input.attendeeProfile;
-  let difficulty = input.difficulty;
-  let conferenceName = input.conferenceName;
   let personaDisplayName = input.personaDisplayName;
   let traineeNameShort = input.traineeNameShort;
 
   try {
-    // Resolve conference data
-    let conference = null;
-    if (input.conferenceId) {
-      conference = await getConference(input.conferenceId);
-      if (conference) {
-        if (!conferenceName) {
-          conferenceName = conference.name;
-        }
-        if (!conferenceContext) {
-          // Build conferenceContext from conference metadata
-          conferenceContext = `Conference: ${conference.name}
-Themes: ${conference.themes.join(", ")}
-Seniority Mix: ${conference.seniorityMix}
-Observability Maturity: ${conference.observabilityMaturity}`;
-        }
-      }
-    }
-
-    // If personaId provided, load preset data from persona store
+    // Load persona data
     if (input.personaId) {
       const persona = await getPersona(input.personaId);
       if (!persona) {
-        // Defensive: log available persona IDs for debugging
         const available = await listPersonas(false);
         const availableIds = available.map((p) => p.id);
         console.error(
@@ -243,14 +203,6 @@ Modifiers: ${persona.modifiers.join("; ")}
 Emotional posture: ${persona.emotionalPosture}
 Tooling bias: ${persona.toolingBias}
 OpenTelemetry familiarity: ${persona.otelFamiliarity}`;
-      }
-
-      // Set default difficulty if not provided (based on persona familiarity)
-      if (!difficulty) {
-        // Map familiarity to difficulty
-        if (persona.otelFamiliarity === "never") difficulty = "easy";
-        else if (persona.otelFamiliarity === "aware" || persona.otelFamiliarity === "considering") difficulty = "medium";
-        else difficulty = "hard";
       }
 
       // Build display name
@@ -281,10 +233,7 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`;
   // Create the base session with resolved data
   const result = createSession({
     ...input,
-    conferenceContext,
     attendeeProfile,
-    difficulty,
-    conferenceName,
     personaDisplayName,
     traineeNameShort,
   });
@@ -293,20 +242,22 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`;
     return result;
   }
 
-  // Try to add enrichment if we have the IDs
-  if (input.conferenceId && input.personaId) {
+  // Try to add enrichment if we have personaId
+  if (input.personaId && !input.skipEnrichmentGeneration) {
     try {
-      // Check cache first
-      let enrichment = await getEnrichment(input.conferenceId, input.personaId);
+      // For now, enrichment is persona-only (no conference)
+      // Check cache first with a synthetic key
+      const cacheKey = `persona:${input.personaId}`;
+      let enrichment = await getEnrichment(cacheKey, input.personaId);
 
-      // Only generate if not cached AND not skipping generation
-      if (!enrichment && !input.skipEnrichmentGeneration && input.conferenceContext && input.attendeeProfile) {
+      // Only generate if not cached
+      if (!enrichment && attendeeProfile) {
         const provider = getEnrichmentProvider();
         const enrichmentInput: EnrichmentInput = {
-          conferenceId: input.conferenceId,
+          conferenceId: cacheKey, // Use synthetic key for compatibility
           personaId: input.personaId,
-          conferenceContext: input.conferenceContext,
-          attendeeProfile: input.attendeeProfile,
+          conferenceContext: "Tech conference booth",
+          attendeeProfile: attendeeProfile,
         };
 
         enrichment = await provider.enrich(enrichmentInput);

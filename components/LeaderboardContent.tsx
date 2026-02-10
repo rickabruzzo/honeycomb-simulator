@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Trophy, ExternalLink, Play } from "lucide-react";
 import type { LeaderboardEntry } from "@/lib/leaderboardStore";
-import type { Conference, Persona } from "@/lib/scenarioTypes";
+import type { Persona } from "@/lib/scenarioTypes";
 import type { Trainee } from "@/lib/traineeStore";
 import { formatTraineeShort } from "@/lib/traineeStore";
 import { BrandButton } from "@/components/ui/BrandButton";
@@ -40,7 +40,6 @@ function GradeBadge({ grade }: { grade: string }) {
 
 export function LeaderboardContent() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [conferences, setConferences] = useState<Conference[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,24 +52,17 @@ export function LeaderboardContent() {
 
   // Filter state
   const [range, setRange] = useState<RangeOption>("7d"); // Default to 7 days
-  const [conferenceFilter, setConferenceFilter] = useState<string>("");
   const [personaFilter, setPersonaFilter] = useState<string>("");
   const [traineeFilter, setTraineeFilter] = useState<string>("");
 
-  // Load conferences, personas, and trainees for filters
+  // Load personas and trainees for filters
   useEffect(() => {
     async function loadFilterData() {
       try {
-        const [confRes, personaRes, traineeRes] = await Promise.all([
-          fetch("/api/conferences"),
+        const [personaRes, traineeRes] = await Promise.all([
           fetch("/api/personas"),
           fetch("/api/trainees"),
         ]);
-
-        if (confRes.ok) {
-          const confData = await confRes.json();
-          setConferences(confData.conferences || []);
-        }
 
         if (personaRes.ok) {
           const personaData = await personaRes.json();
@@ -95,9 +87,6 @@ export function LeaderboardContent() {
       try {
         const params = new URLSearchParams();
         params.set("range", range);
-        if (conferenceFilter) {
-          params.set("conferenceId", conferenceFilter);
-        }
         if (personaFilter) {
           params.set("personaId", personaFilter);
         }
@@ -121,13 +110,13 @@ export function LeaderboardContent() {
       }
     }
     loadLeaderboard();
-  }, [range, conferenceFilter, personaFilter, traineeFilter]);
+  }, [range, personaFilter, traineeFilter]);
 
   return (
     <>
       {/* Filters */}
       <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs text-gray-400 mb-1">Time Range</label>
             <select
@@ -139,22 +128,6 @@ export function LeaderboardContent() {
               <option value="7d">Last 7 days</option>
               <option value="30d">Last 30 days</option>
               <option value="all">All time</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Conference</label>
-            <select
-              value={conferenceFilter}
-              onChange={(e) => setConferenceFilter(e.target.value)}
-              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-            >
-              <option value="">All conferences</option>
-              {conferences.map((conf) => (
-                <option key={conf.id} value={conf.id}>
-                  {conf.name}
-                </option>
-              ))}
             </select>
           </div>
 
@@ -238,9 +211,6 @@ export function LeaderboardContent() {
                     Trainee
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                    Conference
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Persona
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
@@ -273,9 +243,6 @@ export function LeaderboardContent() {
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-300">
                         {entry.traineeNameShort || "—"}
-                      </td>
-                      <td className="px-3 py-3 text-sm text-gray-300">
-                        {entry.conferenceName || "—"}
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-300">
                         <div className="max-w-[180px] truncate" title={entry.personaDisplayName || undefined}>

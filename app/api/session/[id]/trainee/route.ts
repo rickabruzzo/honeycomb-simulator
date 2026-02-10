@@ -21,8 +21,6 @@ export async function GET(req: Request, ctx: any) {
 
   // Redact attendeeProfile from kickoff
   const redactedKickoff = {
-    conferenceContext: session.kickoff.conferenceContext,
-    difficulty: session.kickoff.difficulty,
     personaId: session.kickoff.personaId,
     // attendeeProfile is intentionally omitted
   };

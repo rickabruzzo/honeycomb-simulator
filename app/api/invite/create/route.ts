@@ -6,7 +6,6 @@ import { saveInvite } from "@/lib/invites";
 import { addInviteToIndex } from "@/lib/inviteIndex";
 import { getTrainee, ensureTraineesSeeded } from "@/lib/traineeStore";
 import { ensurePersonasSeeded } from "@/lib/personaStore";
-import { ensureConferencesSeeded } from "@/lib/conferenceStore";
 import { getEnrichment } from "@/lib/llm/enrichmentStore";
 import { withSpan, withChildSpan } from "@/lib/telemetry";
 import { useKv } from "@/lib/kvConfig";
@@ -26,7 +25,7 @@ export async function POST(request: NextRequest) {
       try {
         const body = await request.json();
 
-        // Validate traineeId is present
+        // Validate required fields
         if (!body.traineeId || typeof body.traineeId !== "string") {
           span.setAttribute("status", 400);
           return NextResponse.json(
@@ -35,15 +34,19 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        span.setAttribute("conference_id", body.conferenceId || "none");
-        span.setAttribute("persona_id", body.personaId || "none");
+        if (!body.personaId || typeof body.personaId !== "string") {
+          span.setAttribute("status", 400);
+          return NextResponse.json(
+            { error: "personaId is required" },
+            { status: 400 }
+          );
+        }
+
+        span.setAttribute("persona_id", body.personaId);
         span.setAttribute("trainee_id", body.traineeId);
-        span.setAttribute("difficulty", body.difficulty || "auto");
 
         // Ensure all stores are seeded (critical for in-memory dev mode)
-        // In production with KV, these are no-ops after first call
         await Promise.all([
-          ensureConferencesSeeded(),
           ensurePersonasSeeded(),
           ensureTraineesSeeded(),
         ]);
@@ -58,12 +61,13 @@ export async function POST(request: NextRequest) {
             childSpan.setAttribute("dep_type", "kv");
             childSpan.setAttribute("operation", "get");
 
-            if (!body.conferenceId || !body.personaId) {
+            if (!body.personaId) {
               childSpan.setAttribute("cache_hit", false);
               return null;
             }
 
-            const result = await getEnrichment(body.conferenceId, body.personaId);
+            const cacheKey = `persona:${body.personaId}`;
+            const result = await getEnrichment(cacheKey, body.personaId);
             childSpan.setAttribute("cache_hit", !!result);
             kvPipelineCalls++;
             return result;
@@ -92,10 +96,7 @@ export async function POST(request: NextRequest) {
         // skipEnrichmentGeneration=true means only check cache, don't generate
         const result = await createSessionWithEnrichment({
           personaId: body.personaId,
-          conferenceId: body.conferenceId,
-          conferenceContext: body.conferenceContext,
           attendeeProfile: body.attendeeProfile,
-          difficulty: body.difficulty,
           traineeId: body.traineeId,
           skipEnrichmentGeneration: true, // KEY: Don't block on OpenAI
         });
@@ -115,13 +116,11 @@ export async function POST(request: NextRequest) {
           token,
           sessionId: session.id,
           createdAt,
-          conferenceId: body.conferenceId,
           personaId: body.personaId,
           traineeId: body.traineeId,
           traineeName: body.traineeName || `${trainee.firstName} ${trainee.lastName}`,
           createdBy: body.createdBy,
           // Snapshot fields from session
-          conferenceName: session.kickoff.conferenceName,
           personaDisplayName: session.kickoff.personaDisplayName,
           traineeNameShort: session.kickoff.traineeNameShort,
         };
@@ -158,7 +157,7 @@ export async function POST(request: NextRequest) {
         span.setAttribute("invite_create.kv_pipeline_calls", kvPipelineCalls);
 
         // Trigger background enrichment if not cached
-        if (enrichmentStatus === "pending" && body.conferenceId && body.personaId) {
+        if (enrichmentStatus === "pending" && body.personaId) {
           // Fire-and-forget request to ensure endpoint
           const enrichmentUrl = new URL(
             "/api/enrichment/ensure",
@@ -170,9 +169,9 @@ export async function POST(request: NextRequest) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              conferenceId: body.conferenceId,
+              conferenceId: `persona:${body.personaId}`, // Synthetic key
               personaId: body.personaId,
-              conferenceContext: session.kickoff.conferenceContext,
+              conferenceContext: "Tech conference booth",
               attendeeProfile: session.kickoff.attendeeProfile,
             }),
           }).catch((err) => {

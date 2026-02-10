@@ -137,11 +137,11 @@ export async function POST(
         // Save session
         await saveSession(session);
 
-        // TODO: If applyToScenario is true, update the persona/conference notes
-        // This requires conference/persona update logic which can be added later
+        // TODO: If applyToScenario is true, update the persona notes
+        // This requires persona update logic which can be added later
         if (session.trainerFeedback.applyToScenario) {
           console.log(
-            `[Feedback] TODO: Apply guidance to scenario (conference: ${session.kickoff.conferenceId}, persona: ${session.kickoff.personaId})`
+            `[Feedback] TODO: Apply guidance to scenario (persona: ${session.kickoff.personaId})`
           );
           span.setAttribute("scenario_update_pending", true);
         }

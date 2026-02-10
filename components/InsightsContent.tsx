@@ -345,11 +345,11 @@ export function InsightsContent() {
                   <tbody className="divide-y divide-white/5">
                     {insights.scenarioSummaries.map((scenario, idx) => (
                       <tr
-                        key={`${scenario.conferenceId}-${scenario.personaId}-${idx}`}
+                        key={`${scenario.personaId}-${idx}`}
                         className="hover:bg-white/5 transition"
                       >
                         <td className="px-3 py-3 text-sm text-gray-300">
-                          {scenario.conferenceName}
+                          {scenario.personaDisplayName}
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-300">
                           <div

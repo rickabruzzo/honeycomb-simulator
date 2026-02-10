@@ -30,8 +30,6 @@ export interface ScoreRecord {
   token: string;
   sessionId: string;
   personaId?: string;
-  difficulty?: string;
-  conferenceContext?: string;
   score: number; // 0-100
   grade: "A" | "B" | "C" | "D" | "F";
   breakdown: {
@@ -46,9 +44,7 @@ export interface ScoreRecord {
   violations: string[];
   createdAt: string;
   completedAt: string;
-  // Snapshot fields (Phase H1)
-  conferenceId?: string;
-  conferenceName?: string;
+  // Snapshot fields
   personaDisplayName?: string;
   traineeId?: string;
   traineeNameShort?: string;
@@ -176,8 +172,7 @@ export function scoreSession(
 
   // Check turn count efficiency
   const traineeMessageCount = traineeMessages.length;
-  const turnLimits = { easy: 10, medium: 12, hard: 14 };
-  const limit = turnLimits[session.kickoff.difficulty as keyof typeof turnLimits] || turnLimits.medium;
+  const limit = 12; // Standard turn limit
   const isEfficient = traineeMessageCount <= limit;
 
   // --- CUSTOMER IMPACT FOCUS (0-5 bonus) ---
@@ -322,8 +317,6 @@ export function scoreSession(
     token,
     sessionId: session.id,
     personaId: session.kickoff.personaId,
-    difficulty: session.kickoff.difficulty,
-    conferenceContext: session.kickoff.conferenceContext,
     score,
     grade,
     breakdown: {
@@ -338,9 +331,7 @@ export function scoreSession(
     violations: session.violations,
     createdAt: session.startTime,
     completedAt: now,
-    // Snapshot fields from session (Phase H1)
-    conferenceId: session.kickoff.conferenceId,
-    conferenceName: session.kickoff.conferenceName,
+    // Snapshot fields from session
     personaDisplayName: session.kickoff.personaDisplayName,
     traineeId: session.kickoff.traineeId,
     traineeNameShort: session.kickoff.traineeNameShort,

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Save, Archive, ExternalLink } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
 import { ChipInput } from "@/components/ui/ChipInput";
-import type { Conference, Persona } from "@/lib/scenarioTypes";
+import type { Persona } from "@/lib/scenarioTypes";
 import type { Trainee } from "@/lib/traineeStore";
 import { formatTraineeFull } from "@/lib/traineeStore";
 import { toSentenceCase, buildPersonaTitle } from "@/lib/formatUtils";
@@ -79,24 +79,6 @@ function generatePersonaSubtitle(
 export default function ScenarioEditorPage() {
   const router = useRouter();
 
-  // Conferences state
-  const [conferences, setConferences] = useState<Conference[]>([]);
-  const [selectedConference, setSelectedConference] = useState<Conference | null>(null);
-  const [conferenceForm, setConferenceForm] = useState<{
-    id?: string;
-    name: string;
-    themes: string[];
-    seniorityMix: string;
-    observabilityMaturity: "Low" | "Medium" | "High";
-    urls: string[];
-  }>({
-    name: "",
-    themes: [],
-    seniorityMix: "",
-    observabilityMaturity: "Medium",
-    urls: [],
-  });
-
   // Personas state
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
@@ -147,7 +129,6 @@ export default function ScenarioEditorPage() {
         const res = await fetch("/api/bootstrap");
         if (res.ok) {
           const data = await res.json();
-          setConferences(data.conferences || []);
           setPersonas(data.personas || []);
           setTrainees(data.trainees || []);
           console.log(`[Editor] Loaded bootstrap data (${data._meta?.loadTimeMs}ms)`);
@@ -173,16 +154,6 @@ export default function ScenarioEditorPage() {
       setPersonaForm((p) => ({ ...p, name: generatedName }));
     }
   }, [personaForm.personaType, personaForm.modifiers, personaForm.toolingBias]);
-
-  const loadConferences = async () => {
-    try {
-      const res = await fetch("/api/conferences");
-      const data = await res.json();
-      setConferences(data.conferences || []);
-    } catch (e) {
-      console.error("Failed to load conferences:", e);
-    }
-  };
 
   const loadPersonas = async () => {
     try {
@@ -210,25 +181,12 @@ export default function ScenarioEditorPage() {
       const res = await fetch("/api/bootstrap");
       if (res.ok) {
         const data = await res.json();
-        setConferences(data.conferences || []);
         setPersonas(data.personas || []);
         setTrainees(data.trainees || []);
       }
     } catch (e) {
       console.error("Failed to reload data:", e);
     }
-  };
-
-  const handleSelectConference = (conf: Conference) => {
-    setSelectedConference(conf);
-    setConferenceForm({
-      id: conf.id,
-      name: conf.name,
-      themes: conf.themes,
-      seniorityMix: conf.seniorityMix,
-      observabilityMaturity: conf.observabilityMaturity as "Low" | "Medium" | "High",
-      urls: conf.sources?.urls || [],
-    });
   };
 
   const handleSelectPersona = (persona: Persona) => {
@@ -247,17 +205,6 @@ export default function ScenarioEditorPage() {
     });
   };
 
-  const handleNewConference = () => {
-    setSelectedConference(null);
-    setConferenceForm({
-      name: "",
-      themes: [],
-      seniorityMix: "",
-      observabilityMaturity: "Medium",
-      urls: [],
-    });
-  };
-
   const handleNewPersona = () => {
     setSelectedPersona(null);
     setPersonaForm({
@@ -272,63 +219,6 @@ export default function ScenarioEditorPage() {
       behaviorBrief: "",
     });
   };
-
-  const saveConferenceWithId = async (archiveExistingId?: string) => {
-    if (!conferenceForm.name.trim()) {
-      alert("Conference name is required");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const response = await fetch("/api/conferences", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: conferenceForm.id,
-          name: conferenceForm.name,
-          themes: conferenceForm.themes,
-          seniorityMix: conferenceForm.seniorityMix,
-          observabilityMaturity: conferenceForm.observabilityMaturity,
-          sources: conferenceForm.urls.length > 0 ? { urls: conferenceForm.urls } : undefined,
-          archiveExistingId: archiveExistingId,
-        }),
-      });
-
-      // Handle overwrite conflict
-      if (response.status === 409) {
-        const data = await response.json();
-        const shouldOverwrite = confirm(
-          `This will overwrite an existing Conference. Continue?`
-        );
-
-        if (shouldOverwrite) {
-          // Archive existing and create new
-          setSaving(false);
-          return saveConferenceWithId(data.existingId);
-        } else {
-          setSaving(false);
-          alert("Save cancelled. No changes made.");
-          return;
-        }
-      }
-
-      if (!response.ok) throw new Error("Failed to save conference");
-
-      const data = await response.json();
-      await reloadBootstrap();
-      setSelectedConference(data.conference);
-      setSuccessMessage(`Conference "${data.conference.name}" saved successfully!`);
-      setTimeout(() => setSuccessMessage(""), 3000);
-    } catch (error) {
-      console.error("Failed to save conference:", error);
-      alert("Failed to save conference");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSaveConference = () => saveConferenceWithId();
 
   const savePersonaWithArchive = async (archiveExistingId?: string): Promise<void> => {
     if (!personaForm.personaType.trim()) {
@@ -399,30 +289,6 @@ export default function ScenarioEditorPage() {
   };
 
   const handleSavePersona = () => savePersonaWithArchive();
-
-  const handleArchiveConference = async () => {
-    if (!selectedConference) return;
-
-    if (!confirm(`Archive conference "${selectedConference.name}"? It will be hidden from lists.`)) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/conferences/${selectedConference.id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) throw new Error("Failed to archive conference");
-
-      await reloadBootstrap();
-      handleNewConference();
-      setSuccessMessage("Conference archived successfully");
-      setTimeout(() => setSuccessMessage(""), 3000);
-    } catch (error) {
-      console.error("Failed to archive conference:", error);
-      alert("Failed to archive conference");
-    }
-  };
 
   const handleArchivePersona = async () => {
     if (!selectedPersona) return;
@@ -528,7 +394,7 @@ export default function ScenarioEditorPage() {
       <div>
         <h1 className="text-2xl font-semibold">Scenario Editor</h1>
         <p className="text-white/70 text-sm">
-          Create and manage conferences, personas, and trainees for training scenarios
+          Create and manage personas and trainees for training scenarios
         </p>
       </div>
 
@@ -536,14 +402,10 @@ export default function ScenarioEditorPage() {
       {successMessage && (
         <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/15 p-4 text-emerald-200">
           {successMessage}
-          {(selectedConference || selectedPersona) && (
+          {selectedPersona && (
             <button
               onClick={() => {
-                if (selectedConference) {
-                  router.push(`/?conferenceId=${selectedConference.id}`);
-                } else if (selectedPersona) {
-                  router.push(`/?personaId=${selectedPersona.id}`);
-                }
+                router.push(`/?personaId=${selectedPersona.id}`);
               }}
               className="ml-4 inline-flex items-center gap-1 text-sm underline hover:no-underline"
             >
@@ -554,124 +416,7 @@ export default function ScenarioEditorPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Conferences Section */}
-        <div className="space-y-4">
-          <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Conferences</h2>
-              <BrandButton onClick={handleNewConference} variant="lime" className="text-sm">
-                <Plus size={16} /> Create New
-              </BrandButton>
-            </div>
-
-            {/* Conference List */}
-            <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
-              {conferences.map((conf) => (
-                <button
-                  key={conf.id}
-                  onClick={() => handleSelectConference(conf)}
-                  className={`w-full text-left px-3 py-2 rounded transition ${
-                    selectedConference?.id === conf.id
-                      ? "bg-[#51368D] text-white"
-                      : "bg-white/5 text-gray-300 hover:bg-white/10"
-                  }`}
-                >
-                  <div className="font-medium">{conf.name}</div>
-                  <div className="text-xs opacity-70">{conf.themes.join(", ")}</div>
-                </button>
-              ))}
-            </div>
-
-            {/* Conference Form */}
-            <div className="space-y-3 border-t border-white/10 pt-4">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Conference Name *</label>
-                <input
-                  value={conferenceForm.name}
-                  onChange={(e) => setConferenceForm((p) => ({ ...p, name: e.target.value }))}
-                  placeholder="e.g., KubeCon 2024"
-                  className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Themes</label>
-                <ChipInput
-                  value={conferenceForm.themes}
-                  onChange={(themes) => setConferenceForm((p) => ({ ...p, themes }))}
-                  placeholder="Type themes and press Enter"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Seniority Mix</label>
-                <input
-                  value={conferenceForm.seniorityMix}
-                  onChange={(e) => setConferenceForm((p) => ({ ...p, seniorityMix: e.target.value }))}
-                  placeholder="e.g., IC-heavy with platform leads"
-                  className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Observability Maturity</label>
-                <select
-                  value={conferenceForm.observabilityMaturity}
-                  onChange={(e) =>
-                    setConferenceForm((p) => ({
-                      ...p,
-                      observabilityMaturity: e.target.value as "Low" | "Medium" | "High",
-                    }))
-                  }
-                  className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                >
-                  <option value="Low">Low</option>
-                  <option value="Medium">Medium</option>
-                  <option value="High">High</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Context content</label>
-                <ChipInput
-                  value={conferenceForm.urls}
-                  onChange={(urls) => setConferenceForm((p) => ({ ...p, urls }))}
-                  placeholder="Add context URLs (website, prospectus, agenda, etc.)"
-                />
-              </div>
-
-              {/* Display Name Preview */}
-              {conferenceForm.name && (
-                <div className="border-t border-white/10 pt-3 mt-3">
-                  <label className="block text-xs text-gray-500 mb-1">Display name preview</label>
-                  <div className="text-sm text-gray-300 font-medium">{conferenceForm.name}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {conferenceForm.themes.length > 0 && `${conferenceForm.themes.map(toSentenceCase).join(", ")} • `}
-                    {toSentenceCase(conferenceForm.observabilityMaturity)} maturity
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-2">
-                <BrandButton
-                  onClick={handleSaveConference}
-                  disabled={saving}
-                  variant="lime"
-                  className="flex-1"
-                >
-                  <Save size={16} /> {saving ? "Saving..." : "Save"}
-                </BrandButton>
-                {selectedConference && (
-                  <BrandButton onClick={handleArchiveConference} variant="neutral">
-                    <Archive size={16} /> Archive
-                  </BrandButton>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Personas Section */}
         <div className="space-y-4">
           <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">

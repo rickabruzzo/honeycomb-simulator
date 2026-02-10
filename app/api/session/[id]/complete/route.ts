@@ -113,12 +113,9 @@ export async function POST(
               score: scoreRecord.score,
               grade: scoreRecord.grade,
               createdAt: scoreRecord.completedAt,
-              conferenceId: scoreRecord.conferenceId || null,
-              conferenceName: scoreRecord.conferenceName || null,
               personaId: scoreRecord.personaId || null,
               personaDisplayName: scoreRecord.personaDisplayName || null,
               jobTitle: null,
-              difficulty: (scoreRecord.difficulty as "easy" | "medium" | "hard") || null,
               traineeId: scoreRecord.traineeId || null,
               traineeNameShort: scoreRecord.traineeNameShort || null,
             });

@@ -50,12 +50,6 @@ export interface PromptBundle {
  * time and includes scenario-specific details and dynamic state.
  */
 export interface PromptRuntimeContext {
-  /** Conference details (name, themes) */
-  conference: {
-    name: string;
-    themes: string;
-  };
-
   /** Persona details (title, modifiers, emotional posture, etc.) */
   persona: {
     title: string;
@@ -64,9 +58,6 @@ export interface PromptRuntimeContext {
     toolingBias: string;
     otelFamiliarity: string;
   };
-
-  /** Difficulty level (easy, medium, hard) */
-  difficulty: string;
 
   /** Optional OpenAI enrichment result (adds contextual guidance) */
   enrichment?: {

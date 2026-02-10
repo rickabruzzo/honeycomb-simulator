@@ -12,8 +12,6 @@ export interface TraineeSummary {
 }
 
 export interface ScenarioSummary {
-  conferenceId: string;
-  conferenceName: string;
   personaId: string;
   personaDisplayName: string;
   attempts: number;
@@ -87,11 +85,11 @@ export function computeInsights(scores: ScoreRecord[]): InsightsData {
   // Sort trainee summaries by sessions completed (desc)
   traineeSummaries.sort((a, b) => b.sessionsCompleted - a.sessionsCompleted);
 
-  // Group scores by conference+persona
+  // Group scores by persona
   const scenarioMap = new Map<string, ScoreRecord[]>();
   for (const score of scores) {
-    if (!score.conferenceId || !score.personaId) continue; // Skip incomplete data
-    const key = `${score.conferenceId}::${score.personaId}`;
+    if (!score.personaId) continue; // Skip incomplete data
+    const key = score.personaId;
     const existing = scenarioMap.get(key) ?? [];
     existing.push(score);
     scenarioMap.set(key, existing);
@@ -108,8 +106,6 @@ export function computeInsights(scores: ScoreRecord[]): InsightsData {
     const bestScore = Math.max(...scores);
 
     scenarioSummaries.push({
-      conferenceId: scenarioScores[0].conferenceId ?? "",
-      conferenceName: scenarioScores[0].conferenceName ?? "—",
       personaId: scenarioScores[0].personaId ?? "",
       personaDisplayName: scenarioScores[0].personaDisplayName ?? "—",
       attempts,

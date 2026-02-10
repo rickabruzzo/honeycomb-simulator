@@ -13,14 +13,10 @@ export interface SessionState {
   }>;
   violations: string[];
   kickoff: {
-    conferenceContext: string;
     attendeeProfile: string;
-    difficulty: string;
     personaId?: string;
     enrichment?: EnrichmentResult;
     // Snapshot fields (Phase H1)
-    conferenceId?: string;
-    conferenceName?: string;
     personaDisplayName?: string;
     traineeId?: string;
     traineeNameShort?: string;

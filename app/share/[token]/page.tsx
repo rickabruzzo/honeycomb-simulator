@@ -10,8 +10,6 @@ interface ScoreRecord {
   token: string;
   sessionId: string;
   personaId?: string;
-  difficulty?: string;
-  conferenceContext?: string;
   score: number;
   grade: "A" | "B" | "C" | "D" | "F";
   breakdown: {
@@ -120,13 +118,8 @@ export default function ShareScorePage() {
         <div className="text-center">
           <h1 className="text-3xl font-bold mb-2">Session Scorecard</h1>
           <p className="text-gray-400 text-sm">
-            {scoreRecord.conferenceContext || "Practice Session"}
+            Practice Session
           </p>
-          {scoreRecord.difficulty && (
-            <p className="text-gray-500 text-xs mt-1">
-              Difficulty: {scoreRecord.difficulty}
-            </p>
-          )}
         </div>
 
         {/* Score Card */}

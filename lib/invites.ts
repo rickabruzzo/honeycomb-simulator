@@ -4,15 +4,13 @@ export interface InviteRecord {
   token: string;
   sessionId: string;
   createdAt: string;
-  conferenceId?: string; // Added for admin tracker
-  personaId?: string; // Added for admin tracker
-  traineeId?: string; // Trainee who will use this invite
-  traineeName?: string; // Full trainee name for display
+  personaId?: string;
+  traineeId?: string;
+  traineeName?: string;
   revoked?: boolean;
   expiresAt?: string;
   createdBy?: string;
-  // Snapshot fields for session initialization (Phase H1)
-  conferenceName?: string;
+  // Snapshot fields for session initialization
   personaDisplayName?: string;
   traineeNameShort?: string;
 }

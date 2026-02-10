@@ -6,13 +6,10 @@ export type LeaderboardEntry = {
   grade: string;
   createdAt: string;
   // Segmentation metadata
-  conferenceId: string | null;
-  conferenceName: string | null;
   personaId: string | null;
   personaDisplayName: string | null;
   jobTitle: string | null;
-  difficulty: "easy" | "medium" | "hard" | null;
-  // Trainee snapshot (Phase H1)
+  // Trainee snapshot
   traineeId?: string | null;
   traineeNameShort?: string | null;
 };
