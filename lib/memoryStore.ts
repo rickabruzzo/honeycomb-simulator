@@ -15,6 +15,7 @@ import type { Trainee } from "./traineeStore";
 import type { SessionState } from "./storage";
 import type { InviteRecord } from "./invites";
 import type { EnrichmentResult } from "./llm/enrichmentTypes";
+import type { PromptBundle } from "./llm/promptBundleTypes";
 
 /**
  * Global memory store structure
@@ -33,6 +34,9 @@ export interface GlobalMemoryStore {
   meta: {
     bootstrapCache?: any;
     bootstrapCacheAt?: number;
+    promptBundles?: Map<string, PromptBundle>;
+    promptBundleIndex?: string[];
+    activeBundleId?: string;
   };
 }
 

@@ -211,6 +211,23 @@ export default function ShareScorePage() {
           </div>
         )}
 
+        {/* Guardrail Violations */}
+        {scoreRecord.violations && scoreRecord.violations.length > 0 && (
+          <div className="rounded-lg border border-red-500/30 bg-red-900/10 p-6 shadow-sm">
+            <h2 className="text-xl font-semibold mb-4 text-red-400 flex items-center gap-2">
+              <AlertCircle size={20} /> Guardrail Violations
+            </h2>
+            <ul className="space-y-2">
+              {scoreRecord.violations.map((violation, idx) => (
+                <li key={idx} className="text-gray-300 flex items-start gap-2">
+                  <span className="text-red-400 mt-1">•</span>
+                  <span>{violation}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex items-center justify-center gap-4 flex-wrap">
           {scoreRecord.inviteToken && (

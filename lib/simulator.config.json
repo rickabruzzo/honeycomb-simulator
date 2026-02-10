@@ -53,7 +53,14 @@
     },
     "OUTCOME": {
       "description": "Conversation conclusion.",
-      "possible_outcomes": ["DEMO_READY", "DEFERRED_INTEREST", "POLITE_EXIT"]
+      "possible_outcomes": ["DEMO_READY", "SELF_SERVICE_READY", "MQL_READY", "DEFERRED_INTEREST", "POLITE_EXIT"],
+      "outcome_descriptions": {
+        "DEMO_READY": "Attendee is ready for a live demo or deep-dive conversation",
+        "SELF_SERVICE_READY": "Attendee prefers self-guided exploration (free tier, docs, async learning)",
+        "MQL_READY": "Attendee requests follow-up with sales/leadership, badge scan, or stakeholder conversation (HOT LEAD)",
+        "DEFERRED_INTEREST": "Attendee is interested but timing/constraints prevent immediate action",
+        "POLITE_EXIT": "Attendee disengages due to poor fit, lack of interest, or conversation missteps"
+      }
     }
   },
   "conversation_rules": {
@@ -61,7 +68,102 @@
     "state_controlled_by_app": true,
     "reveal_information_only_when_earned": true,
     "do_not_volunteer_pain_unprompted": true,
-    "do_not_disclose_persona_or_otel_level": true
+    "do_not_disclose_persona_or_otel_level": true,
+    "turn_limits": {
+      "easy": 10,
+      "medium": 12,
+      "hard": 14
+    },
+    "turn_limit_behavior": "Force convergence toward OUTCOME. No reopening discovery. No new exploratory questions."
+  },
+  "self_service_cues": [
+    "We won't be doing tooling RFPs for X months",
+    "I like to explore tools myself",
+    "Is there a free tier or something I can try?",
+    "Can I learn more on my own?",
+    "We're locked into our current vendor for a while",
+    "I prefer to evaluate tools on my own",
+    "Do you have documentation I can review?",
+    "Can I test this out myself?",
+    "Not looking to buy right now",
+    "Just browsing",
+    "No urgency on our end",
+    "send me the docs",
+    "I'll check out the free tier",
+    "postcard",
+    "QR code"
+  ],
+  "deferred_interest_cues": [
+    "on our radar",
+    "later this year",
+    "next year",
+    "after we stabilize",
+    "once we finish migration",
+    "not ready yet",
+    "longer-term",
+    "we'll revisit",
+    "down the road",
+    "future consideration",
+    "keep us in mind",
+    "maybe next quarter",
+    "after Q",
+    "not right now but",
+    "timing isn't right",
+    "when things settle",
+    "premature for us",
+    "too early",
+    "not urgent"
+  ],
+  "mql_cues": [
+    "scan my badge",
+    "can you scan my badge",
+    "please scan my badge"
+  ],
+  "mql_near_term_signals": [
+    "this quarter",
+    "next quarter",
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",
+    "this month",
+    "next month",
+    "soon",
+    "urgent",
+    "quickly",
+    "right away",
+    "as soon as possible",
+    "ASAP",
+    "next week",
+    "in a few weeks",
+    "within",
+    "by",
+    "before",
+    "after the conference",
+    "set up time",
+    "schedule a call",
+    "let's talk pricing",
+    "talk about cost",
+    "need pricing info",
+    "what's the cost",
+    "talk to sales",
+    "connect with sales",
+    "send someone to follow up"
+  ],
+  "stakeholder_types": {
+    "executive": {
+      "titles": ["CTO", "VP", "Director", "Chief", "Head of", "Technical Buyer", "Buyer"],
+      "priorities": ["budget", "cost savings", "risk reduction", "ROI", "strategic alignment"],
+      "anti_patterns": ["technical demos", "deep dives", "implementation details"],
+      "preferred_outcomes": ["MQL_READY", "follow-up with sales/leadership"],
+      "guidance": "Executives rarely want technical demos. Focus on business value, cost impact, and leadership follow-up."
+    },
+    "ic_without_authority": {
+      "titles": ["Engineer", "Developer", "SRE", "IC", "Senior Engineer", "Staff Engineer"],
+      "signals": ["I don't make the decision", "my manager", "my team lead", "I'll advocate"],
+      "preferred_outcomes": ["MQL_READY", "connect with decision maker"],
+      "guidance": "ICs may love the product but lack authority. Help them advocate internally. Badge scan + manager follow-up is a success."
+    }
   },
   "keyword_restrictions": {
     "banned_product_keywords": [
@@ -103,5 +205,96 @@
     "interrupt": "attendee_disengages",
     "ignore_pain": "polite_exit",
     "over_promise": "trust_loss"
+  },
+  "grading_criteria": {
+    "A_B": {
+      "description": "Demo offered at right time OR self-service offered appropriately OR MQL/badge-scan closed cleanly",
+      "indicators": ["outcome_alignment", "timing", "appropriate_next_step", "stakeholder_awareness"],
+      "mql_specific": "Recognized executive/IC signals early, closed efficiently with follow-up path"
+    },
+    "C": {
+      "description": "Good conversation but inefficient. Over-talking, late close, or missed earlier MQL opportunity",
+      "indicators": ["excessive_turns", "missed_efficiency", "valid_outcome_but_slow", "over_educated_after_mql"]
+    },
+    "D": {
+      "description": "Missed clear exit signals, continued pitching after self-service/MQL cues, or forced demo on executive",
+      "indicators": ["ignored_cues", "forced_demo", "poor_listening", "ignored_mql_signals"]
+    },
+    "F": {
+      "description": "Conversation derailed, persona ignored, or trust broken",
+      "indicators": ["early_pitch", "feature_dump", "guardrail_violations"],
+      "exclusions": [
+        "SELF_SERVICE_READY outcome can never receive F grade",
+        "MQL_READY outcome can never receive F grade"
+      ]
+    },
+    "mql_grading_rules": {
+      "success_criteria": "MQL_READY is always a success outcome, equivalent to or better than DEMO_READY",
+      "grade_lowering": [
+        "Over-educating after MQL cues should lower grade to C",
+        "Forcing demos after MQL cues should lower grade to D",
+        "Ignoring authority boundaries should lower grade"
+      ],
+      "grade_boosting": [
+        "Early recognition of executive priorities boosts to A",
+        "Clean badge scan close boosts to A/B",
+        "Helping IC advocate internally boosts to A/B"
+      ]
+    }
+  },
+  "persona_outcome_bands": {
+    "cto_startup": {
+      "tolerance": 0.10,
+      "weights": {
+        "DEMO_READY": 0.60,
+        "SELF_SERVICE_READY": 0.20,
+        "MQL_READY": 0.10,
+        "DEFERRED_INTEREST": 0.10
+      }
+    },
+    "technical_buyer": {
+      "tolerance": 0.10,
+      "weights": {
+        "DEMO_READY": 0.30,
+        "SELF_SERVICE_READY": 0.20,
+        "MQL_READY": 0.40,
+        "DEFERRED_INTEREST": 0.10
+      }
+    },
+    "director_eng": {
+      "tolerance": 0.10,
+      "weights": {
+        "DEMO_READY": 0.50,
+        "SELF_SERVICE_READY": 0.10,
+        "MQL_READY": 0.20,
+        "DEFERRED_INTEREST": 0.20
+      }
+    },
+    "ic_default": {
+      "tolerance": 0.10,
+      "weights": {
+        "DEMO_READY": 0.70,
+        "SELF_SERVICE_READY": 0.10,
+        "MQL_READY": 0.05,
+        "DEFERRED_INTEREST": 0.15
+      }
+    }
+  },
+  "persona_to_band_key": {
+    "CTO": "cto_startup",
+    "Chief": "cto_startup",
+    "VP": "technical_buyer",
+    "Technical Buyer": "technical_buyer",
+    "Buyer": "technical_buyer",
+    "Director": "director_eng",
+    "Director of Engineering": "director_eng",
+    "Full-Stack Engineer": "ic_default",
+    "SRE": "ic_default",
+    "Platform Engineer": "ic_default",
+    "Engineer": "ic_default",
+    "Developer": "ic_default",
+    "IC": "ic_default",
+    "Staff Engineer": "ic_default",
+    "Senior Engineer": "ic_default"
   }
 }

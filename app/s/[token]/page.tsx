@@ -35,10 +35,42 @@ export default function TraineePracticePage() {
   const [error, setError] = useState<string | null>(null);
   const [conferenceContext, setConferenceContext] = useState("");
   const [violations, setViolations] = useState<string[]>([]);
+  const [endPrompt, setEndPrompt] = useState<{
+    outcome: string;
+    actionLabel: string;
+    actionType: string;
+    tooltip?: string;
+  } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const active = Boolean(sessionId);
+
+  // Parse conference context into structured fields
+  const parseConferenceContext = (ctx: string) => {
+    if (!ctx) return null;
+
+    const lines = ctx.split("\n");
+    const parsed: Record<string, string> = {};
+
+    for (const line of lines) {
+      const colonIndex = line.indexOf(":");
+      if (colonIndex > 0) {
+        const key = line.substring(0, colonIndex).trim();
+        const value = line.substring(colonIndex + 1).trim();
+        parsed[key] = value;
+      }
+    }
+
+    return {
+      conference: parsed["Conference"] || "",
+      themes: parsed["Themes"] || "",
+      seniorityMix: parsed["Seniority Mix"] || "",
+      observabilityMaturity: parsed["Observability Maturity"] || "",
+    };
+  };
+
+  const conferenceData = parseConferenceContext(conferenceContext);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -132,8 +164,9 @@ export default function TraineePracticePage() {
 
       const data = await response.json();
 
-      setMessages((prev) => [
-        ...prev,
+      // Build new messages array
+      const newMessages: Message[] = [
+        ...messages,
         {
           id: `${Date.now()}-trainee`,
           type: "trainee",
@@ -141,13 +174,57 @@ export default function TraineePracticePage() {
           timestamp: new Date().toISOString(),
         },
         data.message,
-      ]);
+      ];
 
+      setMessages(newMessages);
       setCurrentState(data.currentState || currentState);
       setViolations(data.violations || []);
+
+      // Handle completion CTA
+      if (data.endPrompt) {
+        setEndPrompt(data.endPrompt);
+      }
     } catch (error) {
       console.error("Failed to send message:", error);
       alert("Failed to send message");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompleteSession = async () => {
+    if (!sessionId || loading || !endPrompt) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/session/${sessionId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actionType: endPrompt.actionType }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "");
+        throw new Error(`Complete failed: ${response.status} ${errText}`);
+      }
+
+      const data = await response.json();
+
+      // Clear session state
+      window.localStorage.removeItem(INVITE_TOKEN_STORAGE_KEY);
+      setSessionId(null);
+      setEndPrompt(null);
+
+      // Redirect to score page
+      if (data.shareUrl) {
+        router.push(data.shareUrl);
+      } else {
+        // Fallback: show toast if no shareUrl
+        alert("Session ended, but score link unavailable. Check server logs.");
+      }
+    } catch (error) {
+      console.error("Failed to complete session:", error);
+      alert("Failed to complete session");
     } finally {
       setLoading(false);
     }
@@ -217,47 +294,66 @@ export default function TraineePracticePage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">
-              Practice Session
-            </h1>
-            <p className="text-white/70 text-sm">
-              {conferenceContext || "Loading..."}
-            </p>
+    <div className="max-w-5xl mx-auto flex flex-col h-screen">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-white/15 pb-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex-1">
+              <h1 className="text-2xl font-semibold mb-2">
+                Practice Session
+              </h1>
+              {conferenceData ? (
+                <div className="text-sm text-white/70 space-y-0.5">
+                  {conferenceData.conference && (
+                    <div>Conference: <span className="font-semibold text-white/90">{conferenceData.conference}</span></div>
+                  )}
+                  {conferenceData.themes && (
+                    <div>Themes: <span className="font-semibold text-white/90">{conferenceData.themes}</span></div>
+                  )}
+                  {conferenceData.seniorityMix && (
+                    <div>Seniority mix: <span className="font-semibold text-white/90">{conferenceData.seniorityMix}</span></div>
+                  )}
+                  {conferenceData.observabilityMaturity && (
+                    <div>Observability maturity: <span className="font-semibold text-white/90">{conferenceData.observabilityMaturity}</span></div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-white/70 text-sm">Loading...</p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="text-sm text-gray-300">
+                State: <span className="font-semibold">{currentState}</span>
+              </div>
+              <div
+                className={`px-3 py-1 rounded-full text-sm ${
+                  active
+                    ? "bg-emerald-500/15 text-emerald-200 border border-emerald-400/20"
+                    : "bg-white/10 text-white/70 border border-white/10"
+                }`}
+              >
+                {active ? "● Active" : "● Inactive"}
+              </div>
+            </div>
           </div>
 
+          {/* Controls */}
           <div className="flex items-center gap-3">
-            <div className="text-sm text-gray-300">
-              State: <span className="font-semibold">{currentState}</span>
-            </div>
-            <div
-              className={`px-3 py-1 rounded-full text-sm ${
-                active
-                  ? "bg-emerald-500/15 text-emerald-200 border border-emerald-400/20"
-                  : "bg-white/10 text-white/70 border border-white/10"
-              }`}
-            >
-              {active ? "● Active" : "● Inactive"}
-            </div>
+            {!endPrompt && (
+              <BrandButton
+                onClick={handleEndSession}
+                disabled={!sessionId || loading}
+                variant="red"
+              >
+                <Square size={16} /> End Session
+              </BrandButton>
+            )}
           </div>
         </div>
 
-        {/* Controls */}
-        <div className="flex items-center gap-3">
-          <BrandButton
-            onClick={handleEndSession}
-            disabled={!sessionId || loading}
-            variant="red"
-          >
-            <Square size={16} /> End Session
-          </BrandButton>
-        </div>
-
-        {/* Chat panel */}
-        <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm min-h-[400px]">
+        {/* Chat panel - scrollable */}
+        <div className="flex-1 overflow-y-auto rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
           {messages.length === 0 ? (
             <div className="text-gray-500 text-center py-20">
               {loading ? "Loading session..." : "No messages yet"}
@@ -293,26 +389,50 @@ export default function TraineePracticePage() {
           )}
         </div>
 
-        {/* Input */}
-        <div className="flex items-center gap-3">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={sessionId ? "Your response..." : "Loading..."}
-            disabled={!sessionId || loading}
-            className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-4 py-3 outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10 disabled:opacity-60"
-          />
-          <BrandButton
-            onClick={handleSendMessage}
-            disabled={!sessionId || loading || !input.trim()}
-            variant="cobalt"
-          >
-            <Send size={16} /> Send
-          </BrandButton>
-        </div>
+        {/* Completion CTA (when outcome reached) */}
+        {endPrompt && sessionId && (
+          <div className="bg-emerald-500/10 border border-emerald-400/20 rounded-lg p-4 space-y-3">
+            <div className="text-sm text-emerald-200 font-medium">
+              ✓ Looks like you've reached an outcome. Finish the interaction:
+            </div>
+            <BrandButton
+              onClick={handleCompleteSession}
+              disabled={loading}
+              variant="lime"
+              className="w-full justify-center text-base"
+              title={endPrompt.tooltip}
+            >
+              {endPrompt.actionLabel}
+            </BrandButton>
+            <div className="text-xs text-emerald-200/70 text-center">
+              Ready to complete this interaction
+            </div>
+          </div>
+        )}
 
-        {loading && <div className="text-xs text-gray-400">Working…</div>}
+        {/* Fixed Input at Bottom - Hide when CTA is showing */}
+        {!endPrompt && (
+          <div className="sticky bottom-0 bg-gray-900/95 backdrop-blur-sm border-t border-white/15 pt-4 mt-4">
+            <div className="flex items-center gap-3">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={sessionId ? "Your response..." : "Loading..."}
+                disabled={!sessionId || loading}
+                className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-4 py-3 outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10 disabled:opacity-60"
+              />
+              <BrandButton
+                onClick={handleSendMessage}
+                disabled={!sessionId || loading || !input.trim()}
+                variant="cobalt"
+              >
+                <Send size={16} /> Send
+              </BrandButton>
+            </div>
+            {loading && <div className="text-xs text-gray-400 mt-2">Working…</div>}
+          </div>
+        )}
       </div>
   );
 }

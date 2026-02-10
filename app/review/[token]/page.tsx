@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { MessageSquare, Clock, User, Home } from "lucide-react";
+import { MessageSquare, Clock, User, Home, Edit3, Save, X, Download } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
 
 interface TranscriptMessage {
@@ -10,6 +10,13 @@ interface TranscriptMessage {
   type: "system" | "trainee" | "attendee";
   text: string;
   timestamp: string;
+}
+
+interface TrainerFeedback {
+  guidance: string;
+  applyToScenario?: boolean;
+  updatedAt: string;
+  updatedBy?: string;
 }
 
 interface ReviewData {
@@ -30,6 +37,7 @@ interface ReviewData {
   violations: string[];
   active: boolean;
   startTime: string;
+  trainerFeedback?: TrainerFeedback;
 }
 
 function formatTimestamp(isoString: string): string {
@@ -85,6 +93,12 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Trainer feedback state
+  const [feedbackText, setFeedbackText] = useState("");
+  const [applyToScenario, setApplyToScenario] = useState(false);
+  const [savingFeedback, setSavingFeedback] = useState(false);
+  const [feedbackSaved, setFeedbackSaved] = useState(false);
+
   useEffect(() => {
     if (!token) {
       setError("Invalid review link");
@@ -103,6 +117,12 @@ export default function ReviewPage() {
 
         const data = await res.json();
         setReviewData(data);
+
+        // Load existing feedback if present
+        if (data.trainerFeedback) {
+          setFeedbackText(data.trainerFeedback.guidance);
+          setApplyToScenario(data.trainerFeedback.applyToScenario || false);
+        }
       } catch (e) {
         console.error("Failed to load review:", e);
         setError("Failed to load session");
@@ -113,6 +133,84 @@ export default function ReviewPage() {
 
     fetchReview();
   }, [token]);
+
+  const handleSaveFeedback = async () => {
+    if (!reviewData || !feedbackText.trim()) return;
+
+    setSavingFeedback(true);
+    setFeedbackSaved(false);
+
+    try {
+      const res = await fetch(`/api/session/${reviewData.sessionId}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guidance: feedbackText,
+          applyToScenario,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to save feedback");
+      }
+
+      const data = await res.json();
+
+      // Update review data with new feedback
+      setReviewData({
+        ...reviewData,
+        trainerFeedback: data.feedback,
+      });
+
+      setFeedbackSaved(true);
+      setTimeout(() => setFeedbackSaved(false), 3000);
+    } catch (error) {
+      console.error("Failed to save feedback:", error);
+      alert("Failed to save trainer feedback");
+    } finally {
+      setSavingFeedback(false);
+    }
+  };
+
+  const handleExport = () => {
+    if (!reviewData) return;
+
+    // Build export data
+    const exportData = {
+      sessionId: reviewData.sessionId,
+      conference: reviewData.kickoff.conferenceName || reviewData.kickoff.conferenceContext || "Unknown",
+      persona: reviewData.kickoff.personaDisplayName || reviewData.kickoff.personaId || "Unknown",
+      trainee: reviewData.kickoff.traineeNameShort || reviewData.kickoff.traineeId || "Unknown",
+      difficulty: reviewData.kickoff.difficulty || "Unknown",
+      startTime: reviewData.startTime,
+      currentState: reviewData.currentState,
+      active: reviewData.active,
+      outcome: reviewData.active ? "In Progress" : reviewData.currentState,
+      violations: reviewData.violations,
+      trainerFeedback: reviewData.trainerFeedback?.guidance || null,
+      transcript: reviewData.transcript.map((m) => ({
+        timestamp: m.timestamp,
+        role: m.type === "trainee" ? "Trainee" : m.type === "attendee" ? "Attendee" : "System",
+        message: m.text,
+      })),
+      promptBundleVersion: "v1.1.0", // TODO: Get from session metadata when available
+      exportedAt: new Date().toISOString(),
+    };
+
+    // Convert to formatted JSON
+    const jsonString = JSON.stringify(exportData, null, 2);
+
+    // Create and download file
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `session-${reviewData.sessionId}-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   if (loading) {
     return (
@@ -161,13 +259,22 @@ export default function ReviewPage() {
               </p>
             </div>
           </div>
-          <BrandButton
-            onClick={() => router.push("/admin")}
-            variant="indigo"
-            className="text-sm"
-          >
-            <Home size={14} /> Back to Tracker
-          </BrandButton>
+          <div className="flex items-center gap-2">
+            <BrandButton
+              onClick={handleExport}
+              variant="neutral"
+              className="text-sm"
+            >
+              <Download size={14} /> Export
+            </BrandButton>
+            <BrandButton
+              onClick={() => router.push("/admin")}
+              variant="indigo"
+              className="text-sm"
+            >
+              <Home size={14} /> Back to Tracker
+            </BrandButton>
+          </div>
         </div>
       </div>
 
@@ -261,6 +368,92 @@ export default function ReviewPage() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Trainer Feedback */}
+      <div className="rounded-lg border border-white/15 bg-white/7 p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Edit3 size={20} /> Trainer Feedback
+          </h2>
+          {reviewData.trainerFeedback && (
+            <span className="text-xs text-gray-400">
+              Last updated: {formatTimestamp(reviewData.trainerFeedback.updatedAt)}
+            </span>
+          )}
+        </div>
+
+        <p className="text-sm text-gray-400 mb-4">
+          Provide guidance or adjustments for this session. This feedback will be injected
+          into future messages as "Trainer Guidance" to adapt the attendee's behavior.
+        </p>
+
+        <div className="space-y-4">
+          <div>
+            <label
+              htmlFor="feedback-text"
+              className="block text-sm font-medium text-gray-300 mb-2"
+            >
+              Guidance Text
+            </label>
+            <textarea
+              id="feedback-text"
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder="Example: Be more guarded about technical details. Only share tooling information after the trainee builds rapport."
+              rows={4}
+              className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-md text-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#64BA00] focus:border-transparent"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="apply-to-scenario"
+              checked={applyToScenario}
+              onChange={(e) => setApplyToScenario(e.target.checked)}
+              className="w-4 h-4 rounded border-white/15 bg-white/5 text-[#64BA00] focus:ring-[#64BA00] focus:ring-offset-0"
+            />
+            <label htmlFor="apply-to-scenario" className="text-sm text-gray-300">
+              Apply to scenario preset (update persona/conference notes)
+            </label>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <BrandButton
+              onClick={handleSaveFeedback}
+              disabled={!feedbackText.trim() || savingFeedback}
+              variant="lime"
+              className="text-sm"
+            >
+              {savingFeedback ? (
+                <>
+                  <span className="animate-spin">⏳</span> Saving...
+                </>
+              ) : feedbackSaved ? (
+                <>
+                  ✓ Saved
+                </>
+              ) : (
+                <>
+                  <Save size={14} /> Save Feedback
+                </>
+              )}
+            </BrandButton>
+
+            {reviewData.trainerFeedback && (
+              <button
+                onClick={() => {
+                  setFeedbackText("");
+                  setApplyToScenario(false);
+                }}
+                className="text-sm text-gray-400 hover:text-gray-300 transition"
+              >
+                <X size={14} className="inline mr-1" /> Clear
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Violations (if any) */}

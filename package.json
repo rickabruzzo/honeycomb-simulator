@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "lint:json": "node scripts/validate-config.js",
+    "test:detection": "node scripts/test-mql-detection.js",
+    "validate": "npm run lint:json && npm run test:detection && npm run build"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

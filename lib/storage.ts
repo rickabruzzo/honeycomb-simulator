@@ -27,6 +27,39 @@ export interface SessionState {
   };
   startTime: string;
   active: boolean;
+  trainerFeedback?: {
+    guidance: string;
+    applyToScenario?: boolean;
+    updatedAt: string;
+    updatedBy?: string;
+  };
+  // Pending outcome for completion CTA
+  pendingOutcome?: string;
+  pendingEndAction?: {
+    actionType: string;
+    actionLabel: string;
+  };
+  // Deterministic seed for outcome sampling (persona-aware variance)
+  outcomeSeed?: string;
+  // Decision trace for outcome transparency (debugging/export)
+  decisionTrace?: {
+    personaBandKey?: string;
+    personaWeightsUsed?: boolean;
+    eligibleOutcomes?: string[];
+    sampledOutcome?: string;
+    demoEligibilityScore?: number;
+    jitteredWeights?: Record<string, number>;
+    reason?: string;
+  };
+  // Tooling context established during conversation
+  toolingContext?: {
+    apm?: string;
+    logs?: string;
+    metrics?: string;
+    stack?: string; // Full description
+  };
+  // Intent exhaustion tracking (prevent repetitive responses)
+  expressedIntents?: string[];
 }
 
 const inMemoryStorage = new Map<string, SessionState>();
