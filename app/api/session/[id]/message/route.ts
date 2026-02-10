@@ -107,7 +107,9 @@ export async function POST(
         if (session.kickoff.traineeId) {
           span.setAttribute("trainee_id", session.kickoff.traineeId);
         }
-        span.setAttribute("difficulty", session.kickoff.difficulty);
+        if (session.kickoff.difficulty) {
+          span.setAttribute("difficulty", session.kickoff.difficulty);
+        }
         span.setAttribute("current_state", session.currentState);
 
         // On-demand enrichment: if missing, try to load from cache or generate
@@ -306,7 +308,7 @@ export async function POST(
               toolingBias: profileParsed["Tooling bias"] || "None specified",
               otelFamiliarity: profileParsed["OpenTelemetry familiarity"] || "Unknown",
             },
-            difficulty: session.kickoff.difficulty,
+            difficulty: session.kickoff.difficulty || null,
             enrichment: session.kickoff.enrichment || null,
             sessionState: session.currentState,
             trainerGuidance: session.trainerFeedback?.guidance || null,

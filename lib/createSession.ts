@@ -112,7 +112,7 @@ export interface CreateSessionResult {
 
 /**
  * Shared helper to create a new session from kickoff data
- * Note: conferenceContext, attendeeProfile, and difficulty must be provided
+ * Note: attendeeProfile is required; conferenceContext and difficulty are optional
  * (persona lookup should be done by the caller if needed)
  */
 export function createSession(input: CreateSessionInput): CreateSessionResult {
@@ -122,11 +122,11 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
   const personaId = input.personaId;
 
   // Validate required fields
-  if (!conferenceContext?.trim() || !attendeeProfile?.trim() || !difficulty) {
+  if (!attendeeProfile?.trim()) {
     return {
       session: null as any,
       error:
-        "Missing required fields: conferenceContext, attendeeProfile, and difficulty are required.",
+        "Missing required field: attendeeProfile is required.",
     };
   }
 
@@ -137,7 +137,10 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
   const openingLine = generateOpeningLine(attendeeProfile);
 
   // Generate deterministic outcome seed for persona-aware variance
-  const outcomeSeed = `${sessionId}:${input.personaId || 'unknown'}:${input.conferenceId || 'unknown'}`;
+  const outcomeSeed = `${sessionId}:${input.personaId || 'unknown'}:${input.conferenceId || 'none'}`;
+
+  // Use "conference booth" as generic context if no conference provided
+  const contextForDisplay = conferenceContext || "conference booth";
 
   const session: SessionState = {
     id: sessionId,
@@ -147,7 +150,7 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
       {
         id: randomUUID(),
         type: "system",
-        text: `Session started at ${conferenceContext}. Current state: ICEBREAKER`,
+        text: `Session started at ${contextForDisplay}. Current state: ICEBREAKER`,
         timestamp: now,
       },
       {
@@ -159,13 +162,13 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
     ],
     violations: [],
     kickoff: {
-      conferenceContext,
+      conferenceContext: conferenceContext || undefined,
       attendeeProfile,
-      difficulty,
+      difficulty: difficulty || undefined,
       personaId,
       // Snapshot fields (Phase H1)
-      conferenceId: input.conferenceId,
-      conferenceName: input.conferenceName,
+      conferenceId: input.conferenceId || undefined,
+      conferenceName: input.conferenceName || undefined,
       personaDisplayName: input.personaDisplayName,
       traineeId: input.traineeId,
       traineeNameShort: input.traineeNameShort,
@@ -187,7 +190,6 @@ export async function createSessionWithEnrichment(
 ): Promise<CreateSessionResult> {
   // Ensure all stores are seeded (critical for in-memory dev mode with Turbopack)
   await Promise.all([
-    ensureConferencesSeeded(),
     ensurePersonasSeeded(),
     ensureTraineesSeeded(),
   ]);
@@ -201,9 +203,10 @@ export async function createSessionWithEnrichment(
   let traineeNameShort = input.traineeNameShort;
 
   try {
-    // Resolve conference data
+    // Resolve conference data (optional - persona-first mode doesn't require this)
     let conference = null;
     if (input.conferenceId) {
+      await ensureConferencesSeeded();
       conference = await getConference(input.conferenceId);
       if (conference) {
         if (!conferenceName) {

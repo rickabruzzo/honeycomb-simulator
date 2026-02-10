@@ -177,7 +177,8 @@ export function scoreSession(
   // Check turn count efficiency
   const traineeMessageCount = traineeMessages.length;
   const turnLimits = { easy: 10, medium: 12, hard: 14 };
-  const limit = turnLimits[session.kickoff.difficulty as keyof typeof turnLimits] || turnLimits.medium;
+  const difficulty = session.kickoff.difficulty || "medium"; // Default to medium if not set
+  const limit = turnLimits[difficulty as keyof typeof turnLimits] || turnLimits.medium;
   const isEfficient = traineeMessageCount <= limit;
 
   // --- CUSTOMER IMPACT FOCUS (0-5 bonus) ---
@@ -322,8 +323,8 @@ export function scoreSession(
     token,
     sessionId: session.id,
     personaId: session.kickoff.personaId,
-    difficulty: session.kickoff.difficulty,
-    conferenceContext: session.kickoff.conferenceContext,
+    difficulty: session.kickoff.difficulty || undefined,
+    conferenceContext: session.kickoff.conferenceContext || undefined,
     score,
     grade,
     breakdown: {

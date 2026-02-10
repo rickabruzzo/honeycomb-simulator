@@ -178,10 +178,8 @@ export default function ReviewPage() {
     // Build export data
     const exportData = {
       sessionId: reviewData.sessionId,
-      conference: reviewData.kickoff.conferenceName || reviewData.kickoff.conferenceContext || "Unknown",
       persona: reviewData.kickoff.personaDisplayName || reviewData.kickoff.personaId || "Unknown",
       trainee: reviewData.kickoff.traineeNameShort || reviewData.kickoff.traineeId || "Unknown",
-      difficulty: reviewData.kickoff.difficulty || "Unknown",
       startTime: reviewData.startTime,
       currentState: reviewData.currentState,
       active: reviewData.active,
@@ -284,17 +282,6 @@ export default function ReviewPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
-              Conference
-            </p>
-            <p className="text-sm text-gray-300">
-              {reviewData.kickoff.conferenceName ||
-                reviewData.kickoff.conferenceContext ||
-                reviewData.kickoff.conferenceId ||
-                "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
               Persona
             </p>
             <p className="text-sm text-gray-300">
@@ -311,14 +298,6 @@ export default function ReviewPage() {
               {reviewData.kickoff.traineeNameShort ||
                 reviewData.kickoff.traineeId ||
                 "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
-              Difficulty
-            </p>
-            <p className="text-sm text-gray-300 capitalize">
-              {reviewData.kickoff.difficulty || "—"}
             </p>
           </div>
           <div>

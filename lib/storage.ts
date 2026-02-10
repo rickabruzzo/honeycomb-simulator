@@ -13,9 +13,9 @@ export interface SessionState {
   }>;
   violations: string[];
   kickoff: {
-    conferenceContext: string;
+    conferenceContext?: string; // Optional in persona-first mode
     attendeeProfile: string;
-    difficulty: string;
+    difficulty?: string; // Optional in persona-first mode
     personaId?: string;
     enrichment?: EnrichmentResult;
     // Snapshot fields (Phase H1)

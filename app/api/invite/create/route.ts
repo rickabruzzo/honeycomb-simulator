@@ -38,12 +38,11 @@ export async function POST(request: NextRequest) {
         span.setAttribute("conference_id", body.conferenceId || "none");
         span.setAttribute("persona_id", body.personaId || "none");
         span.setAttribute("trainee_id", body.traineeId);
-        span.setAttribute("difficulty", body.difficulty || "auto");
+        span.setAttribute("difficulty", body.difficulty || "none");
 
         // Ensure all stores are seeded (critical for in-memory dev mode)
         // In production with KV, these are no-ops after first call
         await Promise.all([
-          ensureConferencesSeeded(),
           ensurePersonasSeeded(),
           ensureTraineesSeeded(),
         ]);
@@ -115,13 +114,13 @@ export async function POST(request: NextRequest) {
           token,
           sessionId: session.id,
           createdAt,
-          conferenceId: body.conferenceId,
+          conferenceId: body.conferenceId || undefined,
           personaId: body.personaId,
           traineeId: body.traineeId,
           traineeName: body.traineeName || `${trainee.firstName} ${trainee.lastName}`,
           createdBy: body.createdBy,
           // Snapshot fields from session
-          conferenceName: session.kickoff.conferenceName,
+          conferenceName: session.kickoff.conferenceName || undefined,
           personaDisplayName: session.kickoff.personaDisplayName,
           traineeNameShort: session.kickoff.traineeNameShort,
         };

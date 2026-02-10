@@ -232,14 +232,14 @@ export function shouldEnterOutcomeState(params: {
  * @param difficulty - easy, medium, or hard
  * @returns true if limit exceeded
  */
-export function hasExceededTurnLimit(turnCount: number, difficulty: string): boolean {
+export function hasExceededTurnLimit(turnCount: number, difficulty?: string): boolean {
   const limits = SIMULATOR_CONFIG.conversation_rules?.turn_limits || {
     easy: 10,
     medium: 12,
     hard: 14,
   };
 
-  const limit = limits[difficulty as keyof typeof limits] || limits.medium;
+  const limit = limits[(difficulty || "medium") as keyof typeof limits] || limits.medium;
   return turnCount >= limit;
 }
 

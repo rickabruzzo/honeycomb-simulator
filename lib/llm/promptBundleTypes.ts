@@ -65,8 +65,8 @@ export interface PromptRuntimeContext {
     otelFamiliarity: string;
   };
 
-  /** Difficulty level (easy, medium, hard) */
-  difficulty: string;
+  /** Difficulty level (easy, medium, hard) - optional in persona-first mode */
+  difficulty?: string | null;
 
   /** Optional OpenAI enrichment result (adds contextual guidance) */
   enrichment?: {
