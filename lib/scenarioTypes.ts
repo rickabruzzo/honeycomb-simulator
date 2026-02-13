@@ -35,6 +35,35 @@ export type Persona = {
   createdBy: "system" | "admin";
   updatedAt?: string;
   isArchived?: boolean;
+
+  // NEW FIELDS - Added for persona-driven response generation
+  isBuyer?: boolean; // Only true for TDM, defaults to false for IC personas
+
+  painAnchors?: Array<{
+    id: string; // Unique identifier for this pain (e.g., "oncall-pain")
+    pain: string; // Canonical pain as persona speaks it
+    keywords: string[]; // Keywords triggering this pain
+    priority: "primary" | "secondary";
+    testPhrases: string[]; // Phrases to test for in automated validation (handles paraphrasing)
+  }>;
+
+  questionBank?: Array<{
+    question: string;
+    category: "discovery" | "technical" | "evaluation" | "objection";
+    triggerContext?: string;
+  }>;
+
+  objectionBank?: Array<{
+    objection: string;
+    type: "cost" | "effort" | "technical" | "timing" | "proof";
+    rebuttalHint?: string;
+  }>;
+
+  toolStackOptions?: Array<{
+    variant: string; // e.g., "Prometheus + Grafana + Loki"
+    tools: string[]; // Individual tool names
+    context?: string;
+  }>;
 };
 
 export type ScenarioSelection = {

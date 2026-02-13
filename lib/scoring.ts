@@ -76,11 +76,21 @@ export function scoreSession(
     "let me make sure",
     "to clarify",
     "help me understand",
+    "did i get that right",
+    "is that correct",
+    "am i understanding",
+    "you mentioned",
+    "you said",
+    "it sounds like you",
+    "from what you're describing",
   ];
   const listeningCount = listeningPhrases.filter((phrase) =>
     allTraineeText.includes(phrase)
   ).length;
-  const listening = Math.min(20, listeningCount * 5 + 5); // Base 5, +5 per phrase
+
+  // Improved scoring: Base 5, +3 per phrase (can reach 20 with 5 phrases)
+  // This is more forgiving than the old +5 per phrase which required only 3
+  const listening = Math.min(20, listeningCount * 3 + 5);
 
   // --- DISCOVERY (0-20) ---
   const questionCount = traineeMessages.filter((msg) =>

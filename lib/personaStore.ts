@@ -4,6 +4,7 @@ import { buildPersonaSubtitle } from "./formatUtils";
 import { useKv } from "./kvConfig";
 import { seedScenarioPresets } from "./seedScenarioPresets";
 import { getMemStore } from "./memoryStore";
+import { CANONICAL_PERSONA_IDS } from "./personas/canonicalPersonas";
 
 const MAX_INDEX_SIZE = 500;
 
@@ -34,6 +35,9 @@ function generatePersonaId(name: string): string {
 
 /**
  * List all personas (excluding archived by default)
+ *
+ * HARD FILTER: Only canonical persona IDs are returned.
+ * Deprecated personas are excluded even if stored.
  */
 export async function listPersonas(
   includeArchived = false
@@ -43,6 +47,11 @@ export async function listPersonas(
     const personas: Persona[] = [];
 
     for (const id of index) {
+      // ALLOWLIST FILTER: Only canonical personas
+      if (!CANONICAL_PERSONA_IDS.has(id)) {
+        continue;
+      }
+
       const persona = await kv.get<Persona>(`persona:${id}`);
       if (persona && (includeArchived || !persona.isArchived)) {
         personas.push(persona);
@@ -54,6 +63,11 @@ export async function listPersonas(
     // In-memory fallback
     const personas: Persona[] = [];
     for (const id of getInMemoryStore().index) {
+      // ALLOWLIST FILTER: Only canonical personas
+      if (!CANONICAL_PERSONA_IDS.has(id)) {
+        continue;
+      }
+
       const persona = getInMemoryStore().personas.get(id);
       if (persona && (includeArchived || !persona.isArchived)) {
         personas.push(persona);
@@ -65,8 +79,15 @@ export async function listPersonas(
 
 /**
  * Get a single persona by ID
+ *
+ * HARD FILTER: Only canonical persona IDs are returned.
  */
 export async function getPersona(id: string): Promise<Persona | null> {
+  // ALLOWLIST FILTER: Only canonical personas
+  if (!CANONICAL_PERSONA_IDS.has(id)) {
+    return null;
+  }
+
   if (useKv()) {
     return (await kv.get<Persona>(`persona:${id}`)) ?? null;
   }

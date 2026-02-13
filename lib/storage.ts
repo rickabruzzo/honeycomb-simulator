@@ -1,5 +1,6 @@
 import { kv } from "@vercel/kv";
 import type { EnrichmentResult } from "./llm/enrichmentTypes";
+import type { Persona } from "./scenarioTypes";
 
 export interface SessionState {
   id: string;
@@ -56,6 +57,8 @@ export interface SessionState {
   };
   // Intent exhaustion tracking (prevent repetitive responses)
   expressedIntents?: string[];
+  // Full Persona object (for persona-driven response generation)
+  persona?: Persona;
 }
 
 const inMemoryStorage = new Map<string, SessionState>();

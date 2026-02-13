@@ -130,10 +130,11 @@ export function analyzeTraineeMessage(text: string, currentState: string) {
 
   // 2) Early pitch detection - ONLY flag unsolicited feature dumps, not booth-appropriate framing
   // Allow: "What Honeycomb is", "We help with observability", "We're an observability platform"
+  // Allow: Standard industry terminology like "high-cardinality" or "cardinality"
   // Flag: Multiple features listed, pricing push, demo push, competitor bashing
   const isQuestion = text.includes("?");
   const featureDumpSignals = [
-    /\b(bubbleup|high.cardinality|wide events|service map)\b/i,
+    /\b(bubbleup|wide events|service map)\b/i,
     /unlike (datadog|splunk|newrelic)/i,
     /better than/i,
   ];

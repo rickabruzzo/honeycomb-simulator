@@ -238,10 +238,17 @@ export async function POST(
 
         span.setAttribute("conversation_length", conversationHistory.length);
 
-        // 5) Generate attendee response (template-based with LLM fallback)
+        // 5) Generate attendee response (persona-driven with template/LLM fallback)
         let attendeeResponseText: string = "";
         let chatMeta: { provider: string; model?: string } | undefined;
-        let attendeeReplySource: "template" | "llm" = "llm";
+        let attendeeReplySource:
+          | "early_pain_anchor"
+          | "persona_question"
+          | "persona_pain"
+          | "persona_objection"
+          | "template"
+          | "llm"
+          | "banned_phrase_fallback" = "llm";
         let attendeeIntent: string | undefined;
         let attendeeIntentConfidence: number | undefined;
 
@@ -343,6 +350,13 @@ export async function POST(
                 childSpan.setAttribute("model", res.model);
               }
               childSpan.setAttribute("response_length", res.text.length);
+
+              // Track cache hits
+              const isCached = res.cached === true;
+              childSpan.setAttribute("cache_hit", isCached);
+              if (isCached) {
+                childSpan.setAttribute("cache_source", "semantic_cache");
+              }
 
               return res;
             },

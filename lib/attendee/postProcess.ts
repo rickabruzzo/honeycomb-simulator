@@ -1,12 +1,21 @@
 /**
  * Post-processor for attendee responses.
- * Enforces realism rules: no bullets, no italics, no parentheticals, max length.
+ * Enforces realism rules: no bullets, no italics, no parentheticals, max length, OTel terminology.
  */
+
+import type { Persona } from "../scenarioTypes";
+import { enforceOTelTerminology } from "./otelTerminology";
 
 /**
  * Post-process attendee text to enforce realism rules.
+ *
+ * @param text - The raw attendee response text
+ * @param persona - Optional persona for OTel terminology enforcement
  */
-export function postProcessAttendeeText(text: string): string {
+export function postProcessAttendeeText(
+  text: string,
+  persona?: Persona
+): string {
   let processed = text;
 
   // Remove bullets and numbering at start of lines
@@ -31,6 +40,10 @@ export function postProcessAttendeeText(text: string): string {
   // Trim
   processed = processed.trim();
 
+  // FIX: Remove leading punctuation (". Can you help with that?" → "Can you help with that?")
+  // Matches leading periods, commas, semicolons, colons, hyphens followed by optional whitespace
+  processed = processed.replace(/^[\.\,\;\:\-]\s*/, "");
+
   // Enforce max 2 sentences (split on . ! ?)
   const sentences = processed.match(/[^.!?]+[.!?]+/g);
   if (sentences && sentences.length > 2) {
@@ -52,6 +65,11 @@ export function postProcessAttendeeText(text: string): string {
     } else {
       processed = truncated.trim() + "...";
     }
+  }
+
+  // Enforce OTel terminology based on persona familiarity
+  if (persona) {
+    processed = enforceOTelTerminology(processed, persona);
   }
 
   return processed;

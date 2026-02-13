@@ -178,6 +178,7 @@ export async function createSessionWithEnrichment(
   let attendeeProfile = input.attendeeProfile;
   let personaDisplayName = input.personaDisplayName;
   let traineeNameShort = input.traineeNameShort;
+  let fullPersona = null; // Store full Persona object
 
   try {
     // Load persona data
@@ -195,6 +196,9 @@ export async function createSessionWithEnrichment(
           error: `Unknown personaId: ${input.personaId}. Available personas: ${availableIds.join(", ")}`,
         };
       }
+
+      // Store full persona object for persona-driven response generation
+      fullPersona = persona;
 
       // Build attendeeProfile from persona metadata
       if (!attendeeProfile) {
@@ -240,6 +244,11 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`;
 
   if (result.error) {
     return result;
+  }
+
+  // Add full Persona object to session for persona-driven response generation
+  if (fullPersona) {
+    result.session.persona = fullPersona;
   }
 
   // Try to add enrichment if we have personaId

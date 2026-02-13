@@ -4,6 +4,7 @@
  */
 
 import { AttendeeIntent } from "./intentTypes";
+import type { Persona } from "../scenarioTypes";
 
 export interface TemplateSlots {
   tool1?: string;
@@ -66,10 +67,10 @@ export const TEMPLATES: Record<AttendeeIntent, Template> = {
 
   [AttendeeIntent.DESCRIBE_PAIN_CORRELATION]: {
     variants: [
-      "Connecting the dots between services is the hardest part.",
       "We can see symptoms but figuring out root cause is a slog.",
       "Tracing is a mess. We don't have good visibility into request flows.",
       "Cross-service debugging takes forever. Everything's siloed.",
+      "It's hard to understand how requests flow through our system.",
     ],
     maxLength: 150,
   },
@@ -170,9 +171,9 @@ export const TEMPLATES: Record<AttendeeIntent, Template> = {
 
   [AttendeeIntent.ASK_NEXT_STEPS]: {
     variants: [
-      "What's the best next step for us?",
-      "How do people usually get started?",
-      "What would you recommend as a next step?",
+      "Is there a free tier we could try?",
+      "Do you have documentation I can review?",
+      "Can I scan my badge for follow-up?",
     ],
     maxLength: 100,
   },
@@ -223,32 +224,94 @@ export const TEMPLATES: Record<AttendeeIntent, Template> = {
 };
 
 /**
- * Default tool stacks by persona type (used when tooling context not yet established).
+ * Get persona-specific tool stack for template filling.
+ *
+ * Uses persona.toolStackOptions if available (canonical personas).
+ * Falls back to role-based defaults for legacy personas.
+ *
+ * @param persona - The persona to get tool stack for
+ * @param context - Optional context for matching specific tool stack variants
+ * @returns Object with tool1, tool2, and stack string for template substitution
  */
-export const DEFAULT_TOOL_STACKS: Record<string, { tool1: string; tool2: string; stack: string }> = {
-  "CTO": {
-    tool1: "New Relic",
-    tool2: "Splunk",
-    stack: "New Relic and Splunk",
-  },
-  "Director": {
-    tool1: "Datadog",
-    tool2: "ELK Stack",
-    stack: "Datadog for metrics, ELK for logs",
-  },
-  "IC": {
-    tool1: "Prometheus",
-    tool2: "Grafana",
-    stack: "Prometheus and Grafana",
-  },
-  "Technical Buyer": {
-    tool1: "New Relic",
-    tool2: "Splunk",
-    stack: "New Relic and Splunk, mostly legacy",
-  },
-  "default": {
+export function getPersonaToolStack(
+  persona: Persona,
+  context?: string
+): { tool1: string; tool2: string; stack: string } {
+  // Use persona.toolStackOptions if available (canonical personas)
+  if (persona.toolStackOptions && persona.toolStackOptions.length > 0) {
+    const matchingStacks = context
+      ? persona.toolStackOptions.filter((opt) =>
+          opt.context?.toLowerCase().includes(context.toLowerCase())
+        )
+      : persona.toolStackOptions;
+
+    const selected =
+      matchingStacks.length > 0
+        ? matchingStacks[Math.floor(Math.random() * matchingStacks.length)]
+        : persona.toolStackOptions[0];
+
+    return {
+      tool1: selected.tools[0] || "monitoring tools",
+      tool2: selected.tools[1] || "logging tools",
+      stack: selected.variant,
+    };
+  }
+
+  // Fallback to role-based defaults for legacy personas
+  return getRoleBasedToolStack(persona.personaType);
+}
+
+/**
+ * Role-based tool stack fallback for legacy personas
+ * (personas without toolStackOptions)
+ *
+ * IMPORTANT: Fixed phrasings - no "Grafana for log aggregation" (use "Loki" or "Grafana + Loki")
+ */
+function getRoleBasedToolStack(
+  personaType: string
+): { tool1: string; tool2: string; stack: string } {
+  const lowerType = personaType.toLowerCase();
+
+  if (lowerType.includes("cto") || lowerType.includes("director")) {
+    return {
+      tool1: "New Relic",
+      tool2: "Splunk",
+      stack: "New Relic and Splunk",
+    };
+  }
+
+  if (lowerType.includes("buyer") || lowerType.includes("decision")) {
+    return {
+      tool1: "Datadog",
+      tool2: "Splunk",
+      stack: "Datadog and Splunk, mostly legacy",
+    };
+  }
+
+  if (
+    lowerType.includes("sre") ||
+    lowerType.includes("reliability") ||
+    lowerType.includes("platform")
+  ) {
+    return {
+      tool1: "Prometheus",
+      tool2: "Loki",
+      stack: "Prometheus and Grafana + Loki for logs",
+    };
+  }
+
+  if (lowerType.includes("devops")) {
+    return {
+      tool1: "Datadog",
+      tool2: "Elasticsearch",
+      stack: "Datadog for metrics, ELK for logs",
+    };
+  }
+
+  // Default fallback
+  return {
     tool1: "New Relic",
     tool2: "Splunk",
     stack: "a mix of legacy APM tools",
-  },
-};
+  };
+}
