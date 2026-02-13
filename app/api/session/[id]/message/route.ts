@@ -35,6 +35,7 @@ import { generateAttendeeReply } from "@/lib/attendee/generateAttendeeReply";
 import { postProcessAttendeeText } from "@/lib/attendee/postProcess";
 import { detectCommittedOutcome } from "@/lib/outcomeCommitment";
 import { isEvaluationQuestion } from "@/lib/outcomeEvaluation";
+import { updateMomentum } from "@/lib/attendee/momentumModel";
 
 /**
  * Simple canned responses keyed by simulator state.
@@ -174,6 +175,14 @@ export async function POST(
           timestamp: new Date().toISOString(),
         };
         session.transcript.push(traineeMsg);
+
+        // 1a) Update momentum with trainee message
+        if (session.momentum) {
+          session.momentum = updateMomentum(session.momentum, {
+            kind: "trainee",
+            text: message,
+          });
+        }
 
         // 2) Analyze trainee message (your rules engine)
         const analysis = analyzeTraineeMessage(message, session.currentState);
@@ -416,6 +425,14 @@ export async function POST(
           timestamp: new Date().toISOString(),
         };
         session.transcript.push(attendeeMsg);
+
+        // 6a) Update momentum with attendee response
+        if (session.momentum) {
+          session.momentum = updateMomentum(session.momentum, {
+            kind: "attendee",
+            text: attendeeResponseText,
+          });
+        }
 
         span.setAttribute("response_length", attendeeResponseText.length);
 

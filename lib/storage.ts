@@ -1,6 +1,7 @@
 import { kv } from "@vercel/kv";
 import type { EnrichmentResult } from "./llm/enrichmentTypes";
 import type { Persona } from "./scenarioTypes";
+import type { ConversationMomentum } from "./attendee/momentumModel";
 
 export interface SessionState {
   id: string;
@@ -59,6 +60,8 @@ export interface SessionState {
   expressedIntents?: string[];
   // Full Persona object (for persona-driven response generation)
   persona?: Persona;
+  // Phase 1: Momentum tracking (no behavior changes yet)
+  momentum?: ConversationMomentum;
 }
 
 const inMemoryStorage = new Map<string, SessionState>();

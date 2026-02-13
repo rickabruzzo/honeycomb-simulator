@@ -6,6 +6,7 @@ import type { EnrichmentInput } from "./llm/enrichmentTypes";
 import { getPersona, ensurePersonasSeeded, listPersonas } from "./personaStore";
 import { buildPersonaTitle } from "./formatUtils";
 import { getTrainee, formatTraineeShort, ensureTraineesSeeded } from "./traineeStore";
+import { initializeMomentum } from "./attendee/momentumModel";
 
 /**
  * Generate dynamic opening line based on emotional posture and modifiers.
@@ -157,6 +158,7 @@ export function createSession(input: CreateSessionInput): CreateSessionResult {
     startTime: now,
     active: true,
     outcomeSeed,
+    momentum: initializeMomentum(),
   };
 
   return { session };
