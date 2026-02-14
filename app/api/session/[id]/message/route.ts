@@ -607,6 +607,7 @@ export async function POST(
           currentState: session.currentState,
           violations: session.violations,
           chatMeta, // Provider metadata (optional, for debugging)
+          momentum: session.momentum,
           detectedOutcome: outcome !== "UNKNOWN" ? outcome : undefined,
           endPrompt, // Completion CTA if outcome reached
           shouldSuggestEnd: endPrompt !== null,

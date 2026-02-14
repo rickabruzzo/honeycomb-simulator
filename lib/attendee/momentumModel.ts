@@ -7,6 +7,9 @@ export type ConversationMomentum = {
   score: number;
   turn: number;
   lastUpdatedAt: string;
+  // minimal context for alignment scoring
+  lastAttendeeText?: string;
+  lastTraineeText?: string;
 };
 
 const BASELINE_SCORE = 0;
@@ -24,53 +27,146 @@ export function initializeMomentum(): ConversationMomentum {
 
 /**
  * Update momentum based on message event
- * Simple heuristics:
- * - Increment turn counter
- * - Adjust score based on message characteristics
+ * Tracks alignment penalties for non-answers, topic shifts, premature CTA/pitch
  */
+
+const CTA_PHRASES = [
+  "scan my badge",
+  "scan your badge",
+  "book a demo",
+  "schedule a demo",
+  "set up a demo",
+  "talk to sales",
+  "sales reach out",
+  "follow up",
+  "next step",
+];
+
+const PITCHY_PHRASES = [
+  "we're honeycomb",
+  "our platform",
+  "we provide",
+  "we offer",
+  "single pane",
+  "best in class",
+  "industry leading",
+];
+
+const LISTENING_MARKERS = [
+  "it sounds like",
+  "what i'm hearing",
+  "so you're saying",
+  "if i understand",
+  "you mentioned",
+  "from what you described",
+];
+
+const STOPWORDS = new Set([
+  "the","a","an","and","or","but","to","of","in","on","for","with","at","by","from",
+  "is","are","was","were","be","been","being","it","that","this","these","those",
+  "we","you","i","they","our","your","my","me","us","their","them","as","so",
+]);
+
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s\-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(t => t.length >= 3 && !STOPWORDS.has(t));
+}
+
+function jaccard(a: string[], b: string[]): number {
+  const A = new Set(a);
+  const B = new Set(b);
+  if (A.size === 0 || B.size === 0) return 0;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  const union = A.size + B.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+function clamp(n: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function includesAny(text: string, phrases: string[]) {
+  return phrases.some(p => text.includes(p));
+}
+
 export function updateMomentum(
   m: ConversationMomentum,
   event: { kind: "trainee" | "attendee"; text: string }
 ): ConversationMomentum {
-  const text = event.text.toLowerCase();
-  let scoreDelta = 0;
+  const raw = event.text ?? "";
+  const text = raw.toLowerCase();
+  let delta = 0;
 
-  // Question marks suggest engagement
-  const questionCount = (event.text.match(/\?/g) || []).length;
-  scoreDelta += questionCount * 2;
+  // attendee talking implies engagement
+  if (event.kind === "attendee") delta += 2;
 
-  // Positive signals
-  if (text.includes("thanks") || text.includes("thank you")) {
-    scoreDelta += 3;
-  }
-  if (text.includes("interesting") || text.includes("helpful")) {
-    scoreDelta += 2;
-  }
-  if (text.includes("demo") || text.includes("meeting") || text.includes("follow up")) {
-    scoreDelta += 5;
-  }
+  // questions: more valuable from trainee
+  const questionCount = (raw.match(/\?/g) || []).length;
+  if (event.kind === "trainee") delta += Math.min(6, questionCount * 2);
+  if (event.kind === "attendee") delta += Math.min(4, questionCount * 2);
 
-  // Negative signals
-  if (text.includes("not interested") || text.includes("no thanks")) {
-    scoreDelta -= 5;
-  }
-  if (text.includes("too busy") || text.includes("no time")) {
-    scoreDelta -= 3;
+  // trainee reflection/listening markers
+  if (event.kind === "trainee" && includesAny(text, LISTENING_MARKERS)) {
+    delta += 4;
   }
 
-  // Very short messages suggest disengagement (unless it's a question)
-  if (text.length < 20 && questionCount === 0) {
-    scoreDelta -= 1;
+  // detect whether last attendee turn shows explicit interest
+  const lastAttendee = (m.lastAttendeeText ?? "").toLowerCase();
+  const attendeeHasInterestSignal =
+    lastAttendee.includes("free tier") ||
+    lastAttendee.includes("docs") ||
+    lastAttendee.includes("documentation") ||
+    lastAttendee.includes("demo") ||
+    lastAttendee.includes("pricing") ||
+    lastAttendee.includes("cost") ||
+    lastAttendee.includes("scan") ||
+    lastAttendee.includes("?");
+
+  // premature CTA penalty (trainee only)
+  if (event.kind === "trainee" && includesAny(text, CTA_PHRASES) && !attendeeHasInterestSignal) {
+    delta -= 8;
   }
 
-  // Longer, substantive messages suggest engagement
-  if (text.length > 100) {
-    scoreDelta += 2;
+  // pitch-too-early penalty (trainee only)
+  const painKeywords = ["incident","outage","tracing","debug","mttr","on-call","alerts","logs","slow","latency","errors"];
+  const lastAttendeeLooksLikePain = painKeywords.some(k => lastAttendee.includes(k));
+  if (event.kind === "trainee" && lastAttendeeLooksLikePain && includesAny(text, PITCHY_PHRASES)) {
+    delta -= 5;
   }
+
+  // relevance scoring: did trainee respond to what attendee just said?
+  if (event.kind === "trainee" && m.lastAttendeeText) {
+    const aTok = tokenize(m.lastAttendeeText);
+    const tTok = tokenize(raw);
+    const sim = jaccard(aTok, tTok);
+    if (sim >= 0.12) delta += 5;
+    else if (sim >= 0.06) delta += 2;
+    else delta -= 6; // likely non-answer/topic shift
+  }
+
+  // non-answer penalty (trainee only): very short + no question + no reflection
+  if (event.kind === "trainee") {
+    const wordCount = raw.trim().split(/\s+/).filter(Boolean).length;
+    const hasQuestion = questionCount > 0;
+    const hasListening = includesAny(text, LISTENING_MARKERS);
+    if (wordCount <= 6 && !hasQuestion && !hasListening) {
+      delta -= 4;
+    }
+  }
+
+  // clamp per-turn swing and overall score
+  delta = clamp(delta, -12, 12);
 
   return {
-    score: m.score + scoreDelta,
-    turn: m.turn + 1,
+    score: clamp((m.score ?? 0) + delta, 0, 100),
+    turn: (m.turn ?? 0) + 1,
     lastUpdatedAt: new Date().toISOString(),
+    lastAttendeeText: event.kind === "attendee" ? raw : m.lastAttendeeText,
+    lastTraineeText: event.kind === "trainee" ? raw : m.lastTraineeText,
   };
 }
