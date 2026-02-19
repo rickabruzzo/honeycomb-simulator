@@ -64,5 +64,6 @@ export async function GET(req: Request, ctx: any) {
     active: session.active,
     startTime: session.startTime,
     trainerFeedback: session.trainerFeedback || undefined,
+    momentum: session.momentum ?? null,
   });
 }

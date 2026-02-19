@@ -10,6 +10,8 @@ interface TranscriptMessage {
   type: "system" | "trainee" | "attendee";
   text: string;
   timestamp: string;
+  momentumScore?: number;
+  momentumDelta?: number;
 }
 
 interface TrainerFeedback {
@@ -17,6 +19,12 @@ interface TrainerFeedback {
   applyToScenario?: boolean;
   updatedAt: string;
   updatedBy?: string;
+}
+
+interface MomentumSnapshot {
+  score: number;
+  turn: number;
+  lastUpdatedAt: string;
 }
 
 interface ReviewData {
@@ -34,6 +42,7 @@ interface ReviewData {
   active: boolean;
   startTime: string;
   trainerFeedback?: TrainerFeedback;
+  momentum?: MomentumSnapshot | null;
 }
 
 function formatTimestamp(isoString: string): string {
@@ -44,6 +53,60 @@ function formatTimestamp(isoString: string): string {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function MomentumSparkline({ scores }: { scores: number[] }) {
+  const max = Math.max(...scores, 1);
+  const w = 4;
+  const gap = 2;
+  const h = 20;
+  const totalWidth = scores.length * (w + gap) - gap;
+
+  return (
+    <svg
+      width={totalWidth}
+      height={h}
+      aria-label="Momentum trend"
+      className="inline-block align-middle"
+    >
+      {scores.map((s, i) => {
+        const barH = Math.max(2, Math.round((s / max) * h));
+        const x = i * (w + gap);
+        const y = h - barH;
+        const color =
+          i > 0 && s < scores[i - 1]
+            ? "#f87171" // red-400
+            : "#34d399"; // emerald-400
+        return <rect key={i} x={x} y={y} width={w} height={barH} fill={color} rx={1} />;
+      })}
+    </svg>
+  );
+}
+
+function MomentumBadge({ score, delta }: { score: number; delta?: number }) {
+  const deltaStr =
+    delta === undefined
+      ? ""
+      : delta > 0
+        ? ` +${delta}`
+        : delta < 0
+          ? ` ${delta}`
+          : " ±0";
+  const deltaColor =
+    delta === undefined || delta === 0
+      ? "text-gray-500"
+      : delta > 0
+        ? "text-emerald-400"
+        : "text-red-400";
+
+  return (
+    <span className="text-xs text-gray-500 tabular-nums whitespace-nowrap">
+      ⚡ {score}
+      {delta !== undefined && (
+        <span className={deltaColor}>{deltaStr}</span>
+      )}
+    </span>
+  );
 }
 
 function MessageBubble({ message }: { message: TranscriptMessage }) {
@@ -64,6 +127,8 @@ function MessageBubble({ message }: { message: TranscriptMessage }) {
       ? "text-gray-400"
       : "text-purple-300";
 
+  const hasMomentum = message.momentumScore !== undefined;
+
   return (
     <div className={`rounded-lg border p-4 ${bgColor}`}>
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -71,9 +136,17 @@ function MessageBubble({ message }: { message: TranscriptMessage }) {
           <User size={14} className={labelColor} />
           <span className={`text-xs font-semibold ${labelColor}`}>{label}</span>
         </div>
-        <span className="text-xs text-gray-500">
-          {formatTimestamp(message.timestamp)}
-        </span>
+        <div className="flex items-center gap-3">
+          {hasMomentum && (
+            <MomentumBadge
+              score={message.momentumScore!}
+              delta={message.momentumDelta}
+            />
+          )}
+          <span className="text-xs text-gray-500">
+            {formatTimestamp(message.timestamp)}
+          </span>
+        </div>
       </div>
       <p className="text-sm text-gray-300 whitespace-pre-wrap">{message.text}</p>
     </div>
@@ -321,6 +394,34 @@ export default function ReviewPage() {
               )}
             </p>
           </div>
+          {reviewData.momentum != null && (() => {
+            const scores = reviewData.transcript
+              .filter((m) => m.momentumScore !== undefined)
+              .map((m) => m.momentumScore!);
+            const minScore = scores.length > 0 ? Math.min(...scores) : undefined;
+            const maxScore = scores.length > 0 ? Math.max(...scores) : undefined;
+            return (
+              <div className="md:col-span-2">
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">
+                  Momentum
+                </p>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-300 font-mono">
+                    ⚡ {reviewData.momentum.score}
+                    <span className="text-gray-500 text-xs ml-1">/ 100</span>
+                  </span>
+                  {minScore !== undefined && maxScore !== undefined && (
+                    <span className="text-xs text-gray-500">
+                      Range: {minScore}–{maxScore}
+                    </span>
+                  )}
+                  {scores.length > 1 && (
+                    <MomentumSparkline scores={scores} />
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

@@ -12,6 +12,9 @@ export interface SessionState {
     type: "system" | "trainee" | "attendee";
     text: string;
     timestamp: string;
+    // Momentum snapshot at the time this message was stored
+    momentumScore?: number;
+    momentumDelta?: number;
   }>;
   violations: string[];
   kickoff: {

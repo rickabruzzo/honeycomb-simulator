@@ -167,22 +167,25 @@ export async function POST(
 
         span.setAttribute("message_length", message.length);
 
-        // 1) Add trainee message to transcript
-        const traineeMsg = {
-          id: randomUUID(),
-          type: "trainee" as const,
-          text: message,
-          timestamp: new Date().toISOString(),
-        };
-        session.transcript.push(traineeMsg);
-
-        // 1a) Update momentum with trainee message
+        // 1) Add trainee message to transcript (with momentum snapshot)
+        const prevMomentumScoreTrainee = session.momentum?.score ?? 0;
         if (session.momentum) {
           session.momentum = updateMomentum(session.momentum, {
             kind: "trainee",
             text: message,
           });
         }
+        const traineeMsg = {
+          id: randomUUID(),
+          type: "trainee" as const,
+          text: message,
+          timestamp: new Date().toISOString(),
+          ...(session.momentum !== undefined && {
+            momentumScore: session.momentum.score,
+            momentumDelta: session.momentum.score - prevMomentumScoreTrainee,
+          }),
+        };
+        session.transcript.push(traineeMsg);
 
         // 2) Analyze trainee message (your rules engine)
         const analysis = analyzeTraineeMessage(message, session.currentState);
@@ -417,22 +420,25 @@ export async function POST(
           }
         }
 
-        // 6) Add attendee response to transcript
-        const attendeeMsg = {
-          id: randomUUID(),
-          type: "attendee" as const,
-          text: attendeeResponseText,
-          timestamp: new Date().toISOString(),
-        };
-        session.transcript.push(attendeeMsg);
-
-        // 6a) Update momentum with attendee response
+        // 6) Add attendee response to transcript (with momentum snapshot)
+        const prevMomentumScoreAttendee = session.momentum?.score ?? 0;
         if (session.momentum) {
           session.momentum = updateMomentum(session.momentum, {
             kind: "attendee",
             text: attendeeResponseText,
           });
         }
+        const attendeeMsg = {
+          id: randomUUID(),
+          type: "attendee" as const,
+          text: attendeeResponseText,
+          timestamp: new Date().toISOString(),
+          ...(session.momentum !== undefined && {
+            momentumScore: session.momentum.score,
+            momentumDelta: session.momentum.score - prevMomentumScoreAttendee,
+          }),
+        };
+        session.transcript.push(attendeeMsg);
 
         span.setAttribute("response_length", attendeeResponseText.length);
 
