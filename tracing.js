@@ -43,13 +43,9 @@ const sdk = new opentelemetry.NodeSDK({
   ],
 });
 
-// Only start SDK if we're exporting or need instrumentation
-// Note: We still start SDK even when not exporting to maintain instrumentation
-// but without an exporter, traces won't be sent anywhere
-sdk.start();
-
 if (shouldExport) {
+  sdk.start();
   console.log('[OpenTelemetry] ✓ Tracing enabled - exporting to Honeycomb');
 } else {
-  console.log('[OpenTelemetry] ○ Tracing instrumented but NOT exporting (local/preview)');
+  console.log('[OpenTelemetry] ○ Tracing disabled (local/preview)');
 }
