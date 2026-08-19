@@ -1,4 +1,9 @@
 import { SessionState } from "./storage";
+import { getTraineeMessages, getAttendeeMessages } from "./scoringInput";
+import {
+  detectOutcomeFromTranscript,
+  outcomeSignalToCommittedOutcome,
+} from "./attendee/outcomeSignals";
 
 /**
  * Calculate active time for a session, excluding idle gaps > 2 minutes.
@@ -60,10 +65,10 @@ export function scoreSession(
 ): ScoreRecord {
   const now = new Date().toISOString();
 
-  // Extract trainee messages
-  const traineeMessages = session.transcript
-    .filter((m) => m.type === "trainee")
-    .map((m) => m.text);
+  // Score ONLY trainee messages — attendee text must never contribute points.
+  const traineeMessages = getTraineeMessages(session.transcript).map(
+    (m) => m.text
+  );
 
   const allTraineeText = traineeMessages.join(" ").toLowerCase();
 
@@ -90,7 +95,7 @@ export function scoreSession(
 
   // Improved scoring: Base 5, +3 per phrase (can reach 20 with 5 phrases)
   // This is more forgiving than the old +5 per phrase which required only 3
-  const listening = Math.min(20, listeningCount * 3 + 5);
+  let listening = Math.min(20, listeningCount * 3 + 5);
 
   // --- DISCOVERY (0-20) ---
   const questionCount = traineeMessages.filter((msg) =>
@@ -166,18 +171,30 @@ export function scoreSession(
   if (earlyPitchViolation) guardrails -= 5; // Extra penalty for early pitch
   guardrails = Math.max(0, guardrails);
 
-  // --- DETECT OUTCOME FROM TRANSCRIPT ---
-  const lastFewMessages = session.transcript.slice(-5).map(m => m.text.toLowerCase()).join(" ");
-  let detectedOutcome = "UNKNOWN";
+  // --- ATTENDEE CONFUSION PENALTY ---
+  // When the attendee repeatedly expresses confusion, penalize the trainee's
+  // listening score (they're not communicating clearly). This reads attendee
+  // messages as *context* but never awards points — only subtracts.
+  const CONFUSION_RE = /\b(not sure|lost|explain|clarify|not following|how does that relate|what were you trying to say|try again)\b/i;
+  const attendeeMessages = getAttendeeMessages(session.transcript);
+  const confusionCount = attendeeMessages.filter((m) => CONFUSION_RE.test(m.text)).length;
 
-  if (lastFewMessages.includes("self_service_ready") || lastFewMessages.includes("self-service")) {
-    detectedOutcome = "SELF_SERVICE_READY";
-  } else if (lastFewMessages.includes("mql_ready") || (lastFewMessages.includes("badge") && lastFewMessages.includes("scan"))) {
-    detectedOutcome = "MQL_READY";
-  } else if (lastFewMessages.includes("demo_ready") || lastFewMessages.includes("demo")) {
-    detectedOutcome = "DEMO_READY";
-  } else if (lastFewMessages.includes("deferred_interest") || (lastFewMessages.includes("later") && lastFewMessages.includes("radar"))) {
-    detectedOutcome = "DEFERRED_INTEREST";
+  // Apply confusion penalties (after breakdown categories, before total/grade)
+  if (confusionCount >= 2) {
+    listening = Math.max(0, listening - 5);
+  }
+
+  // --- DETECT OUTCOME ---
+  // 1. Prefer session.pendingOutcome (set by the outcome commitment system during
+  //    the conversation — covers DEFERRED_INTEREST and other outcomes).
+  // 2. Fall back to detectOutcomeFromTranscript which scans ATTENDEE messages only.
+  //    Trainee text must never trigger an outcome bonus.
+  let detectedOutcome = "UNKNOWN";
+  if (session.pendingOutcome) {
+    detectedOutcome = session.pendingOutcome;
+  } else {
+    const outcomeSignal = detectOutcomeFromTranscript(session.transcript);
+    detectedOutcome = outcomeSignalToCommittedOutcome(outcomeSignal) ?? "UNKNOWN";
   }
 
   // Check turn count efficiency
@@ -213,6 +230,11 @@ export function scoreSession(
 
   // Slight penalty for inefficiency (but don't penalize successful outcomes too much)
   if (!isEfficient && detectedOutcome === "UNKNOWN") {
+    totalScore -= 5;
+  }
+
+  // Severe confusion penalty: attendee was confused 3+ times → trainee wasn't communicating well
+  if (confusionCount >= 3) {
     totalScore -= 5;
   }
 

@@ -193,11 +193,11 @@ export function extractAnchors(text: string): AnchorResult {
 
 /** Prefix templates — one is chosen deterministically by content length. */
 const CALLBACK_TEMPLATES: Array<(term: string) => string> = [
-  (term) => `Got it — on the ${term} side, `,
-  (term) => `Right, and specifically around ${term}, `,
-  (term) => `That's helpful context on the ${term} front — `,
+  (term) => `On the ${term} side, `,
+  (term) => `Around ${term}, `,
   (term) => `Yeah, the ${term} piece is where `,
-  (term) => `Understood — thinking about ${term}, `,
+  (term) => `With ${term}, `,
+  (term) => `For us, the ${term} issue is `,
 ];
 
 /**
@@ -232,33 +232,33 @@ export function makeCallbackPhrase(
 
 // ── makeContextualCallback ──────────────────────────────────────────────────
 
-/** Empathetic recovery — no scolding, no blame. */
+/** Empathetic recovery — no scolding, no blame, no facilitator framing. */
 const CONFUSED_CALLBACK_TEMPLATES: Array<(term: string) => string> = [
   (term) => `Fair point — let me come back to ${term}. `,
   (term) => `Right, so going back to the ${term} piece — `,
-  (term) => `Good question — on ${term}, `,
+  (term) => `On ${term}, `,
   (term) => `Let me think about ${term} for a second. `,
-  (term) => `That's fair — on the ${term} side, `,
+  (term) => `On the ${term} side, `,
 ];
 
-/** Bridge templates — acknowledge pain before pivoting to docs/demo. */
+/** Bridge templates — simple acknowledgement before pivoting to docs/demo. */
 const BRIDGE_CALLBACK_TEMPLATES: Array<(term: string) => string> = [
-  (term) => `Makes sense — given what you said about ${term}, `,
   (term) => `Yeah, with the ${term} situation, `,
-  (term) => `Right — especially with the ${term} issues, `,
-  (term) => `Given the ${term} challenges you described, `,
-  (term) => `With ${term} being a factor, `,
+  (term) => `Right — especially around the ${term} issues, `,
+  (term) => `Given the ${term} pain, `,
+  (term) => `On ${term}, `,
+  (_)    => `For us it's similar — `,
 ];
 
-/** General conversational callbacks. */
+/** General conversational callbacks — short, natural, prospect-voiced. */
 const GENERAL_CALLBACK_TEMPLATES: Array<(term: string) => string> = [
-  (term) => `Got it — on the ${term} side, `,
-  (term) => `Right, and specifically around ${term}, `,
-  (term) => `That's helpful context on ${term} — `,
+  (term) => `On ${term}, `,
+  (_)    => `For us, `,
+  (_)    => `Usually, `,
+  (term) => `Around ${term}, `,
+  (_)    => `The hard part is `,
+  (_)    => `What slows us down is `,
   (term) => `Yeah, the ${term} piece is where `,
-  (term) => `Understood — thinking about ${term}, `,
-  (term) => `Interesting — on ${term}, `,
-  (term) => `On the ${term} front, `,
   (term) => `Right — and with ${term}, `,
 ];
 
@@ -321,6 +321,14 @@ export function makeContextualCallback(opts: ContextualCallbackOpts): string {
  * Note: we deliberately do NOT require (b) when traineeLast is short — short
  * confirmations ("okay", "got it") should not inflate the reactiveness bar.
  */
+/**
+ * First-person prospect markers — a statement opening with any of these is
+ * self-grounded and reads as a genuine answer, not a scripted non-sequitur.
+ * No callback prefix needed.
+ */
+const FIRST_PERSON_MARKERS =
+  /\b(we |our |for us\b|honestly\b|usually\b|the hard part\b|what slows us down\b)/i;
+
 export function isReactiveEnough(
   candidate: string,
   traineeLast: string
@@ -333,6 +341,13 @@ export function isReactiveEnough(
   // Very short trainee message (≤3 words) — nothing substantive to react to;
   // any response counts as reactive (e.g. "Okay." / "Got it." / "Sure!")
   if (traineeWords <= 3) return true;
+
+  // e. First-person prospect statement — the reply is already grounded in the
+  //    attendee's own situation.  Adding a callback prefix over a statement
+  //    like "We use Splunk and it's painful" turns natural speech into a
+  //    scripted acknowledgement.  Only apply when there is no question mark
+  //    (questions never count as self-grounded answers).
+  if (!candidate.includes("?") && FIRST_PERSON_MARKERS.test(candidate)) return true;
 
   // b. Follow-up reference in substantive context (8+ words in trainee text)
   if (traineeWords >= 8 && FOLLOWUP_REFERENCES.test(candidate)) return true;
@@ -365,7 +380,7 @@ export interface ContinuityContext {
  * Single entry-point for the continuity contract.
  *
  * Logic flow:
- *  1. Exempt: ask_hook / exit → return text unchanged
+ *  1. Exempt: ask_hook / exit / answer / smallTalk → return text unchanged
  *  2. Already reactive? (reflection marker, keyword overlap, trivial) → unchanged
  *  3. Strip mustAvoid opener if present (re-capitalize remainder)
  *  4. Prepend contextual callback prefix (intent-aware)
@@ -377,8 +392,11 @@ export function enforceContinuity(
 ): string {
   const { lastTraineeText, lastAttendeeText, intent, stage, move, mustAvoid, smallTalk } = ctx;
 
-  // 1. Exempt moves — hooks, exits, and small-talk answers speak for themselves
-  if (move === "ask_hook" || move === "exit") return text;
+  // 1. Exempt moves — direct answers and hooks speak for themselves.
+  //    "answer" is always exempt: the attendee is responding to the trainee's
+  //    question directly; prepending a callback stem turns a natural answer
+  //    into a scripted acknowledgement ("Right, and with tracing, we use...").
+  if (move === "ask_hook" || move === "exit" || move === "answer") return text;
   if (smallTalk) return text;
 
   // 2. Already reactive? No prefix needed.

@@ -22,9 +22,11 @@ import {
   recordDirectorMove,
   detectNamedTools,
   detectSolutionMention,
+  detectProductExplanation,
   isQuestion,
   NEUTRAL_HOOK_BANK,
   type DirectorDirective,
+  type DirectorMove,
 } from "./conversationDirector";
 import {
   enforceContinuity,
@@ -39,6 +41,10 @@ import {
   isDiscoveryQuestion,
   EVALUATION_QUESTIONS,
 } from "./questionFilter";
+import {
+  pickBoothEntryResponse,
+  type BoothEntryMode,
+} from "./boothFaqBehavior";
 
 export interface AttendeeReplyResult {
   text: string;
@@ -228,7 +234,16 @@ const GENERIC_FIRST_PERSON_ANSWERS: string[] = [
 // question-relevant template.  Generic pain anchors are NOT surfaced unless
 // they directly match the question keywords.
 
-/** Detects tool / stack questions: "What are you using?", "What's your setup?" */
+/**
+ * Hard-priority tool-enumeration detector.
+ * Only matches questions that are clearly asking WHAT tools the attendee uses —
+ * NOT "how is your monitoring working" or "where does it break".
+ * Must fire BEFORE pain-detail routing to avoid the wrong template bank.
+ */
+const TOOL_ENUM_Q_RE =
+  /\b(what (tool|tools)\b|what (are|were) (you|your) (using|running|relying)\b|what'?s in (the|that|your|our) (mix|stack|setup)\b|what does (your|the) (stack|setup|tooling)\b|what (do|did) you (use|run|rely)\b|what are you using (for|alongside|with)\b)/i;
+
+/** Detects tool / stack questions used as fallback in the existing routing block. */
 const TOOL_Q_RE =
   /\b(tool|tools|stack|use|using|rely|setup|running|platform|software|solution)\b/i;
 
@@ -240,8 +255,129 @@ const PROCESS_Q_RE =
 const PAIN_DETAIL_Q_RE =
   /\b(where|what part|slow down|break|breakdown|biggest|hardest|struggle|bottleneck|pain point)\b/i;
 
+// ── Tool enumeration answer templates ─────────────────────────────────────────
+// Used exclusively when the trainee asks a "what tools are you using?" question.
+// Must enumerate tool names — no pain/breakdown language.
+
+/** Pure tool enumeration: "What tools are you using?" */
+const TOOL_ENUM_TEMPLATES: Array<(tools: string) => string> = [
+  (t) => `We're using ${t} right now.`,
+  (t) => `Right now it's mostly ${t}.`,
+  (t) => `Our stack is mainly ${t}.`,
+  (t) => `We've got ${t} in the mix today.`,
+];
+
+/** Tool enumeration with usage context: "What are you using alongside X during incidents?" */
+const TOOL_ENUM_WITH_CONTEXT_TEMPLATES: Array<(tools: string) => string> = [
+  (t) => `We're using ${t}, and during incidents we're usually bouncing between them.`,
+  (t) => `Right now it's ${t}, which works okay until we have to correlate everything under pressure.`,
+  (t) => `Our setup is mostly ${t}, but during incidents it can be a lot of context switching.`,
+  (t) => `We rely on ${t} — works fine day-to-day but when something breaks it can be a mess to navigate.`,
+];
+
 /**
- * Answers for tool-name questions when session.currentTools is known.
+ * Display-name overrides for tools where capitalizeFirst gives wrong output.
+ * Used when rendering session.currentTools (stored lowercase from detectNamedTools).
+ */
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  elk:          "ELK",
+  elasticsearch: "Elasticsearch",
+  "new relic":  "New Relic",
+  cloudwatch:   "CloudWatch",
+  pagerduty:    "PagerDuty",
+  sumologic:    "Sumo Logic",
+  "gitlab ci":  "GitLab CI",
+};
+
+function formatToolName(tool: string): string {
+  const lower = tool.toLowerCase();
+  return TOOL_DISPLAY_NAMES[lower] ?? capitalizeFirst(tool);
+}
+
+/**
+ * Format an array of tool names into a natural English list.
+ * ["ELK"] → "ELK"
+ * ["ELK", "Prometheus"] → "ELK and Prometheus"
+ * ["ELK", "Prometheus", "PagerDuty"] → "ELK, Prometheus, and PagerDuty"
+ */
+function buildToolList(tools: string[]): string {
+  if (tools.length === 0) return "a few tools";
+  if (tools.length === 1) return tools[0];
+  if (tools.length === 2) return `${tools[0]} and ${tools[1]}`;
+  return `${tools.slice(0, -1).join(", ")}, and ${tools[tools.length - 1]}`;
+}
+
+/**
+ * Select TOOL_ENUM or TOOL_ENUM_WITH_CONTEXT template and fill in the tool list.
+ */
+function formatToolEnumAnswer(
+  tools: string[],
+  wantsContext: boolean,
+  traineeTurnCount: number
+): string {
+  const toolList = buildToolList(tools);
+  if (wantsContext) {
+    const idx = traineeTurnCount % TOOL_ENUM_WITH_CONTEXT_TEMPLATES.length;
+    return TOOL_ENUM_WITH_CONTEXT_TEMPLATES[idx](toolList);
+  }
+  const idx = traineeTurnCount % TOOL_ENUM_TEMPLATES.length;
+  return TOOL_ENUM_TEMPLATES[idx](toolList);
+}
+
+/**
+ * Generate a concrete tool-enumeration answer.
+ *
+ * Priority:
+ *  1. persona.toolStackOptions — deterministic by traineeTurnCount.
+ *     If the trainee already mentioned a specific tool, prefer a stack option
+ *     that contains that tool.
+ *  2. session.currentTools — built from what the attendee has mentioned so far.
+ *  3. Returns null → caller uses TOOL_ANSWER_GENERIC concrete-named fallback.
+ */
+function generateExplicitToolAnswer(
+  traineeText: string,
+  session: SessionState,
+  persona: Persona | undefined,
+  traineeTurnCount: number
+): string | null {
+  // Detect context modifier: alongside/incident/pressure → use with-context templates
+  const wantsContext =
+    /\b(alongside|during|when|under|incident|incidents|in the mix|under pressure)\b/i.test(traineeText);
+
+  // Which tools the trainee already named (for preferred-stack matching)
+  const mentionedTools = detectNamedTools(traineeText);
+
+  // ── Priority 1: persona.toolStackOptions ──────────────────────────────────
+  if (persona?.toolStackOptions && persona.toolStackOptions.length > 0) {
+    let selectedStack = persona.toolStackOptions[traineeTurnCount % persona.toolStackOptions.length];
+
+    // Prefer a stack option that contains a tool the trainee already mentioned
+    if (mentionedTools.length > 0) {
+      const matching = persona.toolStackOptions.find((opt) =>
+        opt.tools.some((t) =>
+          mentionedTools.some(
+            (mt) => t.toLowerCase().includes(mt) || mt.includes(t.toLowerCase())
+          )
+        )
+      );
+      if (matching) selectedStack = matching;
+    }
+
+    return formatToolEnumAnswer(selectedStack.tools, wantsContext, traineeTurnCount);
+  }
+
+  // ── Priority 2: session.currentTools ──────────────────────────────────────
+  if (session.currentTools && session.currentTools.length > 0) {
+    const displayTools = session.currentTools.map(formatToolName);
+    return formatToolEnumAnswer(displayTools, wantsContext, traineeTurnCount);
+  }
+
+  // ── Priority 3: null → caller will use TOOL_ANSWER_GENERIC ────────────────
+  return null;
+}
+
+/**
+ * Answers for tool-name questions when session.currentTools is known (legacy path).
  * Takes a formatted tool list string (e.g. "Splunk and Prometheus").
  */
 const TOOL_NAME_ANSWERS: Array<(tools: string) => string> = [
@@ -253,10 +389,10 @@ const TOOL_NAME_ANSWERS: Array<(tools: string) => string> = [
 
 /** Generic tool-answer fallbacks when no named tools are on the session. */
 const TOOL_ANSWER_GENERIC: string[] = [
-  "Right now we're mostly relying on a mix of tools and it's a bit fragmented.",
-  "We have a few things stitched together — nothing fully integrated.",
-  "Mostly a combination of open-source stuff and some commercial tools.",
-  "We're using a handful of tools depending on signal type — logs, metrics, traces all live separately.",
+  "We're using ELK for logs, Prometheus for metrics, and PagerDuty for alerting.",
+  "Right now it's a mix — logs in ELK, metrics in Prometheus, and alerts through PagerDuty.",
+  "We've got logs in ELK, monitoring in Grafana and Prometheus, and alerts routed through PagerDuty.",
+  "Mostly ELK and Prometheus, with PagerDuty handling the alerting side.",
 ];
 
 /** Process / workflow question answers. */
@@ -629,6 +765,27 @@ function generateFromDirective(
         };
       }
 
+      // ── Tool-enumeration hard priority fast path ──────────────────────────
+      // Must fire BEFORE toolAnchored and BEFORE pain-detail routing.
+      // "What are you using alongside ELK?" → must name tools, not describe pain.
+      if (isTraineeQuestion && TOOL_ENUM_Q_RE.test(traineeText)) {
+        const explicitAnswer = generateExplicitToolAnswer(
+          traineeText, session, persona, traineeTurnCount
+        );
+        // If no persona/session tools, use the concrete named-tool generic bank
+        const toolAnswer = explicitAnswer
+          ?? pickUnused(TOOL_ANSWER_GENERIC, recentAttendeeText, traineeTurnCount);
+        const sanitized = persona ? sanitizeResponse(toolAnswer, persona) : toolAnswer;
+        recordDirectorMove(session, move);
+        const replyText = postProcessAttendeeText(sanitized, persona);
+        console.log("[ANSWER MODE: TOOL]", { traineeQuestion: traineeText, generated: replyText });
+        return {
+          text: replyText,
+          source: "template",
+          confidence: 0.95,
+        };
+      }
+
       // Tool-anchored fast path: concrete first-person answer about the
       // attendee's named tools instead of generic pain anchors.
       if (directive.toolAnchored) {
@@ -945,6 +1102,18 @@ function generateFromDirective(
         confidence: 0.8,
       };
     }
+
+    case "booth_entry": {
+      const entryMode = (directive.boothEntryMode ?? "market_scan") as BoothEntryMode;
+      const entryText = pickBoothEntryResponse(entryMode, persona, traineeTurnCount);
+      recordDirectorMove(session, move);
+      console.log("[BOOTH ENTRY]", { mode: entryMode, generated: entryText });
+      return {
+        text: postProcessAttendeeText(entryText, persona),
+        source: "template",
+        confidence: 0.9,
+      };
+    }
   }
 
   // TypeScript exhaustiveness guard — should never reach here
@@ -1003,17 +1172,35 @@ function generateAttendeeReplyInternal(params: {
     session.solutionIntroduced = true;
   }
 
+  // 3d. Product-explanation detection — stricter than solutionIntroduced.
+  //     Requires a product-framing sentence ("Honeycomb is...", "We help teams...",
+  //     "It lets you...").  Once true, gates competitor/evaluation booth questions.
+  if (!session.productExplained && detectProductExplanation(traineeText)) {
+    session.productExplained = true;
+  }
+
   // 4. Generate content that matches the directive
   const isTraineeQuestion = isQuestion(traineeText);
   let result = generateFromDirective(directive, traineeText, session, persona, traineeTurnCount, isTraineeQuestion);
 
   if (!result) return null;
 
-  // 5. Continuity contract — every reply (except ask_hook / exit) must
-  // visibly connect to the conversation.  enforceContinuity checks
-  // reactiveness, strips mustAvoid openers, and prepends an intent-aware
-  // callback prefix when needed.
-  if (traineeText.trim().length > 0) {
+  // 5. Continuity contract — applied only to moves that benefit from a
+  //    contextual bridge prefix.  Direct answers (answer, share_pain) and
+  //    terminal/hook moves are excluded so persona-specific and tool-anchored
+  //    content is never overwritten by a canned callback stem.
+  //
+  //    Allowlisted moves: ask_clarifying, ask_docs, ask_demo, ask_pricing,
+  //    ask_rollout_effort.  Everything else returns the generated text as-is.
+  const CONTINUITY_MOVES = new Set<DirectorMove>([
+    "ask_clarifying",
+    "ask_docs",
+    "ask_demo",
+    "ask_pricing",
+    "ask_rollout_effort",
+  ]);
+
+  if (traineeText.trim().length > 0 && CONTINUITY_MOVES.has(directive.move)) {
     const lastAttendeeText =
       session.transcript
         .filter((m) => m.type === "attendee")
@@ -1064,7 +1251,11 @@ export function generateAttendeeReply(params: {
   // Replace discovery questions ("How does your team…?") with:
   //   - EVALUATION_QUESTIONS if the solution has been introduced (they have context to evaluate)
   //   - GENERIC_FIRST_PERSON_ANSWERS otherwise (nothing to evaluate yet — pivot to pain sharing)
-  if (isDiscoveryQuestion(result.text)) {
+  //
+  // Exempt: booth_entry moves — their questions are attendee-perspective FAQ questions
+  // (e.g. "How are you different from Grafana?"), not trainee discovery probes.
+  const currentMove = (session as any).currentDirective?.move as DirectorMove | undefined;
+  if (isDiscoveryQuestion(result.text) && currentMove !== "booth_entry") {
     const recentAttendeeText = session.transcript
       .filter((m) => m.type === "attendee")
       .slice(-5)

@@ -129,9 +129,9 @@ expect(
   true
 );
 expect(
-  'first exchange, GUARDED band → move is ask_hook (HOOK always uses neutral hook)',
+  'first exchange, GUARDED band → move is booth_entry (FAQ-derived opener, not immediate pain)',
   earlyDirective.move,
-  "ask_hook"
+  "booth_entry"
 );
 expect(
   'first exchange → stage is HOOK',
@@ -625,9 +625,9 @@ expect(
   true
 );
 expect(
-  'HOOK + GUARDED → ask_hook',
+  'HOOK + GUARDED → booth_entry (FAQ opener replaces ask_hook in early turns)',
   hookGuardedDirective.move,
-  "ask_hook"
+  "booth_entry"
 );
 
 // HOOK + CURIOUS + small-talk question → "answer" with smallTalk=true
@@ -1019,9 +1019,9 @@ const hookFirstDirective = decideNextMove(
   "approaches the booth looking curious"
 );
 expect(
-  "first turn (no attendee msgs) → ask_hook",
+  "first turn (no attendee msgs) → booth_entry (FAQ opener: market_scan)",
   hookFirstDirective.move,
-  "ask_hook"
+  "booth_entry"
 );
 
 // After attendee has spoken once + trainee responded → NOT ask_hook
@@ -1155,9 +1155,9 @@ const hookQuestionDirective2 = decideNextMove(
   "Hey, what brings you to the conference?"
 );
 expect(
-  'HOOK stage + question → NOT answer (ask_hook instead)',
+  'HOOK stage + question → booth_entry (FAQ opener, not answer or ask_hook)',
   hookQuestionDirective2.move,
-  "ask_hook"
+  "booth_entry"
 );
 
 // Misaligned + question → answer (answer contract: questions are always answered)

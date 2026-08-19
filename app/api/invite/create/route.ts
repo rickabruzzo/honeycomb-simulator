@@ -4,7 +4,7 @@ import { createSessionWithEnrichment } from "@/lib/createSession";
 import { saveSession } from "@/lib/storage";
 import { saveInvite } from "@/lib/invites";
 import { addInviteToIndex } from "@/lib/inviteIndex";
-import { getTrainee, ensureTraineesSeeded } from "@/lib/traineeStore";
+import { resolveTrainee, ensureTraineesSeeded } from "@/lib/traineeStore";
 import { ensurePersonasSeeded } from "@/lib/personaStore";
 import { getEnrichment } from "@/lib/llm/enrichmentStore";
 import { withSpan, withChildSpan } from "@/lib/telemetry";
@@ -82,22 +82,25 @@ export async function POST(request: NextRequest) {
         span.setAttribute("invite_create.enrichment_status", enrichmentStatus);
         span.setAttribute("invite_create.enrichment_provider", enrichmentProvider);
 
-        // Verify trainee exists
-        const trainee = await getTrainee(body.traineeId);
+        // Resolve trainee: exact match, normalized match, or auto-register from name
+        const trainee = await resolveTrainee(body.traineeId, body.traineeName);
         if (!trainee) {
           span.setAttribute("status", 400);
           return NextResponse.json(
-            { error: "Trainee not found" },
+            { error: "Trainee not found and no traineeName provided" },
             { status: 400 }
           );
         }
+
+        // Use the resolved trainee's canonical ID for all downstream operations
+        const resolvedTraineeId = trainee.id;
 
         // Create session WITHOUT waiting for enrichment generation
         // skipEnrichmentGeneration=true means only check cache, don't generate
         const result = await createSessionWithEnrichment({
           personaId: body.personaId,
           attendeeProfile: body.attendeeProfile,
-          traineeId: body.traineeId,
+          traineeId: resolvedTraineeId,
           skipEnrichmentGeneration: true, // KEY: Don't block on OpenAI
         });
 
@@ -117,7 +120,7 @@ export async function POST(request: NextRequest) {
           sessionId: session.id,
           createdAt,
           personaId: body.personaId,
-          traineeId: body.traineeId,
+          traineeId: resolvedTraineeId,
           traineeName: body.traineeName || `${trainee.firstName} ${trainee.lastName}`,
           createdBy: body.createdBy,
           // Snapshot fields from session

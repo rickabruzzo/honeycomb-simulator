@@ -80,6 +80,11 @@ export interface SessionState {
   // Gates evaluation questions (ask_demo, ask_docs, ask_badge) so the attendee
   // doesn't jump to CTAs before the product has been described.
   solutionIntroduced?: boolean;
+  // Set to true once the trainee has framed the product with a real explanation
+  // (e.g. "Honeycomb is...", "We help teams...", "It lets you...").
+  // Stricter than solutionIntroduced — gates competitor/evaluation booth questions
+  // so they only appear after the trainee has actually described what the product does.
+  productExplained?: boolean;
 }
 
 const inMemoryStorage = new Map<string, SessionState>();

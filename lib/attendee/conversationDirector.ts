@@ -23,6 +23,10 @@ import type { SessionState } from "../storage";
 import type { Persona } from "../scenarioTypes";
 import { getMomentumBand, type MomentumBand } from "./momentumBands";
 import { extractKeyPhrases } from "./reactiveness";
+import {
+  detectBoothEntryMode,
+  type BoothEntryMode,
+} from "./boothFaqBehavior";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -45,7 +49,8 @@ export type DirectorMove =
   | "ask_pricing"       // ask about cost model
   | "ask_badge"         // request badge scan / follow-up meeting
   | "deflect"           // short dismissive / guarded reply
-  | "exit";             // wrapping up, grabbing materials
+  | "exit"              // wrapping up, grabbing materials
+  | "booth_entry";      // early-turn FAQ-derived product/competitor/evaluation question
 
 export type DirectorTone = "guarded" | "curious" | "engaged" | "committed";
 
@@ -81,6 +86,8 @@ export interface DirectorDirective {
   smallTalk?: boolean;
   /** When true, session has named tools and trainee asked a tool-domain question — answer concretely about the stack */
   toolAnchored?: boolean;
+  /** Booth-entry mode — set when move === "booth_entry" to guide the generator bank selection */
+  boothEntryMode?: BoothEntryMode;
 }
 
 // ── Named tool detection ──────────────────────────────────────────────────────
@@ -162,6 +169,28 @@ export function detectSolutionMention(text: string): boolean {
     SOLUTION_CAPABILITY_RE.test(text) ||
     SOLUTION_FEATURE_RE.test(text)
   );
+}
+
+/**
+ * Strict product-explanation detector.
+ *
+ * Returns true when the trainee has actually framed the product with a
+ * descriptive sentence — "Honeycomb is...", "We help teams...",
+ * "It lets you...", "With Honeycomb you can...", etc.
+ *
+ * This is intentionally stricter than detectSolutionMention:
+ *   - solutionMention fires on any domain keyword (distributed tracing, etc.)
+ *   - productExplanation requires a subject + verb framing that actually
+ *     describes what the product IS or DOES.
+ *
+ * Used to gate competitor/evaluation booth-entry questions so they only
+ * appear after the trainee has explained what Honeycomb does.
+ */
+const PRODUCT_EXPLANATION_RE =
+  /\b(honeycomb (is|helps|lets|enables|gives|allows|provides|offers|makes|supports|replaces|works by)|we (make|build|created|built|created) (a |an )?(tool|platform|product|solution)|we help (teams|engineers|you|companies|orgs|organizations)|it (lets|helps|gives|enables|allows) (you|teams|engineers|orgs)|with honeycomb (you|teams|engineers|your team) (can|could|are able)|what (we|this) (does|is|helps with|offers)|our (tool|platform|product|solution) (is|helps|lets|enables)|this (tool|platform|product) (is|helps|lets|gives)|you can use (it|honeycomb) to|(so )?honeycomb (gives|shows|surfaces|makes it|enables|helps engineers|allows))\b/i;
+
+export function detectProductExplanation(text: string): boolean {
+  return PRODUCT_EXPLANATION_RE.test(text);
 }
 
 // ── Meta-confusion lockout ────────────────────────────────────────────────────
@@ -917,6 +946,8 @@ export function directiveToPromptHint(directive: DirectorDirective): string {
       "Give a short, guarded reply — you are busy and not yet engaged.",
     exit:
       "Wrap up the conversation naturally and ask for any materials to take away.",
+    booth_entry:
+      "Ask a natural booth-entry question (what is Honeycomb, how it compares to Datadog, free tier, OTel, pricing) or introduce your role — sound like a real conference attendee who just walked up.",
   };
   return moveHints[directive.move] ?? "Respond directly to the trainee's last message.";
 }
@@ -1007,7 +1038,29 @@ export function decideNextMove(
     };
   }
 
-  // ── 2c. Tool-anchored answer rule ─────────────────────────────────────────
+  // ── 2c. Booth-entry rule ──────────────────────────────────────────────────
+  // In the first 3 attendee turns (HOOK/RAPPORT), bias toward FAQ-derived
+  // booth-entry behavior instead of diving straight into pain discovery.
+  // Skip when intent signals exit or when the trainee explicitly asked about
+  // problems (handled inside detectBoothEntryMode as "pain_discovery").
+  if (
+    (stage === "HOOK" || stage === "RAPPORT") &&
+    intent !== "hard_exit" &&
+    intent !== "soft_exit"
+  ) {
+    const entryMode = detectBoothEntryMode(session, lastTraineeText, persona);
+    if (entryMode !== "none" && entryMode !== "pain_discovery") {
+      return {
+        stage,
+        move: "booth_entry",
+        tone,
+        intent,
+        boothEntryMode: entryMode,
+      };
+    }
+  }
+
+  // ── 2d. Tool-anchored answer rule ─────────────────────────────────────────
   // When the attendee has named specific tools in their stack and the trainee
   // asks a concrete tool-domain question, force "answer" so the attendee
   // responds in first person about their stack instead of re-asking abstract
