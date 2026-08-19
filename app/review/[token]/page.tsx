@@ -27,6 +27,12 @@ interface MomentumSnapshot {
   lastUpdatedAt: string;
 }
 
+interface DetectedOutcome {
+  type: "BADGE_SCAN" | "DEMO" | "FLYER";
+  detectedAt: string;
+  detectedFrom: "attendee" | "trainee";
+}
+
 interface ReviewData {
   token: string;
   sessionId: string;
@@ -43,6 +49,7 @@ interface ReviewData {
   startTime: string;
   trainerFeedback?: TrainerFeedback;
   momentum?: MomentumSnapshot | null;
+  detectedOutcome?: DetectedOutcome | null;
 }
 
 function formatTimestamp(isoString: string): string {
@@ -394,6 +401,36 @@ export default function ReviewPage() {
               )}
             </p>
           </div>
+          {reviewData.detectedOutcome != null && (() => {
+            const outcomeLabels: Record<DetectedOutcome["type"], string> = {
+              BADGE_SCAN: "Badge scan / follow-up",
+              DEMO: "Demo request",
+              FLYER: "Docs / free tier",
+            };
+            const outcomeColors: Record<DetectedOutcome["type"], string> = {
+              BADGE_SCAN: "bg-emerald-500/15 text-emerald-200 border-emerald-400/20",
+              DEMO: "bg-sky-500/15 text-sky-200 border-sky-400/20",
+              FLYER: "bg-amber-500/15 text-amber-200 border-amber-400/20",
+            };
+            const o = reviewData.detectedOutcome!;
+            return (
+              <div className="md:col-span-2">
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">
+                  Outcome Signal
+                </p>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-medium border ${outcomeColors[o.type]}`}
+                  >
+                    {outcomeLabels[o.type]}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    from {o.detectedFrom} · {formatTimestamp(o.detectedAt)}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
           {reviewData.momentum != null && (() => {
             const scores = reviewData.transcript
               .filter((m) => m.momentumScore !== undefined)

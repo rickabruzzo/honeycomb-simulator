@@ -36,6 +36,11 @@ import { postProcessAttendeeText } from "@/lib/attendee/postProcess";
 import { detectCommittedOutcome } from "@/lib/outcomeCommitment";
 import { isEvaluationQuestion } from "@/lib/outcomeEvaluation";
 import { updateMomentum } from "@/lib/attendee/momentumModel";
+import {
+  detectOutcomeFromTranscript,
+  outcomeSignalToCommittedOutcome,
+} from "@/lib/attendee/outcomeSignals";
+import { shouldShowCTA } from "@/lib/attendee/ctaGating";
 
 /**
  * Simple canned responses keyed by simulator state.
@@ -491,15 +496,15 @@ export async function POST(
         }
 
         // 8) Detect outcome and prepare completion CTA (NO AUTO-END)
-        // Check for outcomes in SOLUTION_FRAMING and OUTCOME states
+        // State-agnostic: scans transcript for explicit outcome signals first,
+        // then falls back to state-machine outcome for telemetry.
         let outcome = "UNKNOWN";
         let endPrompt = null;
 
+        // ── 8a) State-machine outcome (scoring / telemetry, unchanged) ────────
         if (session.currentState === "OUTCOME" || session.currentState === "SOLUTION_FRAMING") {
-          // Use banded outcome resolver if outcomeSeed is available
           if (session.outcomeSeed && session.kickoff.attendeeProfile) {
-            // Build recent transcript for soft demo eligibility
-            const recentTranscript = session.transcript
+            const recentTranscriptText = session.transcript
               .slice(-10)
               .map((m) => m.text)
               .join(" ");
@@ -510,14 +515,13 @@ export async function POST(
               selfServiceDetected,
               deferredInterestDetected,
               attendeeResponseText,
-              recentTranscript,
+              recentTranscriptText,
               session.kickoff.attendeeProfile,
               session.outcomeSeed
             );
 
             outcome = result.outcome;
 
-            // Store decision trace for transparency
             session.decisionTrace = {
               personaBandKey: result.personaBandKey,
               personaWeightsUsed: result.personaWeightsUsed,
@@ -525,10 +529,9 @@ export async function POST(
               sampledOutcome: outcome !== "UNKNOWN" ? outcome : undefined,
               demoEligibilityScore: result.demoEligibilityScore,
               jitteredWeights: result.jitteredWeights,
-              reason: result.reason
+              reason: result.reason,
             };
 
-            // Add telemetry for banded outcomes
             if (result.demoEligibilityScore !== undefined) {
               span.setAttribute("demo_eligibility_score", result.demoEligibilityScore);
             }
@@ -540,7 +543,6 @@ export async function POST(
               span.setAttribute("outcome_reason", result.reason);
             }
           } else {
-            // Fallback to original determineOutcome
             outcome = determineOutcome(
               session.currentState,
               mqlResult,
@@ -552,53 +554,88 @@ export async function POST(
 
           span.setAttribute("outcome_detected", outcome);
           span.setAttribute("outcome_eligible", outcome !== "UNKNOWN");
+        }
 
-          // COMMITMENT GATE: Only show CTA if attendee explicitly committed
-          // Outcome eligibility (above) is used for scoring/telemetry only
-          let committedOutcome = detectCommittedOutcome(attendeeResponseText);
+        // ── 8b) CTA gate — state-agnostic, transcript-driven ─────────────────
+        // Prefer an explicit signal in the last attendee/trainee text first.
+        // If not found there, scan the full recent transcript window.
+        let committedOutcome: string | null = null;
 
-          // EVALUATION QUESTION GATE (Fix 2): Block CTA on mid-funnel questions
-          const isEvaluation = isEvaluationQuestion(attendeeResponseText);
-          if (isEvaluation) {
-            span.setAttribute("evaluation_question_detected", true);
-            committedOutcome = null; // Force block
-          }
+        // 1. Check last attendee response for a commitment phrase
+        const singleMsgCommit = detectCommittedOutcome(attendeeResponseText);
 
-          if (committedOutcome) {
-            span.setAttribute("outcome_committed", committedOutcome);
-            span.setAttribute("commitment_detected", true);
-          }
+        // 2. Scan recent transcript for explicit outcome signals (catches early states)
+        const transcriptSignal = detectOutcomeFromTranscript(session.transcript);
+        const transcriptCommit = outcomeSignalToCommittedOutcome(transcriptSignal);
 
-          // Show CTA ONLY if commitment detected AND not evaluation question
-          if (committedOutcome && shouldShowCompletionCTA(committedOutcome)) {
-            const action = getOutcomeAction(committedOutcome);
+        // 3. Pick the strongest: single-message commit wins; else use transcript scan
+        committedOutcome = singleMsgCommit ?? transcriptCommit;
 
-            // Store pending outcome in session for UI restoration
-            session.pendingOutcome = committedOutcome;
-            session.pendingEndAction = {
-              actionType: action.actionType,
-              actionLabel: action.actionLabel,
-            };
+        // Block CTA on mid-funnel evaluation questions regardless of source
+        const isEvaluation = isEvaluationQuestion(attendeeResponseText);
+        if (isEvaluation) {
+          span.setAttribute("evaluation_question_detected", true);
+          committedOutcome = null;
+        }
 
-            endPrompt = {
-              outcome: committedOutcome,
-              actionLabel: action.actionLabel,
-              actionType: action.actionType,
-              tooltip: action.tooltip,
-            };
+        // 4. Momentum + keyword gate as a secondary path (if no explicit outcome)
+        if (!committedOutcome && shouldShowCTA({
+          outcomeType: transcriptSignal,
+          momentumScore: session.momentum?.score,
+          transcript: session.transcript,
+        })) {
+          // shouldShowCTA already returned true without an outcomeType match,
+          // meaning momentum >= 55 + keyword present — use transcript signal or
+          // fall back to single-message detect on the latest attendee text.
+          committedOutcome = transcriptCommit ?? singleMsgCommit;
+        }
 
-            span.setAttribute("completion_cta_ready", true);
-            span.setAttribute("completion_action", action.actionType);
-          } else if (outcome !== "UNKNOWN") {
-            // Outcome eligible but not committed yet
-            span.setAttribute("completion_cta_ready", false);
-            const blockReason = isEvaluation ? "evaluation_question" : "no_commitment";
-            span.setAttribute("cta_blocked_reason", blockReason);
+        if (committedOutcome) {
+          span.setAttribute("outcome_committed", committedOutcome);
+          span.setAttribute("commitment_detected", true);
+        }
 
-            // Add to decision trace
-            if (session.decisionTrace) {
-              session.decisionTrace.reason = blockReason;
-            }
+        // 5. Persist detected outcome to session (for review visibility)
+        if (transcriptSignal !== "NONE" && !session.detectedOutcome) {
+          const lastSignalMsg = [...session.transcript]
+            .reverse()
+            .find(
+              (m) =>
+                m.type !== "system" &&
+                detectOutcomeFromTranscript([m]) !== "NONE"
+            );
+          session.detectedOutcome = {
+            type: transcriptSignal,
+            detectedAt: new Date().toISOString(),
+            detectedFrom: (lastSignalMsg?.type ?? "attendee") as "attendee" | "trainee",
+          };
+        }
+
+        // 6. Build endPrompt
+        if (committedOutcome && shouldShowCompletionCTA(committedOutcome)) {
+          const action = getOutcomeAction(committedOutcome);
+
+          session.pendingOutcome = committedOutcome;
+          session.pendingEndAction = {
+            actionType: action.actionType,
+            actionLabel: action.actionLabel,
+          };
+
+          endPrompt = {
+            outcome: committedOutcome,
+            actionLabel: action.actionLabel,
+            actionType: action.actionType,
+            tooltip: action.tooltip,
+          };
+
+          span.setAttribute("completion_cta_ready", true);
+          span.setAttribute("completion_action", action.actionType);
+        } else if (outcome !== "UNKNOWN") {
+          span.setAttribute("completion_cta_ready", false);
+          const blockReason = isEvaluation ? "evaluation_question" : "no_commitment";
+          span.setAttribute("cta_blocked_reason", blockReason);
+          if (session.decisionTrace) {
+            session.decisionTrace.reason = blockReason;
           }
         }
 

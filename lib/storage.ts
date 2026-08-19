@@ -65,6 +65,12 @@ export interface SessionState {
   persona?: Persona;
   // Phase 1: Momentum tracking (no behavior changes yet)
   momentum?: ConversationMomentum;
+  // Detected outcome from transcript signals (state-agnostic)
+  detectedOutcome?: {
+    type: "BADGE_SCAN" | "DEMO" | "FLYER";
+    detectedAt: string;
+    detectedFrom: "attendee" | "trainee";
+  };
 }
 
 const inMemoryStorage = new Map<string, SessionState>();
