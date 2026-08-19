@@ -1144,3 +1144,48 @@ step 1 before `GatewayChatProvider` returns `"gateway"`.
 what was once `maxTokens`. Task 4 step 4 exercises it in the smoke script specifically so a
 naming mismatch surfaces before it reaches the request path, with instructions to check the
 live reference rather than guess.
+
+---
+
+## Execution log — 2026-08-19
+
+The plan above was written against `main` (`84977bc`). Execution happened against the real
+working branch `feat/director-reactive-booth-realism-step3`, which is ~11k lines ahead and
+already contained a director/momentum/reactiveness layer. What actually changed:
+
+**Dropped:** Tasks 6–7 (delete the template layer). That layer is deliberate recent work, so
+it was kept.
+
+**Added, and it turned out to be the linchpin:** measurement showed the template layer was
+answering **100% of turns** — 0 of 360 sampled turns reached the LLM (6 personas × 3 states ×
+20 prompt shapes). Every planned prompt/cap/model fix would therefore have had *zero*
+observable effect. `lib/attendee/replyPolicy.ts` now splits turns by kind: templates keep
+factual/scripted turns, the LLM takes expressive ones. Measured after: tool questions 48/48
+template, expressive 48/48 LLM.
+
+**Corrections to the spec's diagnosis, on the record:**
+- The crude substring `intentClassifier` is dead code on this branch — not imported. The
+  "cost → pricing objection" example does not reproduce here.
+- `momentumModel` is not a trust/guard model; its own header says "no behavior changes".
+- The prompt-layer critique survived fully intact: the bundle was untouched at v1.7.0 with
+  every harmful section present.
+- `promptComposer` was a *third* source of behavioral truth, and its MQL block instructed the
+  exact role reversal the bundle forbade.
+
+**Also found and fixed:** `temperature: 0.4` / `max_tokens: 300` hardcoded in the OpenAI
+provider (would have defeated the length budget); four `console.log("[ANSWER MODE]")`
+statements writing trainee conversation to production logs.
+
+**Blocked:** AI Gateway generation returns 403 `customer_verification_required` — it needs a
+payment method on the Vercel team. Auth and model listing work (322 models). `CHAT_PROVIDER`
+stays `openai` until then; the gateway path is wired behind the env var.
+
+**Still open:**
+- `personaValidation.test.ts` asserts primary pain surfaces in ≥30% of ICEBREAKER turns using
+  non-pain prompts and an empty transcript. That contradicts "do not volunteer pain
+  unprompted" — the test needs rewriting, not the code.
+- Production reads the active bundle from KV, so the new v2.0.0 default does not take effect
+  there until the active bundle is updated.
+- Persona differentiation on the template path is still weak (DevOps and TDM returned
+  identical pain text; several personas never hit their primary pain anchors).
+- Phase 2: judge → reducer → reveal budget, so openness is earned rather than phase-derived.
