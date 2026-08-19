@@ -216,6 +216,21 @@ const SMALL_TALK_PATTERNS: RegExp[] = [
  * Returns true when the trainee is asking a small-talk/conference question.
  * Requires a '?' to be present AND a pattern match.
  */
+/**
+ * Has the trainee offered to scan the badge / take contact details?
+ *
+ * Deliberately separate from outcomeSignals.detectOutcomeFromText, which is restricted to
+ * attendee messages by design (see outcomeSignals.attendeeOnly.test.ts). This is not outcome
+ * detection - it only records that the CTA has already happened so the attendee does not ask
+ * for it again.
+ */
+const TRAINEE_BADGE_OFFER_RE =
+  /\b(scan (your|you're|ur)? ?badge|scan it|grab your badge|get your (badge|details|info|contact)|take your (details|info|contact)|have someone (reach out|follow up)|team member (reach out|follow up))\b/i;
+
+export function isTraineeBadgeOffer(text: string): boolean {
+  return TRAINEE_BADGE_OFFER_RE.test(text);
+}
+
 export function isSmallTalkQuestion(text: string): boolean {
   if (!text.includes("?")) return false;
   return SMALL_TALK_PATTERNS.some((p) => p.test(text));
@@ -460,7 +475,9 @@ export function allowedMovesForIntent(
   intent: AttendeeIntent,
   stage: DirectorStage,
   band: MomentumBand,
-  solutionIntroduced?: boolean
+  solutionIntroduced?: boolean,
+  /** True once the trainee has already offered or performed the badge scan. */
+  badgeScanOffered?: boolean
 ): Set<DirectorMove> {
   switch (intent) {
     case "rapport":
@@ -486,8 +503,9 @@ export function allowedMovesForIntent(
       const moves = new Set<DirectorMove>([
         "ask_docs", "ask_demo", "ask_rollout_effort", "ask_pricing", "ask_clarifying", "answer",
       ]);
-      // ask_badge only if fully committed AND in commitment stage
-      if (band === "COMMITTED" && stage === "COMMITMENT") {
+      // ask_badge only if fully committed AND in commitment stage - and never once the
+      // trainee has already offered or performed the scan.
+      if (band === "COMMITTED" && stage === "COMMITMENT" && !badgeScanOffered) {
         moves.add("ask_badge");
       }
       return moves;
@@ -796,7 +814,9 @@ function selectMove(
   aligned: boolean,
   history: DirectorMove[],
   depth: DepthInfo,
-  isTraineeQuestion: boolean
+  isTraineeQuestion: boolean,
+  /** True once the trainee has already offered or performed the badge scan. */
+  badgeScanOffered?: boolean
 ): DirectorMove {
   // 1. Answer contract: when the trainee asks a direct question, always answer it.
   //    A question is always answerable — we don't repair "What tools are you using?"
@@ -876,7 +896,7 @@ function selectMove(
 
     case "COMMITMENT":
       if (hasDiscoveryDepth(stage, band, depth)) {
-        if (!history.includes("ask_badge")) {
+        if (!history.includes("ask_badge") && !badgeScanOffered) {
           candidate = "ask_badge";
         } else if (!history.includes("ask_demo")) {
           candidate = "ask_demo";
@@ -1092,7 +1112,15 @@ export function decideNextMove(
   }
 
   // ── 3. Stage-based move selection ─────────────────────────────────────────
-  let move = selectMove(stage, band, aligned, history, depth, isQuestion(lastTraineeText));
+  let move = selectMove(
+    stage,
+    band,
+    aligned,
+    history,
+    depth,
+    isQuestion(lastTraineeText),
+    session.badgeScanOffered
+  );
 
   // ── 4. Meta-confusion lockout ─────────────────────────────────────────────
   const lockout = metaConfusionLockoutActive(attendeeMessages);
@@ -1124,7 +1152,13 @@ export function decideNextMove(
   // If not, replace with the intent-specific fallback.
   const solutionIntroduced = session.solutionIntroduced;
   if (intent !== "neutral") {
-    const allowed = allowedMovesForIntent(intent, stage, band, solutionIntroduced);
+    const allowed = allowedMovesForIntent(
+      intent,
+      stage,
+      band,
+      solutionIntroduced,
+      session.badgeScanOffered
+    );
     if (!allowed.has(move)) {
       move = intentFallbackMove(intent, history, solutionIntroduced);
     }

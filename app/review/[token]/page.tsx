@@ -51,6 +51,7 @@ interface ReviewData {
   trainerFeedback?: TrainerFeedback;
   momentum?: MomentumSnapshot | null;
   detectedOutcome?: DetectedOutcome | null;
+  promptBundleVersion?: string | null;
 }
 
 function formatTimestamp(isoString: string): string {
@@ -273,7 +274,11 @@ export default function ReviewPage() {
       startTime: reviewData.startTime,
       currentState: reviewData.currentState,
       active: reviewData.active,
-      outcome: reviewData.active ? "In Progress" : reviewData.currentState,
+      // Was reporting currentState, so a finished session exported outcome: "OUTCOME" -
+      // the state name, not the result. detectedOutcome carries the actual result.
+      outcome: reviewData.active
+        ? "In Progress"
+        : reviewData.detectedOutcome?.type ?? reviewData.currentState,
       violations: reviewData.violations,
       trainerFeedback: reviewData.trainerFeedback?.guidance || null,
       transcript: reviewData.transcript.map((m) => ({
@@ -281,7 +286,9 @@ export default function ReviewPage() {
         role: m.type === "trainee" ? "Trainee" : m.type === "attendee" ? "Attendee" : "System",
         message: m.text,
       })),
-      promptBundleVersion: "v1.1.0", // TODO: Get from session metadata when available
+      // Was hardcoded to "v1.1.0", which made every export misreport the prompt version -
+      // it read as though a session had run on an old bundle when it had not.
+      promptBundleVersion: reviewData.promptBundleVersion ?? "not recorded",
       exportedAt: new Date().toISOString(),
     };
 

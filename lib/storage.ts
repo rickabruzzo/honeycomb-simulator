@@ -81,6 +81,25 @@ export interface SessionState {
   // Gates evaluation questions (ask_demo, ask_docs, ask_badge) so the attendee
   // doesn't jump to CTAs before the product has been described.
   solutionIntroduced?: boolean;
+
+  /**
+   * True once the trainee has offered or performed a badge scan.
+   *
+   * Without this the attendee could ask "Can you scan my badge?" after the trainee had
+   * already scanned it - the director's own guard only checks whether IT had previously
+   * chosen ask_badge, so it had no idea the thing had already happened in the conversation.
+   */
+  badgeScanOffered?: boolean;
+
+  /**
+   * Prompt bundle version that generated the most recent attendee reply.
+   *
+   * Recorded so transcript exports can say which prompt produced a conversation. The export
+   * previously hardcoded "v1.1.0", which made every session look like it ran on an old
+   * bundle. That matters for SME calibration: a transcript is only evidence about the prompt
+   * that actually produced it.
+   */
+  promptBundleVersion?: string;
   // Set to true once the trainee has framed the product with a real explanation
   // (e.g. "Honeycomb is...", "We help teams...", "It lets you...").
   // Stricter than solutionIntroduced — gates competitor/evaluation booth questions

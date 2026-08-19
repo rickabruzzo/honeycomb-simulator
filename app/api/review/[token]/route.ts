@@ -66,5 +66,6 @@ export async function GET(req: Request, ctx: any) {
     trainerFeedback: session.trainerFeedback || undefined,
     momentum: session.momentum ?? null,
     detectedOutcome: session.detectedOutcome ?? null,
+    promptBundleVersion: session.promptBundleVersion ?? null,
   });
 }

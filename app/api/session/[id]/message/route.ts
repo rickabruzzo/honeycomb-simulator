@@ -368,6 +368,7 @@ export async function POST(
           );
 
           span.setAttribute("prompt_bundle_version", composedPrompt.bundleVersion);
+          session.promptBundleVersion = composedPrompt.bundleVersion;
           span.setAttribute("prompt_has_trainer_guidance", composedPrompt.hasTrainerGuidance);
 
           // Inject conversation director hint when a directive was chosen

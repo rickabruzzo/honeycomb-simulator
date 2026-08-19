@@ -23,6 +23,7 @@ import {
   detectNamedTools,
   detectSolutionMention,
   detectProductExplanation,
+  isTraineeBadgeOffer,
   isQuestion,
   NEUTRAL_HOOK_BANK,
   type DirectorDirective,
@@ -1167,6 +1168,12 @@ function generateAttendeeReplyInternal(params: {
   //     the product or a concrete capability.  Once set it is never unset.
   if (!session.solutionIntroduced && detectSolutionMention(traineeText)) {
     session.solutionIntroduced = true;
+  }
+
+  // 3c2. Badge-scan CTA already happened? Once the trainee offers or performs it, the
+  //       attendee must not turn around and ask for it again.
+  if (!session.badgeScanOffered && isTraineeBadgeOffer(traineeText)) {
+    session.badgeScanOffered = true;
   }
 
   // 3d. Product-explanation detection — stricter than solutionIntroduced.
