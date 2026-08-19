@@ -21,6 +21,7 @@ import {
   decideNextMove,
   recordDirectorMove,
   detectNamedTools,
+  isQuestion,
   NEUTRAL_HOOK_BANK,
   type DirectorDirective,
 } from "./conversationDirector";
@@ -211,7 +212,7 @@ const ANSWER_WRAPPERS: Array<(statement: string) => string> = [
 
 /**
  * Generic first-person answers when no pain anchors are available.
- * Used as fallback for the answer move.
+ * Used as fallback for the answer move ONLY when the trainee did NOT ask a question.
  */
 const GENERIC_FIRST_PERSON_ANSWERS: string[] = [
   "For us, the biggest challenge has been the debugging cycles during incidents.",
@@ -220,6 +221,80 @@ const GENERIC_FIRST_PERSON_ANSWERS: string[] = [
   "For our team, incident response is still really manual and slow.",
   "Right now we're dealing with a lot of toil around deployments and rollbacks.",
 ];
+
+// ── Answer contract — question-type routing ───────────────────────────────────
+// When the trainee asks a direct question, the answer case MUST route to a
+// question-relevant template.  Generic pain anchors are NOT surfaced unless
+// they directly match the question keywords.
+
+/** Detects tool / stack questions: "What are you using?", "What's your setup?" */
+const TOOL_Q_RE =
+  /\b(tool|tools|stack|use|using|rely|setup|running|platform|software|solution)\b/i;
+
+/** Detects process / workflow questions: "How do you debug?", "How does your workflow look?" */
+const PROCESS_Q_RE =
+  /\b(how|workflow|approach|handle|process|practice|normally|usually|debug|debugging)\b/i;
+
+/** Detects pain-detail questions: "Where does it break?", "What's the slowdown?" */
+const PAIN_DETAIL_Q_RE =
+  /\b(where|what part|slow down|break|breakdown|biggest|hardest|struggle|bottleneck|pain point)\b/i;
+
+/**
+ * Answers for tool-name questions when session.currentTools is known.
+ * Takes a formatted tool list string (e.g. "Splunk and Prometheus").
+ */
+const TOOL_NAME_ANSWERS: Array<(tools: string) => string> = [
+  (t) => `Right now we're mostly using ${t}.`,
+  (t) => `We're running ${t} for the main stuff.`,
+  (t) => `Our stack is mostly ${t} right now.`,
+  (t) => `We rely on ${t} day-to-day.`,
+];
+
+/** Generic tool-answer fallbacks when no named tools are on the session. */
+const TOOL_ANSWER_GENERIC: string[] = [
+  "Right now we're mostly relying on a mix of tools and it's a bit fragmented.",
+  "We have a few things stitched together — nothing fully integrated.",
+  "Mostly a combination of open-source stuff and some commercial tools.",
+  "We're using a handful of tools depending on signal type — logs, metrics, traces all live separately.",
+];
+
+/** Process / workflow question answers. */
+const PROCESS_ANSWER_TEMPLATES: string[] = [
+  "We usually start with logs and then try to trace things from there.",
+  "When something breaks, we check dashboards first and then dig into logs if we need more context.",
+  "Our usual approach is to look at what fired the alert and then work backward from there.",
+  "Honestly it's a bit manual — we start with whatever triggered and try to correlate from there.",
+];
+
+/** Pain-detail question answers. */
+const PAIN_DETAIL_ANSWERS: string[] = [
+  "The slowdown is usually in figuring out which service is actually causing the issue.",
+  "The biggest gap is connecting signals across services — we can find the data but correlating it takes time.",
+  "Where it breaks down is during actual incidents — the data is there but it's scattered.",
+  "The hardest part is understanding what caused what — we can see symptoms but root cause takes forever.",
+];
+
+/**
+ * Hard fallback for answer-mode questions that didn't match a specific type.
+ * NEVER falls back to unrelated pain.
+ */
+const ANSWER_HARD_FALLBACK: string[] = [
+  "Right now we're mostly relying on a mix of tools and it's a bit fragmented.",
+  "We usually start with logs and then try to trace things from there.",
+  "The slowdown is usually in figuring out which service is actually causing the issue.",
+  "Honestly our setup works okay day-to-day but under pressure it slows us down.",
+];
+
+/**
+ * Format tool names from the session into a readable list.
+ * Returns null if no tools are on the session.
+ */
+function formatToolNames(session: SessionState): string | null {
+  const tools = session.currentTools;
+  if (!tools || tools.length === 0) return null;
+  if (tools.length === 1) return capitalizeFirst(tools[0]);
+  return `${capitalizeFirst(tools[0])} and ${capitalizeFirst(tools[1])}`;
+}
 
 // ── Helper: pick unused phrase avoiding recent attendee repetition ─────────────
 
@@ -436,7 +511,8 @@ function generateFromDirective(
   traineeText: string,
   session: SessionState,
   persona: Persona | undefined,
-  traineeTurnCount: number
+  traineeTurnCount: number,
+  isTraineeQuestion: boolean
 ): AttendeeReplyResult | null {
   const { move } = directive;
 
@@ -561,23 +637,66 @@ function generateFromDirective(
             ? sanitizeResponse(stackAnswer, persona)
             : stackAnswer;
           recordDirectorMove(session, move);
+          const replyText = postProcessAttendeeText(sanitized, persona);
+          console.log("[ANSWER MODE]", { traineeQuestion: traineeText, generated: replyText });
           return {
-            text: postProcessAttendeeText(sanitized, persona),
+            text: replyText,
             source: "template",
             confidence: 0.9,
           };
         }
-        // Fall through to normal answer logic if no tools available
+        // Fall through to question-type routing if no tools available
       }
 
-      // The attendee should answer the trainee's question with a first-person
-      // statement about their own situation — NOT ask a question back.
-      // This prevents role-reversal (attendee interrogating the trainee).
+      // ── Answer contract: when the trainee asked a direct question, route
+      // by question type.  Generic pain anchors are NEVER used here — they
+      // cause unrelated pain statements to appear as answers.
+      // e.g. "What tools do you use?" → "We're using X" not "Alert noise is terrible."
+      if (isTraineeQuestion) {
+        let questionAnswer: string | null = null;
+
+        // Priority: pain-detail (most specific) → tool → process
+        if (PAIN_DETAIL_Q_RE.test(traineeText)) {
+          const idx = traineeTurnCount % PAIN_DETAIL_ANSWERS.length;
+          questionAnswer = pickUnused(PAIN_DETAIL_ANSWERS, recentAttendeeText, idx);
+        } else if (TOOL_Q_RE.test(traineeText)) {
+          // Use named tools if available, otherwise generic tool answer
+          const toolList = formatToolNames(session);
+          if (toolList) {
+            const idx = traineeTurnCount % TOOL_NAME_ANSWERS.length;
+            questionAnswer = TOOL_NAME_ANSWERS[idx](toolList);
+          } else {
+            questionAnswer = pickUnused(TOOL_ANSWER_GENERIC, recentAttendeeText, traineeTurnCount);
+          }
+        } else if (PROCESS_Q_RE.test(traineeText)) {
+          questionAnswer = pickUnused(PROCESS_ANSWER_TEMPLATES, recentAttendeeText, traineeTurnCount);
+        }
+
+        // Hard fallback: still answer the question, never fall through to pain anchors
+        if (!questionAnswer) {
+          questionAnswer = pickUnused(ANSWER_HARD_FALLBACK, recentAttendeeText, traineeTurnCount);
+        }
+
+        const sanitized = persona ? sanitizeResponse(questionAnswer, persona) : questionAnswer;
+        recordDirectorMove(session, move);
+        const replyText = postProcessAttendeeText(sanitized, persona);
+        console.log("[ANSWER MODE]", { traineeQuestion: traineeText, generated: replyText });
+        return {
+          text: replyText,
+          source: "template",
+          confidence: 0.85,
+        };
+      }
+
+      // ── Non-question path: attendee was asked to elaborate/share context.
+      // Pain anchors are allowed here since the trainee didn't ask a specific question.
+      // Step 3 (any unsurfaced anchor) is intentionally REMOVED — use only anchors
+      // that match what the trainee is talking about.
 
       let answerText: string | null = null;
       let answerPainId: string | null = null;
 
-      // 1. Try keyword-match pain on trainee text
+      // 1. Keyword-match pain on trainee text (anchored to trainee's topic)
       if (persona?.painAnchors) {
         const matched = matchPersonaPain(traineeText, persona);
         if (matched && !hasAlreadySurfacedPain(session, { id: matched.painId })) {
@@ -586,7 +705,7 @@ function generateFromDirective(
         }
       }
 
-      // 2. Try specifically directed pain anchor
+      // 2. Specifically directed pain anchor from the director
       if (!answerText && directive.mustInclude?.painAnchorId && persona?.painAnchors) {
         const anchor = persona.painAnchors.find(
           (p) => p.id === directive.mustInclude!.painAnchorId
@@ -597,45 +716,36 @@ function generateFromDirective(
         }
       }
 
-      // 3. Next unsurfaced pain anchor (topic-aware: prefer on-topic)
-      if (!answerText && persona?.painAnchors) {
-        const unsurfaced = persona.painAnchors.filter(
-          (p) => !hasAlreadySurfacedPain(session, p)
-        );
-        const sorted = sortPainAnchorsByTopic(unsurfaced, session.currentTopic ?? null);
-        if (sorted.length > 0) {
-          answerText = formatPainAsStatement(sorted[0].pain);
-          answerPainId = sorted[0].id;
-        }
-      }
-
-      // Wrap pain statement with a conversational answer opener
+      // Wrap with a conversational opener
       if (answerText && answerPainId) {
         markPainAsSurfaced(session, answerPainId);
         const wrapperIdx = traineeTurnCount % ANSWER_WRAPPERS.length;
         let wrapped = ANSWER_WRAPPERS[wrapperIdx](answerText);
-        // Role-reversal guard: ensure the response is a statement, not a question
         if (wrapped.endsWith("?")) {
           wrapped = wrapped.slice(0, -1) + ".";
         }
         const sanitized = persona ? sanitizeResponse(wrapped, persona) : wrapped;
         recordDirectorMove(session, move);
+        const replyText = postProcessAttendeeText(sanitized, persona);
+        console.log("[ANSWER MODE]", { traineeQuestion: traineeText, generated: replyText });
         return {
-          text: postProcessAttendeeText(sanitized, persona),
+          text: replyText,
           source: "persona_pain",
           confidence: 0.85,
         };
       }
 
-      // 4. Fallback: generic first-person answers
+      // Fallback: generic first-person answers (only reached for non-question turns)
       const chosen = pickUnused(
         GENERIC_FIRST_PERSON_ANSWERS,
         recentAttendeeText,
         traineeTurnCount
       );
       recordDirectorMove(session, move);
+      const fallbackText = postProcessAttendeeText(chosen, persona);
+      console.log("[ANSWER MODE]", { traineeQuestion: traineeText, generated: fallbackText });
       return {
-        text: postProcessAttendeeText(chosen, persona),
+        text: fallbackText,
         source: "template",
         confidence: 0.75,
       };
@@ -869,7 +979,8 @@ function generateAttendeeReplyInternal(params: {
   }
 
   // 4. Generate content that matches the directive
-  let result = generateFromDirective(directive, traineeText, session, persona, traineeTurnCount);
+  const isTraineeQuestion = isQuestion(traineeText);
+  let result = generateFromDirective(directive, traineeText, session, persona, traineeTurnCount, isTraineeQuestion);
 
   if (!result) return null;
 

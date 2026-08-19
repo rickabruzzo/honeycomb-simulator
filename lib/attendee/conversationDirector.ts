@@ -724,17 +724,18 @@ function selectMove(
   depth: DepthInfo,
   isTraineeQuestion: boolean
 ): DirectorMove {
-  // 1. Repair takes highest priority
-  if (!aligned && depth.totalCount > 1) {
-    return "ask_clarifying";
+  // 1. Answer contract: when the trainee asks a direct question, always answer it.
+  //    A question is always answerable — we don't repair "What tools are you using?"
+  //    by asking a clarifying question back.  Repair is reserved for misaligned
+  //    statements only (step 1b below).
+  if (isTraineeQuestion && stage !== "HOOK" && !isMoveTooRecent("answer", history)) {
+    return "answer";
   }
 
-  // 1b. Answer prioritization — when the trainee asks a question, answer it
-  //     instead of asking a question back (prevents role-reversal).
-  //     Intent gating (step 6 in decideNextMove) will filter this out for
-  //     hard_exit / soft_exit since "answer" is not in those allowed sets.
-  if (aligned && isTraineeQuestion && stage !== "HOOK" && !isMoveTooRecent("answer", history)) {
-    return "answer";
+  // 1b. Repair: when the trainee makes a misaligned STATEMENT (not a question),
+  //     ask a clarifying question to re-establish connection.
+  if (!aligned && !isTraineeQuestion && depth.totalCount > 1) {
+    return "ask_clarifying";
   }
 
   let candidate: DirectorMove;
