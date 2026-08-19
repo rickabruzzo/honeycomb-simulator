@@ -21,6 +21,7 @@
     "@opentelemetry/sdk-node": "^0.211.0",
     "@vercel/kv": "^3.0.0",
     "@vercel/otel": "^2.1.0",
+    "ai": "^6.0.258",
     "lucide-react": "^0.562.0",
     "next": "16.1.4",
     "openai": "^6.16.0",

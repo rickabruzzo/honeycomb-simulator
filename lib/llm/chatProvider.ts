@@ -8,6 +8,7 @@
  */
 
 import type { ChatInput, ChatResult } from "./chatTypes";
+import { GatewayChatProvider } from "./gateway";
 import { getCachedChatResult, saveChatResultToCache } from "./chatCache";
 
 export interface ChatProvider {
@@ -97,8 +98,8 @@ export class OpenAIChatProvider implements ChatProvider {
 
       const completion = await client.chat.completions.create({
         model: this.model,
-        temperature: 0.4,
-        max_tokens: 300,
+        temperature: Number(process.env.ATTENDEE_TEMPERATURE ?? 0.8),
+        max_tokens: Number(process.env.ATTENDEE_MAX_TOKENS ?? 700),
         messages,
       });
 
@@ -139,6 +140,33 @@ export class OpenAIChatProvider implements ChatProvider {
 export function getChatProvider(): ChatProvider {
   const chatProvider = process.env.CHAT_PROVIDER;
   const apiKey = process.env.OPENAI_API_KEY;
+
+  // Preferred path: Vercel AI Gateway, so the model is an env change and both providers
+  // are reachable through one API.
+  if (chatProvider === "gateway") {
+    try {
+      const gatewayProvider = new GatewayChatProvider();
+      return {
+        async generate(input: ChatInput): Promise<ChatResult> {
+          try {
+            return await gatewayProvider.generate(input);
+          } catch (error) {
+            console.warn(
+              "[ChatProvider] Gateway generation failed, falling back to mock:",
+              error instanceof Error ? error.message : "Unknown error"
+            );
+            return await new MockChatProvider().generate(input);
+          }
+        },
+      };
+    } catch (error) {
+      console.warn(
+        "[ChatProvider] Failed to initialize gateway provider, using mock:",
+        error instanceof Error ? error.message : "Unknown error"
+      );
+      return new MockChatProvider();
+    }
+  }
 
   // Default to mock
   if (chatProvider !== "openai") {
