@@ -818,14 +818,15 @@ expect(
   "evaluating_fit"
 );
 // The evaluating_fit gate does NOT include ask_badge unless COMMITTED + COMMITMENT
-const evalFitAllowed = allowedMovesForIntent("evaluating_fit", "DISCOVERY", "CURIOUS");
+// (solutionIntroduced=true — this test checks the badge/docs behavior post-solution)
+const evalFitAllowed = allowedMovesForIntent("evaluating_fit", "DISCOVERY", "CURIOUS", true);
 expect(
   'evaluating_fit + CURIOUS + DISCOVERY → ask_badge NOT in allowed set',
   evalFitAllowed.has("ask_badge"),
   false
 );
 expect(
-  'evaluating_fit + CURIOUS + DISCOVERY → ask_docs IS in allowed set',
+  'evaluating_fit + CURIOUS + DISCOVERY + solution → ask_docs IS in allowed set',
   evalFitAllowed.has("ask_docs"),
   true
 );

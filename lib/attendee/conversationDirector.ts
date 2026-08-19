@@ -136,6 +136,34 @@ export function isToolDomainQuestion(text: string): boolean {
   return text.includes("?") && TOOL_DOMAIN_RE.test(text);
 }
 
+// ── Solution detection ────────────────────────────────────────────────────────
+// Detects when a trainee message introduces the product or a concrete capability.
+// Until this fires, evaluation-style moves (ask_demo, ask_docs, ask_badge) are
+// blocked — the attendee has nothing to evaluate yet.
+
+/** Trainee names the product directly. */
+const SOLUTION_PRODUCT_RE = /\bhoneycomb\b/i;
+
+/** Trainee uses explicit capability/value framing. */
+const SOLUTION_CAPABILITY_RE =
+  /\b(we help|we can help|this (helps|lets|allows)|it (helps|lets|allows)|lets you|allows you|gives you|you can (see|trace|debug|query|find|explore|detect))\b/i;
+
+/** Trainee describes a concrete product feature. */
+const SOLUTION_FEATURE_RE =
+  /\b(distributed tracing|full[- ]?stack observability|structured events|wide events|high cardinality|debug faster|find (the )?root cause|correlat(e|ing|ion) (events|traces|logs|signals))\b/i;
+
+/**
+ * Returns true when the trainee's message introduces the product, a capability,
+ * or a concrete feature — signalling the attendee now has something to evaluate.
+ */
+export function detectSolutionMention(text: string): boolean {
+  return (
+    SOLUTION_PRODUCT_RE.test(text) ||
+    SOLUTION_CAPABILITY_RE.test(text) ||
+    SOLUTION_FEATURE_RE.test(text)
+  );
+}
+
 // ── Meta-confusion lockout ────────────────────────────────────────────────────
 // When the attendee just expressed confusion / repair, suppress further
 // ask_clarifying for the next 2 attendee turns to prevent spiral loops.
@@ -402,7 +430,8 @@ export function inferAttendeeIntent(
 export function allowedMovesForIntent(
   intent: AttendeeIntent,
   stage: DirectorStage,
-  band: MomentumBand
+  band: MomentumBand,
+  solutionIntroduced?: boolean
 ): Set<DirectorMove> {
   switch (intent) {
     case "rapport":
@@ -420,6 +449,11 @@ export function allowedMovesForIntent(
     }
 
     case "evaluating_fit": {
+      // Gate: without a solution introduction, attendee can't evaluate anything.
+      // Remove all CTA/evaluation moves until the trainee has described the product.
+      if (!solutionIntroduced) {
+        return new Set<DirectorMove>(["answer", "share_pain", "ask_clarifying"]);
+      }
       const moves = new Set<DirectorMove>([
         "ask_docs", "ask_demo", "ask_rollout_effort", "ask_pricing", "ask_clarifying", "answer",
       ]);
@@ -447,7 +481,12 @@ export function allowedMovesForIntent(
 
     case "neutral":
     default:
-      // No additional restriction — stage-based behavior applies
+      // Gate CTA moves until solution is introduced
+      if (!solutionIntroduced) {
+        return new Set<DirectorMove>([
+          "ask_clarifying", "share_pain", "answer", "ask_hook", "deflect", "exit",
+        ]);
+      }
       return new Set<DirectorMove>([
         "ask_clarifying", "share_pain", "answer", "ask_hook", "ask_demo", "ask_docs",
         "ask_rollout_effort", "ask_pricing", "ask_badge", "deflect", "exit",
@@ -460,7 +499,8 @@ export function allowedMovesForIntent(
  */
 function intentFallbackMove(
   intent: AttendeeIntent,
-  history: DirectorMove[]
+  history: DirectorMove[],
+  solutionIntroduced?: boolean
 ): DirectorMove {
   switch (intent) {
     case "confused":
@@ -485,6 +525,11 @@ function intentFallbackMove(
       return "share_pain";
 
     case "evaluating_fit":
+      // Gate: without solution, fallback to pain sharing instead of CTAs
+      if (!solutionIntroduced) {
+        if (!isMoveTooRecent("share_pain", history)) return "share_pain";
+        return "ask_clarifying";
+      }
       if (!isMoveTooRecent("ask_docs", history)) return "ask_docs";
       return "ask_rollout_effort";
 
@@ -1024,16 +1069,17 @@ export function decideNextMove(
   // ── 6. Intent constraint ──────────────────────────────────────────────────
   // If intent is non-neutral, check whether the selected move is allowed.
   // If not, replace with the intent-specific fallback.
+  const solutionIntroduced = session.solutionIntroduced;
   if (intent !== "neutral") {
-    const allowed = allowedMovesForIntent(intent, stage, band);
+    const allowed = allowedMovesForIntent(intent, stage, band, solutionIntroduced);
     if (!allowed.has(move)) {
-      move = intentFallbackMove(intent, history);
+      move = intentFallbackMove(intent, history, solutionIntroduced);
     }
 
     // Double-check: if lockout pushed us to ask_docs/exit but intent is
     // "confused", the confused gate only allows share_pain/ask_clarifying.
     if (intent === "confused" && !allowed.has(move)) {
-      move = intentFallbackMove(intent, history);
+      move = intentFallbackMove(intent, history, solutionIntroduced);
     }
 
     // Anti-repeat on intent fallback: if the fallback move is too recent,
@@ -1043,6 +1089,14 @@ export function decideNextMove(
       const alt = allowedArr.find((m) => !isMoveTooRecent(m, history));
       if (alt) move = alt;
       // If every allowed move is too recent, keep the fallback (least bad option)
+    }
+  } else {
+    // neutral intent: still gate CTA moves if no solution introduced
+    if (!solutionIntroduced) {
+      const ctaMoves = new Set<DirectorMove>(["ask_demo", "ask_docs", "ask_badge"]);
+      if (ctaMoves.has(move)) {
+        move = isMoveTooRecent("share_pain", history) ? "ask_clarifying" : "share_pain";
+      }
     }
   }
 

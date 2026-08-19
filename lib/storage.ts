@@ -76,6 +76,10 @@ export interface SessionState {
   consecutiveNewTopicCount?: number;
   // Named tools the attendee has mentioned (e.g. ["elk","prometheus"])
   currentTools?: string[];
+  // Set to true once the trainee has introduced a solution/product capability.
+  // Gates evaluation questions (ask_demo, ask_docs, ask_badge) so the attendee
+  // doesn't jump to CTAs before the product has been described.
+  solutionIntroduced?: boolean;
 }
 
 const inMemoryStorage = new Map<string, SessionState>();

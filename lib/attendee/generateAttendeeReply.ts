@@ -21,6 +21,7 @@ import {
   decideNextMove,
   recordDirectorMove,
   detectNamedTools,
+  detectSolutionMention,
   isQuestion,
   NEUTRAL_HOOK_BANK,
   type DirectorDirective,
@@ -802,6 +803,12 @@ function generateFromDirective(
     }
 
     case "ask_demo": {
+      // Safety net: solution must be introduced before asking for a demo
+      if (!session.solutionIntroduced) {
+        const fallback = pickUnused(GENERIC_FIRST_PERSON_ANSWERS, recentAttendeeText, traineeTurnCount);
+        recordDirectorMove(session, "share_pain");
+        return { text: postProcessAttendeeText(fallback, persona), source: "template", confidence: 0.7 };
+      }
       const chosen = pickUnused(
         DEMO_PHRASES,
         recentAttendeeText,
@@ -816,6 +823,12 @@ function generateFromDirective(
     }
 
     case "ask_docs": {
+      // Safety net: solution must be introduced before asking for docs
+      if (!session.solutionIntroduced) {
+        const fallback = pickUnused(GENERIC_FIRST_PERSON_ANSWERS, recentAttendeeText, traineeTurnCount);
+        recordDirectorMove(session, "share_pain");
+        return { text: postProcessAttendeeText(fallback, persona), source: "template", confidence: 0.7 };
+      }
       const chosen = pickUnused(
         DOCS_PHRASES,
         recentAttendeeText,
@@ -894,6 +907,12 @@ function generateFromDirective(
     }
 
     case "ask_badge": {
+      // Safety net: solution must be introduced before asking for badge scan
+      if (!session.solutionIntroduced) {
+        const fallback = pickUnused(GENERIC_FIRST_PERSON_ANSWERS, recentAttendeeText, traineeTurnCount);
+        recordDirectorMove(session, "share_pain");
+        return { text: postProcessAttendeeText(fallback, persona), source: "template", confidence: 0.7 };
+      }
       const chosen = pickUnused(
         BADGE_PHRASES,
         recentAttendeeText,
@@ -978,6 +997,12 @@ function generateAttendeeReplyInternal(params: {
     }
   }
 
+  // 3c. Solution detection — gate evaluation moves until the trainee introduces
+  //     the product or a concrete capability.  Once set it is never unset.
+  if (!session.solutionIntroduced && detectSolutionMention(traineeText)) {
+    session.solutionIntroduced = true;
+  }
+
   // 4. Generate content that matches the directive
   const isTraineeQuestion = isQuestion(traineeText);
   let result = generateFromDirective(directive, traineeText, session, persona, traineeTurnCount, isTraineeQuestion);
@@ -1036,15 +1061,18 @@ export function generateAttendeeReply(params: {
   }
 
   // Discovery-question filter: the attendee is a prospect, not a salesperson.
-  // Replace discovery questions ("How does your team…?") with evaluation questions.
+  // Replace discovery questions ("How does your team…?") with:
+  //   - EVALUATION_QUESTIONS if the solution has been introduced (they have context to evaluate)
+  //   - GENERIC_FIRST_PERSON_ANSWERS otherwise (nothing to evaluate yet — pivot to pain sharing)
   if (isDiscoveryQuestion(result.text)) {
     const recentAttendeeText = session.transcript
       .filter((m) => m.type === "attendee")
       .slice(-5)
       .map((m) => m.text.toLowerCase())
       .join(" ");
+    const bank = session.solutionIntroduced ? EVALUATION_QUESTIONS : GENERIC_FIRST_PERSON_ANSWERS;
     const replacement = pickUnused(
-      EVALUATION_QUESTIONS,
+      bank,
       recentAttendeeText,
       params.traineeTurnCount
     );
