@@ -20,6 +20,7 @@ import type { Persona } from "../scenarioTypes";
 import {
   decideNextMove,
   recordDirectorMove,
+  detectNamedTools,
   NEUTRAL_HOOK_BANK,
   type DirectorDirective,
 } from "./conversationDirector";
@@ -144,6 +145,55 @@ const SMALL_TALK_PIVOTS: string[] = [
   "We've got some pain around debugging and on-call right now.",
   "We're evaluating a few options to speed up root cause during incidents.",
 ];
+
+// ── Stack-evaluation answer templates ─────────────────────────────────────────
+// Used when the attendee has named specific tools and the trainee asks a
+// concrete question about their stack.  Templates use {toolA}/{toolB} placeholders
+// filled from session.currentTools.
+
+const STACK_EVAL_TEMPLATES: Array<(toolA: string, toolB: string) => string> = [
+  (a, b) => `For us, the hard part is jumping between ${a} and ${b} and trying to piece together what actually happened.`,
+  (a, b) => `We can usually find the raw data in ${a}, but correlating it with what we see in ${b} is where things slow down.`,
+  (a, b) => `${a} gives us part of the picture and ${b} gives us another part, but during an incident it's tough to connect them quickly.`,
+  (a, b) => `The tools work fine on their own, but when something breaks we spend too much time stitching ${a} and ${b} signals together.`,
+];
+
+/** Fallback for when only one tool is known */
+const STACK_EVAL_SINGLE: Array<(tool: string) => string> = [
+  (t) => `We're using ${t}, but when incidents hit the data is hard to navigate quickly.`,
+  (t) => `${t} gives us the raw data, but correlating signals during an incident is still really manual.`,
+  (t) => `Honestly, ${t} works okay day-to-day, but under pressure during an incident it slows us down.`,
+  (t) => `The biggest gap with ${t} is connecting what we see there to what's actually happening across our services.`,
+];
+
+/**
+ * Capitalize the first letter of a tool name for use at sentence start.
+ */
+function capitalizeFirst(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Generate a concrete first-person answer about the attendee's current stack.
+ * Returns null if no tools are available on the session.
+ */
+function generateStackEvalAnswer(
+  session: SessionState,
+  traineeTurnCount: number
+): string | null {
+  const tools = (session as any).currentTools as string[] | undefined;
+  if (!tools || tools.length === 0) return null;
+
+  if (tools.length >= 2) {
+    const idx = traineeTurnCount % STACK_EVAL_TEMPLATES.length;
+    const toolA = capitalizeFirst(tools[0]);
+    const toolB = capitalizeFirst(tools[1]);
+    return STACK_EVAL_TEMPLATES[idx](toolA, toolB);
+  }
+
+  const idx = traineeTurnCount % STACK_EVAL_SINGLE.length;
+  return STACK_EVAL_SINGLE[idx](capitalizeFirst(tools[0]));
+}
 
 // ── Answer move — first-person response templates ────────────────────────────
 
@@ -502,6 +552,24 @@ function generateFromDirective(
         };
       }
 
+      // Tool-anchored fast path: concrete first-person answer about the
+      // attendee's named tools instead of generic pain anchors.
+      if (directive.toolAnchored) {
+        const stackAnswer = generateStackEvalAnswer(session, traineeTurnCount);
+        if (stackAnswer) {
+          const sanitized = persona
+            ? sanitizeResponse(stackAnswer, persona)
+            : stackAnswer;
+          recordDirectorMove(session, move);
+          return {
+            text: postProcessAttendeeText(sanitized, persona),
+            source: "template",
+            confidence: 0.9,
+          };
+        }
+        // Fall through to normal answer logic if no tools available
+      }
+
       // The attendee should answer the trainee's question with a first-person
       // statement about their own situation — NOT ask a question back.
       // This prevents role-reversal (attendee interrogating the trainee).
@@ -781,6 +849,23 @@ function generateAttendeeReplyInternal(params: {
     );
     session.currentTopic = topicUpdate.topic ?? undefined;
     session.consecutiveNewTopicCount = topicUpdate.consecutiveNewTopicCount;
+  }
+
+  // 3b. Update tool memory — scan attendee messages for named tools
+  //     and persist to session.currentTools so the director can reference them.
+  {
+    const attendeeMsgs = session.transcript.filter((m) => m.type === "attendee");
+    const allAttendeeText = attendeeMsgs.map((m) => m.text).join(" ");
+    const detectedTools = detectNamedTools(allAttendeeText);
+    if (detectedTools.length > 0) {
+      // Merge with existing tools (deduplicated, preserving order)
+      const existing = session.currentTools ?? [];
+      const merged = [...existing];
+      for (const t of detectedTools) {
+        if (!merged.includes(t)) merged.push(t);
+      }
+      session.currentTools = merged;
+    }
   }
 
   // 4. Generate content that matches the directive

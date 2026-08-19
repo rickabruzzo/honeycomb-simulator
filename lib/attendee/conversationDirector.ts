@@ -79,6 +79,61 @@ export interface DirectorDirective {
   intent?: AttendeeIntent;
   /** When true, the trainee asked a small-talk question (conference/day) — reply with casual answer, not contextual callback */
   smallTalk?: boolean;
+  /** When true, session has named tools and trainee asked a tool-domain question — answer concretely about the stack */
+  toolAnchored?: boolean;
+}
+
+// ── Named tool detection ──────────────────────────────────────────────────────
+// Detects specific tools/products mentioned in text.  Used to persist a
+// session-level tool memory so the attendee can answer concretely about
+// their stack instead of asking abstract re-clarification questions.
+
+const TOOL_CATALOG: Array<{ name: string; pattern: RegExp }> = [
+  { name: "splunk",        pattern: /\bsplunk\b/i },
+  { name: "elk",           pattern: /\belk\b/i },
+  { name: "elasticsearch", pattern: /\belasticsearch\b/i },
+  { name: "kibana",        pattern: /\bkibana\b/i },
+  { name: "logstash",      pattern: /\blogstash\b/i },
+  { name: "prometheus",    pattern: /\bprometheus\b/i },
+  { name: "grafana",       pattern: /\bgrafana\b/i },
+  { name: "datadog",       pattern: /\bdatadog\b/i },
+  { name: "new relic",     pattern: /\bnew relic\b/i },
+  { name: "cloudwatch",    pattern: /\bcloudwatch\b/i },
+  { name: "sentry",        pattern: /\bsentry\b/i },
+  { name: "honeycomb",     pattern: /\bhoneycomb\b/i },
+  { name: "pagerduty",     pattern: /\bpagerduty\b/i },
+  { name: "opsgenie",      pattern: /\bopsgenie\b/i },
+  { name: "jaeger",        pattern: /\bjaeger\b/i },
+  { name: "zipkin",        pattern: /\bzipkin\b/i },
+  { name: "nagios",        pattern: /\bnagios\b/i },
+  { name: "dynatrace",     pattern: /\bdynatrace\b/i },
+  { name: "sumologic",     pattern: /\bsumo ?logic\b/i },
+  { name: "lightstep",     pattern: /\blightstep\b/i },
+];
+
+/**
+ * Detect named tools/products mentioned in text.
+ * Returns an array of normalized tool names (lowercase, deduplicated).
+ */
+export function detectNamedTools(text: string): string[] {
+  const found: string[] = [];
+  for (const { name, pattern } of TOOL_CATALOG) {
+    if (pattern.test(text)) {
+      found.push(name);
+    }
+  }
+  return found;
+}
+
+/**
+ * Returns true when the trainee's question references tooling/observability
+ * domain keywords — signals a concrete tool-anchored question.
+ */
+const TOOL_DOMAIN_RE =
+  /\b(tool|tools|log|logs|logging|monitor|monitoring|trace|tracing|incident|incidents|stack|setup|workflow|breakdown|metrics|observability|alert|alerts|debug|debugging)\b/i;
+
+export function isToolDomainQuestion(text: string): boolean {
+  return text.includes("?") && TOOL_DOMAIN_RE.test(text);
 }
 
 // ── Meta-confusion lockout ────────────────────────────────────────────────────
@@ -906,6 +961,37 @@ export function decideNextMove(
     };
   }
 
+  // ── 2c. Tool-anchored answer rule ─────────────────────────────────────────
+  // When the attendee has named specific tools in their stack and the trainee
+  // asks a concrete tool-domain question, force "answer" so the attendee
+  // responds in first person about their stack instead of re-asking abstract
+  // clarification questions like "are you thinking more about tooling or process?"
+  const sessionTools = (session as any).currentTools as string[] | undefined;
+  const hasNamedTools = sessionTools && sessionTools.length > 0;
+  const traineeAsksToolQ = isQuestion(lastTraineeText) && isToolDomainQuestion(lastTraineeText);
+
+  if (
+    hasNamedTools &&
+    traineeAsksToolQ &&
+    aligned &&
+    (intent === "pain_sharing" || intent === "evaluating_fit" || intent === "neutral")
+  ) {
+    const mustAvoid: DirectorDirective["mustAvoid"] = {
+      phrases: attendeeMessages
+        .slice(-3)
+        .map((m) => m.text.slice(0, 50).trim())
+        .filter((p) => p.length > 10),
+    };
+    return {
+      stage,
+      move: "answer",
+      tone,
+      intent,
+      toolAnchored: true,
+      mustAvoid,
+    };
+  }
+
   // ── 3. Stage-based move selection ─────────────────────────────────────────
   let move = selectMove(stage, band, aligned, history, depth, isQuestion(lastTraineeText));
 
@@ -913,6 +999,18 @@ export function decideNextMove(
   const lockout = metaConfusionLockoutActive(attendeeMessages);
   if (lockout && move === "ask_clarifying") {
     move = chooseNonClarifyingFallback(stage, history);
+  }
+
+  // ── 4b. Block abstract re-clarification when tools are known ─────────────
+  // If session has named tools and the trainee is asking about a tooling domain,
+  // redirect ask_clarifying → answer.  Repair (aligned === false) still allowed.
+  if (
+    move === "ask_clarifying" &&
+    hasNamedTools &&
+    traineeAsksToolQ &&
+    aligned
+  ) {
+    move = "answer";
   }
 
   // ── 5. Abstract compare limiter ───────────────────────────────────────────

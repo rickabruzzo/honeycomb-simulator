@@ -74,6 +74,8 @@ export interface SessionState {
   // Topic memory — maintains conversational continuity across turns
   currentTopic?: string;
   consecutiveNewTopicCount?: number;
+  // Named tools the attendee has mentioned (e.g. ["elk","prometheus"])
+  currentTools?: string[];
 }
 
 const inMemoryStorage = new Map<string, SessionState>();
