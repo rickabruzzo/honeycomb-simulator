@@ -28,6 +28,10 @@ import {
   extractKeyPhrases,
   type ContinuityContext,
 } from "./reactiveness";
+import {
+  resolveTopicUpdate,
+  isPainAnchorOnTopic,
+} from "./topicDetector";
 
 export interface AttendeeReplyResult {
   text: string;
@@ -288,6 +292,28 @@ function matchPersonaPain(
   };
 }
 
+// ── Topic-aware pain anchor sorting ──────────────────────────────────────────
+
+/**
+ * Sort pain anchors so that on-topic anchors come first.
+ * Off-topic anchors are pushed to the back but not removed, so fallback
+ * still works when no on-topic anchors remain unsurfaced.
+ */
+function sortPainAnchorsByTopic<
+  T extends { keywords: string[]; priority: string }
+>(anchors: T[], currentTopic: string | null): T[] {
+  if (!currentTopic) return anchors;
+  return [...anchors].sort((a, b) => {
+    const aOnTopic = isPainAnchorOnTopic(a.keywords, currentTopic) ? 0 : 1;
+    const bOnTopic = isPainAnchorOnTopic(b.keywords, currentTopic) ? 0 : 1;
+    if (aOnTopic !== bOnTopic) return aOnTopic - bOnTopic;
+    // Within same on/off-topic group, prefer primary
+    const aPrimary = a.priority === "primary" ? 0 : 1;
+    const bPrimary = b.priority === "primary" ? 0 : 1;
+    return aPrimary - bPrimary;
+  });
+}
+
 // ── Loop detection (kept from original) ──────────────────────────────────────
 
 function isRepetitiveResponse(
@@ -390,25 +416,15 @@ function generateFromDirective(
         }
       }
 
-      // 3. Next unsurfaced primary pain anchor
+      // 3. Next unsurfaced pain anchor (topic-aware: prefer on-topic)
       if (!painText && persona?.painAnchors) {
-        const primary = persona.painAnchors.filter(
-          (p) => p.priority === "primary" && !hasAlreadySurfacedPain(session, p)
-        );
-        if (primary.length > 0) {
-          painText = formatPainAsStatement(primary[0].pain);
-          painId = primary[0].id;
-        }
-      }
-
-      // 4. Any unsurfaced pain anchor
-      if (!painText && persona?.painAnchors) {
-        const any = persona.painAnchors.filter(
+        const unsurfaced = persona.painAnchors.filter(
           (p) => !hasAlreadySurfacedPain(session, p)
         );
-        if (any.length > 0) {
-          painText = formatPainAsStatement(any[0].pain);
-          painId = any[0].id;
+        const sorted = sortPainAnchorsByTopic(unsurfaced, session.currentTopic ?? null);
+        if (sorted.length > 0) {
+          painText = formatPainAsStatement(sorted[0].pain);
+          painId = sorted[0].id;
         }
       }
 
@@ -509,16 +525,15 @@ function generateFromDirective(
         }
       }
 
-      // 3. Next unsurfaced pain anchor
+      // 3. Next unsurfaced pain anchor (topic-aware: prefer on-topic)
       if (!answerText && persona?.painAnchors) {
         const unsurfaced = persona.painAnchors.filter(
           (p) => !hasAlreadySurfacedPain(session, p)
         );
-        const primary = unsurfaced.filter((p) => p.priority === "primary");
-        const picked = primary.length > 0 ? primary[0] : unsurfaced[0];
-        if (picked) {
-          answerText = formatPainAsStatement(picked.pain);
-          answerPainId = picked.id;
+        const sorted = sortPainAnchorsByTopic(unsurfaced, session.currentTopic ?? null);
+        if (sorted.length > 0) {
+          answerText = formatPainAsStatement(sorted[0].pain);
+          answerPainId = sorted[0].id;
         }
       }
 
@@ -751,15 +766,28 @@ function generateAttendeeReplyInternal(params: {
   // 2. Store directive on session so the message route can inject the LLM hint
   (session as any).currentDirective = directive;
 
-  // 3. Generate content that matches the directive
+  // 3. Update topic memory — track what the trainee is talking about
+  //    (runs before content generation so topic-aware pain filtering uses fresh state,
+  //     and runs even when generateFromDirective returns null for LLM fallback)
+  {
+    const topicUpdate = resolveTopicUpdate(
+      traineeText,
+      session.currentTopic ?? null,
+      session.consecutiveNewTopicCount ?? 0
+    );
+    session.currentTopic = topicUpdate.topic ?? undefined;
+    session.consecutiveNewTopicCount = topicUpdate.consecutiveNewTopicCount;
+  }
+
+  // 4. Generate content that matches the directive
   let result = generateFromDirective(directive, traineeText, session, persona, traineeTurnCount);
 
   if (!result) return null;
 
-  // 4. Continuity contract
-  // Every reply (except ask_hook / exit) must visibly connect to the
-  // conversation.  enforceContinuity checks reactiveness, strips mustAvoid
-  // openers, and prepends an intent-aware callback prefix when needed.
+  // 5. Continuity contract — every reply (except ask_hook / exit) must
+  // visibly connect to the conversation.  enforceContinuity checks
+  // reactiveness, strips mustAvoid openers, and prepends an intent-aware
+  // callback prefix when needed.
   if (traineeText.trim().length > 0) {
     const lastAttendeeText =
       session.transcript

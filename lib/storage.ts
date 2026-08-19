@@ -71,6 +71,9 @@ export interface SessionState {
     detectedAt: string;
     detectedFrom: "attendee" | "trainee";
   };
+  // Topic memory — maintains conversational continuity across turns
+  currentTopic?: string;
+  consecutiveNewTopicCount?: number;
 }
 
 const inMemoryStorage = new Map<string, SessionState>();
