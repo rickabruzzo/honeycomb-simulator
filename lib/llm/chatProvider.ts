@@ -9,6 +9,7 @@
 
 import type { ChatInput, ChatResult } from "./chatTypes";
 import { GatewayChatProvider } from "./gateway";
+import { AnthropicChatProvider } from "./anthropicProvider";
 import { getCachedChatResult, saveChatResultToCache } from "./chatCache";
 
 export interface ChatProvider {
@@ -148,74 +149,73 @@ export class OpenAIChatProvider implements ChatProvider {
  * Default: MockChatProvider
  * Enable OpenAI: CHAT_PROVIDER=openai + OPENAI_API_KEY set
  */
-export function getChatProvider(): ChatProvider {
-  const chatProvider = process.env.CHAT_PROVIDER;
-  const apiKey = process.env.OPENAI_API_KEY;
+/**
+ * Wrap a provider so a generation failure degrades to the mock instead of failing the
+ * session. Note the tradeoff this creates: a malformed request (wrong parameter name,
+ * unsupported sampling param) surfaces as flat mock dialogue rather than an error, which
+ * reads as "the model got worse". Both provider classes log the real cause before throwing.
+ */
+function withMockFallback(primary: ChatProvider, label: string): ChatProvider {
+  return {
+    async generate(input: ChatInput): Promise<ChatResult> {
+      try {
+        return await primary.generate(input);
+      } catch (error) {
+        console.warn(
+          `[ChatProvider] ${label} generation failed, falling back to mock:`,
+          error instanceof Error ? error.message : "Unknown error"
+        );
+        return await new MockChatProvider().generate(input);
+      }
+    },
+  };
+}
 
-  // Preferred path: Vercel AI Gateway, so the model is an env change and both providers
-  // are reachable through one API.
-  if (chatProvider === "gateway") {
-    try {
-      const gatewayProvider = new GatewayChatProvider();
-      return {
-        async generate(input: ChatInput): Promise<ChatResult> {
-          try {
-            return await gatewayProvider.generate(input);
-          } catch (error) {
-            console.warn(
-              "[ChatProvider] Gateway generation failed, falling back to mock:",
-              error instanceof Error ? error.message : "Unknown error"
-            );
-            return await new MockChatProvider().generate(input);
-          }
-        },
-      };
-    } catch (error) {
-      console.warn(
-        "[ChatProvider] Failed to initialize gateway provider, using mock:",
-        error instanceof Error ? error.message : "Unknown error"
-      );
-      return new MockChatProvider();
-    }
-  }
-
-  // Default to mock
-  if (chatProvider !== "openai") {
-    return new MockChatProvider();
-  }
-
-  // OpenAI requested but no API key
-  if (!apiKey) {
-    console.warn(
-      "[ChatProvider] CHAT_PROVIDER=openai but OPENAI_API_KEY not set. Falling back to MockChatProvider."
-    );
-    return new MockChatProvider();
-  }
-
-  // Return OpenAI provider wrapped with fallback
+/** Build a provider, degrading to the mock if construction itself fails (e.g. missing key). */
+function tryProvider(
+  label: string,
+  build: () => ChatProvider
+): ChatProvider {
   try {
-    const openaiProvider = new OpenAIChatProvider(apiKey);
-
-    // Wrap in fallback handler
-    return {
-      async generate(input: ChatInput): Promise<ChatResult> {
-        try {
-          return await openaiProvider.generate(input);
-        } catch (error) {
-          console.warn(
-            "[ChatProvider] OpenAI generation failed, falling back to mock:",
-            error instanceof Error ? error.message : "Unknown error"
-          );
-          const mockProvider = new MockChatProvider();
-          return await mockProvider.generate(input);
-        }
-      },
-    };
+    return withMockFallback(build(), label);
   } catch (error) {
     console.warn(
-      "[ChatProvider] Failed to initialize OpenAI provider, using mock:",
+      `[ChatProvider] Failed to initialize ${label} provider, using mock:`,
       error instanceof Error ? error.message : "Unknown error"
     );
     return new MockChatProvider();
   }
+}
+
+/**
+ * Select the attendee generation provider.
+ *
+ *   CHAT_PROVIDER=anthropic  -> Anthropic API directly (preferred)
+ *   CHAT_PROVIDER=gateway    -> Vercel AI Gateway (needs purchased gateway credits)
+ *   CHAT_PROVIDER=openai     -> OpenAI directly
+ *   anything else / unset    -> mock
+ */
+export function getChatProvider(): ChatProvider {
+  const chatProvider = process.env.CHAT_PROVIDER;
+
+  if (chatProvider === "anthropic") {
+    return tryProvider("Anthropic", () => new AnthropicChatProvider());
+  }
+
+  if (chatProvider === "gateway") {
+    return tryProvider("Gateway", () => new GatewayChatProvider());
+  }
+
+  if (chatProvider === "openai") {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      console.warn(
+        "[ChatProvider] CHAT_PROVIDER=openai but OPENAI_API_KEY not set. Falling back to MockChatProvider."
+      );
+      return new MockChatProvider();
+    }
+    return tryProvider("OpenAI", () => new OpenAIChatProvider(apiKey));
+  }
+
+  return new MockChatProvider();
 }
