@@ -62,3 +62,17 @@ describe("decideReplyOwner", () => {
     expect(decideReplyOwner(d({ move: "share_pain", concreteOverride: "We use Datadog." }))).toBe("template");
   });
 });
+
+describe("tool-enumeration phrasings stay deterministic", () => {
+  // These passed on the pre-gate branch and regressed when the policy relied only on
+  // conversationDirector's isToolDomainQuestion, which does not match them.
+  it.each([
+    "What are you using alongside ELK?",
+    "What's in the mix today?",
+    "What are you relying on right now?",
+    "What tools are you using today?",
+    "What do you use for logs?",
+  ])("keeps %s on templates", (text) => {
+    expect(decideReplyOwner(d({ move: "answer" }), text)).toBe("template");
+  });
+});

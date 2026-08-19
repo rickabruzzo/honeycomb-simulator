@@ -49,6 +49,27 @@ function assert(label: string, actual: unknown, expected: unknown): void {
   }
 }
 
+/**
+ * Since the reply-ownership split (lib/attendee/replyPolicy.ts), expressive turns are
+ * deliberately handed to the LLM: generateAttendeeReply returns null and the message route
+ * generates from session.currentDirective. "Produced something" therefore means a template
+ * reply OR a directive-carrying handoff. Stricter than a plain non-null check, since a null
+ * with no directive would leave the route nothing to generate from.
+ */
+function assertReplyOrLlmHandoff(label: string, actual: unknown, session: any): void {
+  if (actual != null) {
+    console.log(`  \u2713 ${label} (template)`);
+    passCount++;
+  } else if (session?.currentDirective) {
+    console.log(`  \u2713 ${label} (handed to LLM; move=${session.currentDirective.move})`);
+    passCount++;
+  } else {
+    console.error(`  \u2717 ${label}`);
+    console.error("      null with no directive - route has nothing to generate from");
+    failCount++;
+  }
+}
+
 function assertContains(label: string, text: string, substring: string): void {
   if (text.toLowerCase().includes(substring.toLowerCase())) {
     console.log(`  ✓ ${label}`);
@@ -297,7 +318,7 @@ console.log("\nTest D: after role-intro attendee turn, next turn progresses to p
     session,
     traineeTurnCount: 2,
   });
-  assert("D) post-role-intro reply is not null", res !== null, true);
+  assertReplyOrLlmHandoff("D) post-role-intro reply is not null", res, session);
   // Should NOT be a booth_entry product question
   const isFaqQuestion = PRODUCT_QUESTIONS.some((q) => res?.text === q) ||
     COMPETITOR_QUESTIONS.some((q) => res?.text === q);
@@ -457,7 +478,7 @@ console.log("\nTest G: booth_entry stops after turn 3");
     session,
     traineeTurnCount: 4,
   });
-  assert("G) after 3 turns, reply is not null", result !== null, true);
+  assertReplyOrLlmHandoff("G) after 3 turns, reply is not null", result, session);
   // Should NOT be a pure FAQ product question at this point
   const isBareProductQ = PRODUCT_QUESTIONS.some((q) => result?.text === q);
   assert("G) after 3 turns, reply is NOT a bare booth_entry product question", isBareProductQ, false);

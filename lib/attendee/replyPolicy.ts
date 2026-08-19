@@ -31,6 +31,18 @@ import {
 
 export type ReplyOwner = "template" | "llm";
 
+/**
+ * Tool-enumeration phrasings that must stay on the deterministic banks so the attendee names
+ * its actual stack concretely.
+ *
+ * Kept in step with TOOL_ENUM_Q_RE in generateAttendeeReply.ts. Duplicated deliberately
+ * rather than imported: that module imports this one, so importing back would be circular.
+ * conversationDirector's isToolDomainQuestion misses these ("in the mix", "relying on"),
+ * which sent real tool questions to the LLM and broke toolQuestionAnswering.
+ */
+const TOOL_ENUM_Q_RE =
+  /\b(what (tool|tools)\b|what (are|were) (you|your) (using|running|relying)\b|what'?s in (the|that|your|our) (mix|stack|setup)\b|what does (your|the) (stack|setup|tooling)\b|what (do|did) you (use|run|rely)\b|what are you using (for|alongside|with)\b)/i;
+
 /** Moves whose whole purpose is reacting to what the trainee just said. */
 const EXPRESSIVE_MOVES = new Set(["share_pain", "ask_clarifying", "deflect", "answer"]);
 
@@ -46,7 +58,13 @@ export function decideReplyOwner(
 
   // Keep the concrete, factual turns deterministic: naming the stack should not drift,
   // and small talk is genuinely formulaic.
-  if (directive.toolAnchored || isToolDomainQuestion(traineeText)) return "template";
+  if (
+    directive.toolAnchored ||
+    TOOL_ENUM_Q_RE.test(traineeText) ||
+    isToolDomainQuestion(traineeText)
+  ) {
+    return "template";
+  }
   if (directive.smallTalk || isSmallTalkQuestion(traineeText)) return "template";
 
   return "llm";
