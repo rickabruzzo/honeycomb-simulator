@@ -114,6 +114,14 @@ conditions, banned keywords, OTel levels, frontend rules, outcome bands, stakeho
 restating the same rules in different words and contradicting several. The model is caught
 between two authorities.
 
+There is in fact a **third**: `promptComposer.ts` injects its own runtime directives
+(sections 7a–7d) that contradict both. Its MQL block instructs the attendee to say
+*"Perfect! Let me scan your badge and our team will follow up…"* — precisely the role reversal
+the bundle's `ROLE CORRECTNESS GUARDRAILS` forbids ("❌ Say 'Let me scan your badge'"). The
+composer instructs the exact violation the bundle bans. Sections 7a (`You MUST converge toward
+an OUTCOME now`), 7c (`CONVERGE NOW … within 1-2 turns`), and 7d (`Preferred outcome:
+MQL_READY`) all push premature closing and must be rewritten alongside the bundle.
+
 ---
 
 ## 3. Goals and non-goals
@@ -377,13 +385,23 @@ generator is instructed to convey posture in words instead.
 
 Route through Vercel AI Gateway with two named roles:
 
-| Role | Tier | Default | Rationale |
-|---|---|---|---|
-| `attendee` | Frontier | `anthropic/claude-sonnet-5` | Persona restraint, emotional posture, escalating candor |
-| `judge` | Small/fast | `anthropic/claude-haiku-4-5` | Bounded classification into a fixed schema |
+| Role | Tier | Rationale |
+|---|---|---|
+| `attendee` | Frontier | Persona restraint, emotional posture, escalating candor |
+| `judge` | Small/fast | Bounded classification into a fixed schema |
 
-Defaults are a starting point to be compared, not a conclusion — the point of routing through
-the Gateway is that swapping either is an env change.
+Implementation uses the AI SDK (`ai@^6`), where a plain `"provider/model"` string routes
+through the Gateway automatically. **Exact slugs are resolved at implementation time via
+`gateway.getAvailableModels()`, not hardcoded from memory** — Gateway slugs version with dots
+(`anthropic/claude-sonnet-4.6`, not `-4-6`) and the model list changes often. Both roles are
+env-overridable (`ATTENDEE_MODEL`, `JUDGE_MODEL`) so a swap is config, not code.
+
+The AI SDK is chosen over the existing raw `openai` client specifically because Phase 2's judge
+needs schema-validated structured output (`generateObject`), which is far more robust than
+hand-parsing JSON from a chat completion.
+
+At ~20 turns per session, cost is cents per session; Vercel's free monthly Gateway credits
+likely cover internal training use outright.
 
 Both configurable by env so a model swap is config, not code — which is what lets us A/B two
 models against one scenario during SME calibration. At ~20 turns per session, cost is cents
@@ -521,3 +539,7 @@ storage layer.
 - **Honeycomb website keyword refresh** — handoff doc §32 notes this was never done; the
   banned-keyword list may be stale. Flag discrepancies for SME review rather than silently
   adopting website language.
+- **UX/UI pass with Claude Design** — planned as an explicit follow-on round over the existing
+  Vercel site (trainee chat surface, scorecards, admin/editor), to be done *after* the chat
+  engine is wired and validated. Deliberately sequenced second: the conversation surface should
+  be designed around engine behavior that is known-good, not around behavior still in flux.
