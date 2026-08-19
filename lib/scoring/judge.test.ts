@@ -49,3 +49,64 @@ describe("parseJudgeResult", () => {
     expect(r.guardrails.rationale).toBe("");
   });
 });
+
+import { judgeResultToScore, deriveGrade } from "./judge-mapping";
+
+const base = (over: Record<string, { score: number; rationale?: string; evidence?: string }> = {}) => ({
+  listening:        { score: 3, rationale: "", evidence: "x" },
+  discovery:        { score: 3, rationale: "", evidence: "x" },
+  empathy:          { score: 3, rationale: "", evidence: "x" },
+  otel_assumptions: { score: 3, rationale: "", evidence: "x" },
+  guardrails:       { score: 3, rationale: "", evidence: "x" },
+  summary: "",
+  ...over,
+});
+
+describe("judgeResultToScore", () => {
+  it("maps 0-5 to 0-20 per dimension", () => {
+    const { breakdown } = judgeResultToScore(
+      base({ listening: { score: 4, rationale: "", evidence: "x" } }) as never,
+      null
+    );
+    expect(breakdown.listening).toBe(16); // 4/5*20
+    expect(breakdown.discovery).toBe(12); // 3/5*20
+  });
+
+  it("populates evidence from each dimension", () => {
+    const { evidence } = judgeResultToScore(base() as never, null);
+    expect(evidence).toHaveLength(5);
+    expect(evidence[0].dimension).toBe("listening");
+  });
+});
+
+describe("deriveGrade — no outcome floor", () => {
+  it("gives a high-quality polite exit a better grade than a low-quality MQL", () => {
+    const goodExit = judgeResultToScore(
+      base({
+        listening: { score: 5, rationale: "", evidence: "x" },
+        discovery: { score: 5, rationale: "", evidence: "x" },
+        empathy: { score: 4, rationale: "", evidence: "x" },
+      }) as never,
+      "POLITE_EXIT"
+    );
+    const badMql = judgeResultToScore(
+      base({
+        listening: { score: 1, rationale: "", evidence: "" },
+        discovery: { score: 1, rationale: "", evidence: "" },
+      }) as never,
+      "BADGE_SCAN"
+    );
+    expect(goodExit.score).toBeGreaterThan(badMql.score);
+    expect(deriveGrade(goodExit.score)).not.toBe("F");
+  });
+
+  it("withholds the outcome nudge when discovery or listening scored below 3", () => {
+    const withNudge = judgeResultToScore(base() as never, "BADGE_SCAN").score; // both == 3 -> 60+5
+    const noNudge = judgeResultToScore(
+      base({ discovery: { score: 2, rationale: "", evidence: "" } }) as never,
+      "BADGE_SCAN"
+    ).score;
+    expect(withNudge).toBe(65);
+    expect(noNudge).toBeLessThan(withNudge);
+  });
+});

@@ -1,4 +1,7 @@
 import { SessionState } from "./storage";
+import { judgeSession } from "./scoring/judge";
+import { judgeResultToScore, deriveGrade } from "./scoring/judge-mapping";
+import { SCORING_DIMENSIONS, hasTraineeContent } from "./scoring/rubric";
 import { getTraineeMessages, getAttendeeMessages } from "./scoringInput";
 import {
   detectOutcomeFromTranscript,
@@ -47,6 +50,10 @@ export interface ScoreRecord {
   highlights: string[];
   mistakes: string[];
   violations: string[];
+  /** Per-dimension evidence quotes from the LLM judge (empty when heuristic-scored). */
+  evidence: { dimension: string; quote: string; comment: string }[];
+  /** Which path produced this score. */
+  scoringMethod: "judge" | "heuristic";
   createdAt: string;
   completedAt: string;
   // Snapshot fields
@@ -70,7 +77,50 @@ export async function scoreSession(
   session: SessionState,
   token: string
 ): Promise<ScoreRecord> {
-  return heuristicScore(session, token);
+  const now = new Date().toISOString();
+  const base = heuristicScore(session, token); // also our fallback
+
+  if (!hasTraineeContent(session)) return base;
+
+  try {
+    const judge = await judgeSession(session);
+    const mapped = judgeResultToScore(judge, session.detectedOutcome?.type ?? null);
+
+    const ranked = SCORING_DIMENSIONS.map((d) => ({ d, s: judge[d].score }));
+    const highlights = ranked
+      .filter((r) => r.s >= 4)
+      .map((r) => `${label(r.d)}: ${judge[r.d].rationale}`)
+      .slice(0, 6);
+    const mistakes = ranked
+      .filter((r) => r.s <= 2)
+      .map((r) => `${label(r.d)}: ${judge[r.d].rationale}`)
+      .slice(0, 6);
+
+    return {
+      ...base,
+      score: mapped.score,
+      grade: deriveGrade(mapped.score),
+      breakdown: mapped.breakdown,
+      highlights: highlights.length ? highlights : base.highlights,
+      mistakes: mistakes.length ? mistakes : base.mistakes,
+      evidence: mapped.evidence,
+      scoringMethod: "judge",
+      completedAt: now,
+    };
+  } catch (err) {
+    console.warn(
+      "[scoring] judge failed, using heuristic fallback:",
+      err instanceof Error ? err.message : "unknown error"
+    );
+    return base;
+  }
+}
+
+function label(d: string): string {
+  return d
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 /**
@@ -380,6 +430,8 @@ export function heuristicScore(
     highlights: finalHighlights,
     mistakes: finalMistakes,
     violations: session.violations,
+    evidence: [],
+    scoringMethod: "heuristic",
     createdAt: session.startTime,
     completedAt: now,
     // Snapshot fields from session
