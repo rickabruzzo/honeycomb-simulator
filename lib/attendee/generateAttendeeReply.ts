@@ -32,6 +32,10 @@ import {
   resolveTopicUpdate,
   isPainAnchorOnTopic,
 } from "./topicDetector";
+import {
+  isDiscoveryQuestion,
+  EVALUATION_QUESTIONS,
+} from "./questionFilter";
 
 export interface AttendeeReplyResult {
   text: string;
@@ -829,10 +833,29 @@ export function generateAttendeeReply(params: {
   const { session } = params;
   const persona = (session as any).persona as Persona | undefined;
 
-  const result = generateAttendeeReplyInternal(params);
+  let result = generateAttendeeReplyInternal(params);
 
   if (!result) {
     return null; // LLM fallback — route picks up (session as any).currentDirective
+  }
+
+  // Discovery-question filter: the attendee is a prospect, not a salesperson.
+  // Replace discovery questions ("How does your team…?") with evaluation questions.
+  if (isDiscoveryQuestion(result.text)) {
+    const recentAttendeeText = session.transcript
+      .filter((m) => m.type === "attendee")
+      .slice(-5)
+      .map((m) => m.text.toLowerCase())
+      .join(" ");
+    const replacement = pickUnused(
+      EVALUATION_QUESTIONS,
+      recentAttendeeText,
+      params.traineeTurnCount
+    );
+    result = {
+      ...result,
+      text: postProcessAttendeeText(replacement, persona),
+    };
   }
 
   // Loop detection: if this text was recently used, force a different question
