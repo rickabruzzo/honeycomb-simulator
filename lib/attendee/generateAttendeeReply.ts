@@ -797,7 +797,6 @@ function generateFromDirective(
             : stackAnswer;
           recordDirectorMove(session, move);
           const replyText = postProcessAttendeeText(sanitized, persona);
-          console.log("[ANSWER MODE]", { traineeQuestion: traineeText, generated: replyText });
           return {
             text: replyText,
             source: "template",
@@ -839,7 +838,6 @@ function generateFromDirective(
         const sanitized = persona ? sanitizeResponse(questionAnswer, persona) : questionAnswer;
         recordDirectorMove(session, move);
         const replyText = postProcessAttendeeText(sanitized, persona);
-        console.log("[ANSWER MODE]", { traineeQuestion: traineeText, generated: replyText });
         return {
           text: replyText,
           source: "template",
@@ -886,7 +884,6 @@ function generateFromDirective(
         const sanitized = persona ? sanitizeResponse(wrapped, persona) : wrapped;
         recordDirectorMove(session, move);
         const replyText = postProcessAttendeeText(sanitized, persona);
-        console.log("[ANSWER MODE]", { traineeQuestion: traineeText, generated: replyText });
         return {
           text: replyText,
           source: "persona_pain",
@@ -902,7 +899,6 @@ function generateFromDirective(
       );
       recordDirectorMove(session, move);
       const fallbackText = postProcessAttendeeText(chosen, persona);
-      console.log("[ANSWER MODE]", { traineeQuestion: traineeText, generated: fallbackText });
       return {
         text: fallbackText,
         source: "template",

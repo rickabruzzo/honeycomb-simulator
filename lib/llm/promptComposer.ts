@@ -21,6 +21,10 @@ import {
   getBannedKeywords,
 } from "../simulatorConfig";
 import { getActivePromptBundle } from "./promptBundleStore";
+import {
+  getLengthBudget,
+  renderLengthDirective,
+} from "../attendee/lengthBudget";
 
 /**
  * Compose the full system prompt for an attendee response.
@@ -74,48 +78,41 @@ export async function composeAttendeeSystemPrompt(
 
   // 7a. Turn limit enforcement
   if (context.turnLimitExceeded) {
-    sections.push(`\n⚠️ TURN LIMIT REACHED
-Conversation has reached the maximum turn count for this difficulty level.
-You MUST converge toward an OUTCOME now. No reopening discovery. No new exploratory questions.
-Move toward a clean close with an appropriate next step (demo, self-service, or polite exit).`);
+    sections.push(`\nTIME PRESSURE
+You have been at this booth a while and need to move on soon. Keep replies short and start
+looking for a natural end. That end may be a next step, or it may simply be a polite exit -
+whichever honestly fits what you have actually heard.`);
   }
 
   // 7b. Self-service cue detection
   if (context.selfServiceCuesDetected) {
-    sections.push(`\n💡 SELF-SERVICE CUES DETECTED
-The trainee has expressed self-service preferences (free tier, docs, async learning, low urgency).
-This is a SUCCESS signal, not a failure. Offering self-service is an appropriate outcome.
-Do not push for a demo. Move toward SELF_SERVICE_READY outcome with appropriate resources.`);
+    sections.push(`\nSELF-SERVICE PATH OFFERED
+The staffer has pointed you toward something you could explore on your own. If that genuinely
+suits how you like to evaluate tools, accepting it is a perfectly good ending. If it does not,
+you are not obliged to take it.`);
   }
 
   // 7c. MQL cue detection - CONVERGENCE ENFORCEMENT
   if (context.mqlCuesDetected) {
-    sections.push(`\n🎯 MQL CUES DETECTED (HOT LEAD) — CONVERGE NOW
-The trainee has expressed MQL interest (badge scan, sales follow-up, stakeholder conversation).
-This is a SUCCESS outcome. MQL_READY is equivalent to or BETTER than DEMO_READY.
+    sections.push(`\nFOLLOW-UP PATH OFFERED
+The staffer has offered a follow-up path - scanning your badge, a colleague reaching out, or
+an introduction. If that genuinely fits what you need, you may accept it plainly and wrap up.
+Only accept a next step you would actually accept given what you have heard.
 
-IMMEDIATE ACTIONS:
-1. Acknowledge their request positively
-2. Confirm the specific next step (badge scan / sales follow-up / manager intro)
-3. Close the conversation cleanly within 1-2 turns
-4. Do NOT reopen discovery, do NOT push for demo, do NOT over-educate
-
-Example: "Perfect! Let me scan your badge and our team will follow up about [specific topic]. Thanks for stopping by!"`);
+Watch the direction: THEY scan YOUR badge and THEY follow up with YOU. Never offer to scan
+your own badge, to follow up with them, or to schedule anything yourself.`);
   }
 
   // 7d. Stakeholder-specific guidance
   if (context.stakeholderType === "executive") {
-    sections.push(`\n👔 EXECUTIVE STAKEHOLDER DETECTED
-This attendee is an executive (CTO, VP, Director, Technical Buyer).
-Executives rarely want technical demos. They care about budget, cost savings, ROI, and strategic alignment.
-Do NOT push technical depth. Focus on business value and leadership follow-up.
-Preferred outcome: MQL_READY with sales/leadership conversation.`);
+    sections.push(`\nWHAT YOU WEIGH
+You are senior enough that your attention goes to cost, delivery risk, customer impact, and
+whether your teams could realistically adopt something. You may still want to see the tool -
+do not rule that out - but consequence matters more to you than hands-on detail.`);
   } else if (context.stakeholderType === "ic_without_authority") {
-    sections.push(`\n🔧 IC WITHOUT AUTHORITY DETECTED
-This attendee is an Individual Contributor who may lack decision-making power.
-They may love the product but need help advocating internally.
-Offer to connect with their manager, team lead, or decision maker.
-Badge scan + manager follow-up is a SUCCESS outcome (MQL_READY).`);
+    sections.push(`\nWHAT YOU WEIGH
+You do the hands-on work but you do not control the budget. If something looks genuinely
+useful, your instinct is to work out how you would make the case internally.`);
   }
 
   // 8. Recent conversation history
@@ -126,6 +123,10 @@ Badge scan + manager follow-up is a SUCCESS outcome (MQL_READY).`);
       .join("\n");
     sections.push(`\nRECENT CONVERSATION (most recent last):\n${historyText}`);
   }
+
+  // 8b. Reply length budget. Phase-derived for now; should become trust-derived so that
+  //      being listened to visibly buys longer, more candid answers.
+  sections.push(`\n${renderLengthDirective(getLengthBudget(context.sessionState))}`);
 
   // 9. Final instruction
   sections.push("\nNow respond as the attendee.");

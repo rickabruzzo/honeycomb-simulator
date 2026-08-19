@@ -34,6 +34,10 @@ import { getOutcomeAction, shouldShowCompletionCTA } from "@/lib/outcomeActions"
 import { generateAttendeeReply } from "@/lib/attendee/generateAttendeeReply";
 import { postProcessAttendeeText } from "@/lib/attendee/postProcess";
 import {
+  getLengthBudget,
+  budgetToPostProcessOptions,
+} from "@/lib/attendee/lengthBudget";
+import {
   directiveToPromptHint,
   recordDirectorMove,
   type DirectorDirective,
@@ -399,7 +403,13 @@ export async function POST(
             { dep_type: "chat" }
           );
 
-          attendeeResponseText = postProcessAttendeeText(result.text);
+          // Length comes from the phase budget, not the template-sized default:
+          // a two-sentence clip makes venting and war stories impossible to deliver.
+          attendeeResponseText = postProcessAttendeeText(
+            result.text,
+            undefined,
+            budgetToPostProcessOptions(getLengthBudget(session.currentState))
+          );
           attendeeReplySource = "llm";
           chatMeta = {
             provider: result.provider,
