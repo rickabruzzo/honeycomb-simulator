@@ -214,7 +214,10 @@ console.log("\n\ud83d\udccb Test 2: Process question → process answer");
     traineeTurnCount: 3,
   });
 
-  assertNotNull("produces a reply", result);
+  // "How do you debug issues when something goes wrong?" is a workflow question that leads
+  // into pain, so it is expressive and now belongs to the LLM. The content assertions below
+  // still run whenever a template does answer.
+  assertReplyOrLlmHandoff("produces a reply", result, session);
   if (result) {
     assertNoQuestion("reply is a statement", result.text);
 

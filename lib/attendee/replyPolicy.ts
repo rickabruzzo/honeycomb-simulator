@@ -17,17 +17,18 @@
  *   trainee used. A finite bank structurally cannot, and that is exactly where persona
  *   voice, earned candor, and venting live.
  *
- * Note on the predicates: this reads the trainee's text via the director's own
- * isToolDomainQuestion / isSmallTalkQuestion rather than the directive's toolAnchored /
- * smallTalk flags. Those flags are only set under some stage conditions, so relying on them
+ * Note on the predicates: this reads the trainee's text directly, because the directive's
+ * toolAnchored / smallTalk flags are only set under some stage conditions - relying on them
  * alone sent 75% of tool questions and 100% of small talk to the LLM.
+ *
+ * It deliberately does NOT use the director's isToolDomainQuestion. That predicate tests
+ * TOOL_DOMAIN_RE, which matches any observability topic word - incident, alert, debug,
+ * monitoring, trace, logs - so it treats "What slows you down most during an incident?" as a
+ * tool question and answered it with "we're mostly relying on a mix of tools", turning a pain
+ * probe into a stack answer. Only the explicit enumeration phrasings below stay deterministic.
  */
 
-import {
-  isToolDomainQuestion,
-  isSmallTalkQuestion,
-  type DirectorDirective,
-} from "./conversationDirector";
+import { isSmallTalkQuestion, type DirectorDirective } from "./conversationDirector";
 
 export type ReplyOwner = "template" | "llm";
 
@@ -58,13 +59,7 @@ export function decideReplyOwner(
 
   // Keep the concrete, factual turns deterministic: naming the stack should not drift,
   // and small talk is genuinely formulaic.
-  if (
-    directive.toolAnchored ||
-    TOOL_ENUM_Q_RE.test(traineeText) ||
-    isToolDomainQuestion(traineeText)
-  ) {
-    return "template";
-  }
+  if (directive.toolAnchored || TOOL_ENUM_Q_RE.test(traineeText)) return "template";
   if (directive.smallTalk || isSmallTalkQuestion(traineeText)) return "template";
 
   return "llm";
