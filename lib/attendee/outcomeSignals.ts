@@ -87,8 +87,8 @@ export function detectOutcomeFromText(text: string): OutcomeSignalType {
 }
 
 /**
- * Scan the last 12 transcript entries for the strongest outcome signal.
- * Attendee signals are treated as equal weight to trainee — both matter.
+ * Scan the last 12 attendee messages for the strongest outcome signal.
+ * Only attendee messages are scanned — trainee text must never trigger a CTA.
  * Priority order: BADGE_SCAN > DEMO > FLYER > NONE.
  *
  * @param transcript - Array of session transcript messages
@@ -97,7 +97,7 @@ export function detectOutcomeFromTranscript(
   transcript: Array<{ type: "system" | "trainee" | "attendee"; text: string }>
 ): OutcomeSignalType {
   const recent = transcript
-    .filter((m) => m.type !== "system")
+    .filter((m) => m.type === "attendee") // attendee-only: trainee text must never trigger CTA
     .slice(-12);
 
   let best: OutcomeSignalType = "NONE";
