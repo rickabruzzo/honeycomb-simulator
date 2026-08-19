@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MessageSquare, Clock, User, Home, Edit3, Save, X, Download } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
+import { getMomentumBand } from "@/lib/attendee/momentumBands";
 
 interface TranscriptMessage {
   id: string;
@@ -90,7 +91,15 @@ function MomentumSparkline({ scores }: { scores: number[] }) {
   );
 }
 
-function MomentumBadge({ score, delta }: { score: number; delta?: number }) {
+function MomentumBadge({
+  score,
+  delta,
+  showBand = false,
+}: {
+  score: number;
+  delta?: number;
+  showBand?: boolean;
+}) {
   const deltaStr =
     delta === undefined
       ? ""
@@ -106,11 +115,16 @@ function MomentumBadge({ score, delta }: { score: number; delta?: number }) {
         ? "text-emerald-400"
         : "text-red-400";
 
+  const band = showBand ? getMomentumBand(score) : null;
+
   return (
     <span className="text-xs text-gray-500 tabular-nums whitespace-nowrap">
       ⚡ {score}
       {delta !== undefined && (
         <span className={deltaColor}>{deltaStr}</span>
+      )}
+      {band !== null && (
+        <span className="ml-1 text-gray-600">{band}</span>
       )}
     </span>
   );
@@ -446,6 +460,9 @@ export default function ReviewPage() {
                   <span className="text-sm text-gray-300 font-mono">
                     ⚡ {reviewData.momentum.score}
                     <span className="text-gray-500 text-xs ml-1">/ 100</span>
+                    <span className="text-gray-500 text-xs ml-2 font-sans">
+                      ({getMomentumBand(reviewData.momentum.score)})
+                    </span>
                   </span>
                   {minScore !== undefined && maxScore !== undefined && (
                     <span className="text-xs text-gray-500">

@@ -3,13 +3,14 @@
  *
  * Determines whether to show the session-completion CTA based on:
  *   1. An explicit outcome signal from transcript (badge scan / demo / flyer)
- *   2. A momentum threshold + commitment keyword in recent text
+ *   2. A COMMITTED momentum band + commitment keyword in recent text
  *
  * This is intentionally separate from the state-machine so it can fire
  * from any state, not just OUTCOME / SOLUTION_FRAMING.
  */
 
 import type { OutcomeSignalType } from "./outcomeSignals";
+import { getMomentumBand } from "./momentumBands";
 
 const COMMITMENT_KEYWORDS = [
   "scan my badge",
@@ -39,9 +40,10 @@ export function shouldShowCTA(args: {
   // Explicit outcome always wins
   if (args.outcomeType !== "NONE") return true;
 
-  // Momentum threshold gate
+  // Momentum must reach COMMITTED band (score >= 51)
   const score = args.momentumScore ?? 0;
-  if (score < 55) return false;
+  const band = getMomentumBand(score);
+  if (band !== "COMMITTED") return false;
 
   // Needs at least one commitment keyword in recent transcript
   const recentText = args.transcript
