@@ -96,10 +96,21 @@ export class OpenAIChatProvider implements ChatProvider {
         ...input.conversation,
       ];
 
+      // gpt-5.x and the o-series reject `max_tokens` outright:
+      //   "Unsupported parameter: 'max_tokens' is not supported with this model.
+      //    Use 'max_completion_tokens' instead."
+      // Without this split, pointing OPENAI_CHAT_MODEL at a newer model makes every
+      // request throw and the provider silently degrade to MockChatProvider - which looks
+      // like the simulator got worse, not like a config error.
+      const maxOutput = Number(process.env.ATTENDEE_MAX_TOKENS ?? 700);
+      const usesCompletionTokenParam = /^(gpt-5|o[1-9])/.test(this.model);
+
       const completion = await client.chat.completions.create({
         model: this.model,
         temperature: Number(process.env.ATTENDEE_TEMPERATURE ?? 0.8),
-        max_tokens: Number(process.env.ATTENDEE_MAX_TOKENS ?? 700),
+        ...(usesCompletionTokenParam
+          ? { max_completion_tokens: maxOutput }
+          : { max_tokens: maxOutput }),
         messages,
       });
 
