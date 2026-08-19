@@ -97,7 +97,7 @@ export async function POST(
             span.setAttribute("has_token", true);
 
             // Generate score
-            const scoreRecord = scoreSession(session, token);
+            const scoreRecord = await scoreSession(session, token);
             await saveScore(scoreRecord);
 
             shareUrl = `/share/${token}`;

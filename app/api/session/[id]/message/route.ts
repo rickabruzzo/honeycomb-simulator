@@ -29,7 +29,6 @@ import { getRevealBudget } from "@/lib/attendee/revealBudget";
 import { getMomentumBand } from "@/lib/attendee/momentumBands";
 import type { PromptRuntimeContext } from "@/lib/llm/promptBundleTypes";
 import { getInviteForSession } from "@/lib/invites";
-import { scoreSession } from "@/lib/scoring";
 import { saveScore } from "@/lib/scoreStore";
 import { addToLeaderboardIndex } from "@/lib/leaderboardStore";
 import { getOutcomeAction, shouldShowCompletionCTA } from "@/lib/outcomeActions";

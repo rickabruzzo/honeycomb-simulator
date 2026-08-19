@@ -122,7 +122,7 @@ Remember: Listen, discover pain, validate, then align to outcomes.
         if (token) {
           span.setAttribute("has_token", true);
           try {
-            const scoreRecord = scoreSession(session, token);
+            const scoreRecord = await scoreSession(session, token);
             await saveScore(scoreRecord);
             shareUrl = `/share/${token}`;
             scoreData = {

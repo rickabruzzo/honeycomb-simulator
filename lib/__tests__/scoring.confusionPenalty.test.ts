@@ -9,7 +9,7 @@
  * Run with:  npx tsx lib/__tests__/scoring.confusionPenalty.test.ts
  */
 
-import { scoreSession } from "../scoring";
+import { heuristicScore } from "../scoring";
 import type { SessionState } from "../storage";
 
 let passed = 0;
@@ -57,7 +57,7 @@ const baselineSession = makeSession([
   { type: "attendee", text: "We have a lot of alert noise." },
   { type: "trainee", text: "ok" },
 ]);
-const baselineResult = scoreSession(baselineSession, "baseline-token");
+const baselineResult = heuristicScore(baselineSession, "baseline-token");
 const baselineListening = baselineResult.breakdown.listening;
 const baselineScore = baselineResult.score;
 
@@ -79,7 +79,7 @@ const twoConfusionSession = makeSession([
   { type: "attendee", text: "Wait, I'm lost. How does that relate to what I just mentioned?" },
   { type: "trainee", text: "sure" },
 ]);
-const twoConfusionResult = scoreSession(twoConfusionSession, "two-confusion-token");
+const twoConfusionResult = heuristicScore(twoConfusionSession, "two-confusion-token");
 
 assert(
   "2 confusion messages → listening reduced by 5 (5 - 5 = 0)",
@@ -109,7 +109,7 @@ const threeConfusionSession = makeSession([
   { type: "attendee", text: "Can you try again? I'm still lost." },
   { type: "trainee", text: "sure" },
 ]);
-const threeConfusionResult = scoreSession(threeConfusionSession, "three-confusion-token");
+const threeConfusionResult = heuristicScore(threeConfusionSession, "three-confusion-token");
 
 assert(
   "3 confusion messages → listening reduced by 5 (5 - 5 = 0)",
@@ -135,7 +135,7 @@ const oneConfusionSession = makeSession([
   { type: "attendee", text: "I'm not sure how that connects — can you clarify?" },
   { type: "trainee", text: "ok" },
 ]);
-const oneConfusionResult = scoreSession(oneConfusionSession, "one-confusion-token");
+const oneConfusionResult = heuristicScore(oneConfusionSession, "one-confusion-token");
 
 assert(
   "1 confusion message → listening NOT reduced (still 5)",

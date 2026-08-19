@@ -8,7 +8,7 @@
  * Run with:  npx tsx lib/__tests__/scoring.traineeOnly.test.ts
  */
 
-import { scoreSession } from "../scoring";
+import { heuristicScore } from "../scoring";
 import type { SessionState } from "../storage";
 
 let passed = 0;
@@ -90,7 +90,7 @@ const richAttendeeSession = makeSession([
   { type: "trainee", text: "cool" },
 ]);
 
-const richAttendeeResult = scoreSession(richAttendeeSession, "test-token-1");
+const richAttendeeResult = heuristicScore(richAttendeeSession, "test-token-1");
 
 assertLte("discovery ≤ 5 (trainee has no questions)", richAttendeeResult.breakdown.discovery, 5);
 assertLte("empathy ≤ 5 (trainee shows no empathy)", richAttendeeResult.breakdown.empathy, 5);
@@ -112,7 +112,7 @@ const richTraineeSession = makeSession([
   { type: "trainee", text: "Tell me more about the customer impact when these issues happen." },
 ]);
 
-const richTraineeResult = scoreSession(richTraineeSession, "test-token-2");
+const richTraineeResult = heuristicScore(richTraineeSession, "test-token-2");
 
 assertGte("discovery ≥ 12 (trainee asks many questions)", richTraineeResult.breakdown.discovery, 12);
 assertGte("empathy ≥ 6 (trainee shows empathy)", richTraineeResult.breakdown.empathy, 6);
@@ -128,7 +128,7 @@ const traineeOutcomeSession = makeSession([
   { type: "trainee", text: "Check out the free tier. I'll send you the docs." },
 ]);
 
-const traineeOutcomeResult = scoreSession(traineeOutcomeSession, "test-token-3");
+const traineeOutcomeResult = heuristicScore(traineeOutcomeSession, "test-token-3");
 
 // Without pendingOutcome set, the only way to get an outcome bonus is
 // via detectOutcomeFromTranscript which filters to attendee messages.
@@ -151,7 +151,7 @@ const attendeeOutcomeSession = makeSession([
   { type: "attendee", text: "This sounds great — can you scan my badge so someone can follow up?" },
 ]);
 
-const attendeeOutcomeResult = scoreSession(attendeeOutcomeSession, "test-token-4");
+const attendeeOutcomeResult = heuristicScore(attendeeOutcomeSession, "test-token-4");
 
 // detectOutcomeFromTranscript should detect BADGE_SCAN → MQL_READY → +10 bonus
 assertGte("total score ≥ 20 (outcome bonus from attendee)", attendeeOutcomeResult.score, 20);
@@ -165,7 +165,7 @@ const attendeeCustomerSession = makeSession([
   { type: "trainee", text: "ok" },
 ]);
 
-const attendeeCustomerResult = scoreSession(attendeeCustomerSession, "test-token-5");
+const attendeeCustomerResult = heuristicScore(attendeeCustomerSession, "test-token-5");
 
 // Customer impact phrases came from attendee — should NOT get +5 bonus
 // Base score with no trainee effort: listening(5) + discovery(0) + empathy(2) + otel(20) + guardrails(20) = 47
@@ -176,7 +176,7 @@ const traineeCustomerSession = makeSession([
   { type: "trainee", text: "How does that affect your customers and end users?" },
 ]);
 
-const traineeCustomerResult = scoreSession(traineeCustomerSession, "test-token-6");
+const traineeCustomerResult = heuristicScore(traineeCustomerSession, "test-token-6");
 
 // Customer impact from trainee — SHOULD get +5 bonus
 assertGte("score ≥ 50 (customer bonus from trainee)", traineeCustomerResult.score, 50);

@@ -59,7 +59,26 @@ export interface ScoreRecord {
  * Heuristic-based scoring for a completed session.
  * V1: No LLM required.
  */
-export function scoreSession(
+/**
+ * Score a completed session.
+ *
+ * Async because scoring now consults an LLM judge (wired in a later task). For now it
+ * delegates to the retained heuristic scorer unchanged, so every consumer keeps working while
+ * the judge is built alongside.
+ */
+export async function scoreSession(
+  session: SessionState,
+  token: string
+): Promise<ScoreRecord> {
+  return heuristicScore(session, token);
+}
+
+/**
+ * The deterministic heuristic scorer. Retained as the fallback for scoreSession when the LLM
+ * judge is unavailable, and exported so the heuristic regression tests
+ * (scoring.confusionPenalty, scoring.traineeOnly) can exercise it directly without a provider.
+ */
+export function heuristicScore(
   session: SessionState,
   token: string
 ): ScoreRecord {
