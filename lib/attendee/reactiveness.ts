@@ -1,22 +1,33 @@
 /**
- * Reactiveness contract for attendee replies.
+ * Reactiveness & continuity contract for attendee replies.
  *
  * Every generated attendee response should FEEL like a real person who
- * listened to what the trainee just said.  This module provides three
- * helpers to enforce that contract:
+ * listened to what the trainee just said.  This module provides helpers
+ * to enforce that contract:
  *
  *  1. extractKeyPhrases(text)
  *     Pull up to 6 meaningful tokens from a string — domain terms first,
  *     then generic long non-stopwords.
  *
- *  2. makeCallbackPhrase(attendeeLast, traineeLast)
+ *  2. extractAnchors(text)
+ *     Pull noun-phrase chunks + keywords for richer context matching.
+ *
+ *  3. makeCallbackPhrase(attendeeLast, traineeLast)
  *     Produce a deterministic "Got it — on the X side," prefix so the
  *     attendee's reply visibly echoes the trainee's last message.
  *
- *  3. isReactiveEnough(candidate, traineeLast)
+ *  4. makeContextualCallback(opts)
+ *     Intent-aware callback prefix — picks from confused, bridge, or
+ *     general template banks depending on conversational context.
+ *
+ *  5. isReactiveEnough(candidate, traineeLast)
  *     Returns true when the candidate reply already reflects what the
  *     trainee said (reflection marker, follow-up reference, or trainee
  *     keyphrase present).  If false, callers should prepend a callback phrase.
+ *
+ *  6. enforceContinuity(text, ctx)
+ *     Single entry-point: checks reactiveness, strips mustAvoid openers,
+ *     and prepends an appropriate callback prefix when needed.
  */
 
 // ── SRE / observability domain vocabulary ────────────────────────────────────
@@ -113,6 +124,71 @@ export function extractKeyPhrases(text: string): string[] {
   return [...domainHits, ...genericHits].slice(0, 6);
 }
 
+// ── extractAnchors ──────────────────────────────────────────────────────────
+
+export interface AnchorResult {
+  /** 1-3 noun-phrase-like chunks (2-5 consecutive non-stopwords) */
+  phrases: string[];
+  /** 3-8 meaningful single keywords (domain-first, then generic 4+ char) */
+  keywords: string[];
+}
+
+/**
+ * Extract both noun-phrase chunks AND single keywords from text.
+ *
+ * Strategy:
+ *  keywords — same as extractKeyPhrases but capped at 8 instead of 6.
+ *  phrases  — scan words, collect runs of consecutive non-stopword tokens
+ *             (each ≥ 3 chars).  When a stopword breaks the run, if the
+ *             run is 2-5 words save it as a phrase.  Cap at 3 phrases.
+ */
+export function extractAnchors(text: string): AnchorResult {
+  const words = text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 0);
+
+  // ── keywords (reuse extractKeyPhrases logic, cap 8) ──
+  const domainHits: string[] = [];
+  const genericHits: string[] = [];
+  const seen = new Set<string>();
+
+  for (const word of words) {
+    if (seen.has(word)) continue;
+    if (DOMAIN_TERM_SET.has(word)) {
+      domainHits.push(word);
+      seen.add(word);
+    } else if (word.length >= 4 && !STOPWORDS.has(word)) {
+      genericHits.push(word);
+      seen.add(word);
+    }
+  }
+  const keywords = [...domainHits, ...genericHits].slice(0, 8);
+
+  // ── phrases (runs of consecutive non-stopword tokens, each ≥ 3 chars) ──
+  const phrases: string[] = [];
+  let run: string[] = [];
+
+  for (const word of words) {
+    if (word.length >= 3 && !STOPWORDS.has(word)) {
+      run.push(word);
+    } else {
+      if (run.length >= 2 && run.length <= 5) {
+        phrases.push(run.join(" "));
+      }
+      run = [];
+      if (phrases.length >= 3) break;
+    }
+  }
+  // flush trailing run
+  if (run.length >= 2 && run.length <= 5 && phrases.length < 3) {
+    phrases.push(run.join(" "));
+  }
+
+  return { phrases: phrases.slice(0, 3), keywords };
+}
+
 // ── makeCallbackPhrase ────────────────────────────────────────────────────────
 
 /** Prefix templates — one is chosen deterministically by content length. */
@@ -152,6 +228,82 @@ export function makeCallbackPhrase(
   const idx =
     (traineeLast.length + attendeeLast.length) % CALLBACK_TEMPLATES.length;
   return CALLBACK_TEMPLATES[idx](term);
+}
+
+// ── makeContextualCallback ──────────────────────────────────────────────────
+
+/** Empathetic recovery — no scolding, no blame. */
+const CONFUSED_CALLBACK_TEMPLATES: Array<(term: string) => string> = [
+  (term) => `Fair point — let me come back to ${term}. `,
+  (term) => `Right, so going back to the ${term} piece — `,
+  (term) => `Good question — on ${term}, `,
+  (term) => `Let me think about ${term} for a second. `,
+  (term) => `That's fair — on the ${term} side, `,
+];
+
+/** Bridge templates — acknowledge pain before pivoting to docs/demo. */
+const BRIDGE_CALLBACK_TEMPLATES: Array<(term: string) => string> = [
+  (term) => `Makes sense — given what you said about ${term}, `,
+  (term) => `Yeah, with the ${term} situation, `,
+  (term) => `Right — especially with the ${term} issues, `,
+  (term) => `Given the ${term} challenges you described, `,
+  (term) => `With ${term} being a factor, `,
+];
+
+/** General conversational callbacks. */
+const GENERAL_CALLBACK_TEMPLATES: Array<(term: string) => string> = [
+  (term) => `Got it — on the ${term} side, `,
+  (term) => `Right, and specifically around ${term}, `,
+  (term) => `That's helpful context on ${term} — `,
+  (term) => `Yeah, the ${term} piece is where `,
+  (term) => `Understood — thinking about ${term}, `,
+  (term) => `Interesting — on ${term}, `,
+  (term) => `On the ${term} front, `,
+  (term) => `Right — and with ${term}, `,
+];
+
+export interface ContextualCallbackOpts {
+  lastTraineeText: string;
+  lastAttendeeText: string;
+  intent: string;
+  stage: string;
+}
+
+/**
+ * Intent-aware contextual callback prefix.
+ *
+ * Selects a template bank based on intent:
+ *  - confused       → CONFUSED_CALLBACK_TEMPLATES  (empathetic, no scolding)
+ *  - evaluating_fit / soft_exit → BRIDGE_CALLBACK_TEMPLATES  (pain bridge)
+ *  - everything else → GENERAL_CALLBACK_TEMPLATES
+ *
+ * Deterministic: seed = (trainee.length + attendee.length) % bank.length.
+ * Returns empty string when no term can be extracted.
+ */
+export function makeContextualCallback(opts: ContextualCallbackOpts): string {
+  const { lastTraineeText, lastAttendeeText, intent } = opts;
+
+  // Find best term (domain-first from trainee, then attendee, then any generic)
+  const traineeTerms = extractKeyPhrases(lastTraineeText);
+  const attendeeTerms = extractKeyPhrases(lastAttendeeText);
+  const allTerms = [...traineeTerms, ...attendeeTerms];
+  const domainTerm = allTerms.find((t) => DOMAIN_TERM_SET.has(t));
+  const term = domainTerm ?? allTerms[0];
+
+  if (!term) return "";
+
+  // Select template bank by intent
+  let bank: Array<(t: string) => string>;
+  if (intent === "confused") {
+    bank = CONFUSED_CALLBACK_TEMPLATES;
+  } else if (intent === "evaluating_fit" || intent === "soft_exit") {
+    bank = BRIDGE_CALLBACK_TEMPLATES;
+  } else {
+    bank = GENERAL_CALLBACK_TEMPLATES;
+  }
+
+  const seed = (lastTraineeText.length + lastAttendeeText.length) % bank.length;
+  return bank[seed](term);
 }
 
 // ── isReactiveEnough ──────────────────────────────────────────────────────────
@@ -194,4 +346,71 @@ export function isReactiveEnough(
   // c. At least one trainee key phrase in the candidate
   const candidateLower = candidate.toLowerCase();
   return traineeTerms.some((term) => candidateLower.includes(term));
+}
+
+// ── enforceContinuity ─────────────────────────────────────────────────────────
+
+export interface ContinuityContext {
+  lastTraineeText: string;
+  lastAttendeeText: string;
+  intent: string;
+  stage: string;
+  move: string;
+  mustAvoid?: string[];
+  /** When true, skip contextual callback — small-talk answers stand on their own */
+  smallTalk?: boolean;
+}
+
+/**
+ * Single entry-point for the continuity contract.
+ *
+ * Logic flow:
+ *  1. Exempt: ask_hook / exit → return text unchanged
+ *  2. Already reactive? (reflection marker, keyword overlap, trivial) → unchanged
+ *  3. Strip mustAvoid opener if present (re-capitalize remainder)
+ *  4. Prepend contextual callback prefix (intent-aware)
+ *  5. If no callback possible → return text as-is
+ */
+export function enforceContinuity(
+  text: string,
+  ctx: ContinuityContext
+): string {
+  const { lastTraineeText, lastAttendeeText, intent, stage, move, mustAvoid, smallTalk } = ctx;
+
+  // 1. Exempt moves — hooks, exits, and small-talk answers speak for themselves
+  if (move === "ask_hook" || move === "exit") return text;
+  if (smallTalk) return text;
+
+  // 2. Already reactive? No prefix needed.
+  if (isReactiveEnough(text, lastTraineeText)) return text;
+
+  // 3. Strip mustAvoid opener if text starts with a banned phrase
+  let cleaned = text;
+  if (mustAvoid && mustAvoid.length > 0) {
+    const textLower = cleaned.toLowerCase();
+    for (const phrase of mustAvoid) {
+      const phraseLower = phrase.toLowerCase();
+      if (textLower.startsWith(phraseLower)) {
+        const remainder = cleaned.slice(phrase.length).trimStart();
+        // Only strip if enough meaningful text remains
+        if (remainder.length >= 10) {
+          cleaned = remainder.charAt(0).toUpperCase() + remainder.slice(1);
+        }
+        break;
+      }
+    }
+  }
+
+  // 4. Generate contextual callback prefix
+  const callback = makeContextualCallback({
+    lastTraineeText,
+    lastAttendeeText,
+    intent,
+    stage,
+  });
+
+  if (!callback) return cleaned;
+
+  // Join: lowercase first char of cleaned text to flow with prefix
+  return callback + cleaned.charAt(0).toLowerCase() + cleaned.slice(1);
 }

@@ -20,9 +20,14 @@ import type { Persona } from "../scenarioTypes";
 import {
   decideNextMove,
   recordDirectorMove,
+  NEUTRAL_HOOK_BANK,
   type DirectorDirective,
 } from "./conversationDirector";
-import { isReactiveEnough, makeCallbackPhrase } from "./reactiveness";
+import {
+  enforceContinuity,
+  extractKeyPhrases,
+  type ContinuityContext,
+} from "./reactiveness";
 
 export interface AttendeeReplyResult {
   text: string;
@@ -40,12 +45,29 @@ export interface AttendeeReplyResult {
 
 // ── Built-in phrase banks for move types ─────────────────────────────────────
 
-const REPAIR_QUESTIONS: string[] = [
-  "Sorry, I'm not sure how that connects to what we were discussing—can you clarify?",
-  "Hmm, I think I got a bit lost. What were you trying to say?",
-  "Can you explain that differently? I'm not quite following.",
-  "Wait—how does that relate to what I just mentioned?",
-  "I'm not sure that answered what I was asking. Can you try again?",
+/**
+ * Keyword-templated cooperative clarifiers — these replace the old
+ * argumentative REPAIR_QUESTIONS.  Each template takes a domain/generic
+ * term and produces a specific, empathetic follow-up.
+ */
+const COOPERATIVE_CLARIFIERS: Array<(term: string) => string> = [
+  (term) => `When you mention ${term}, what does that look like day-to-day for your team?`,
+  (term) => `On the ${term} side — is that something that's gotten worse recently?`,
+  (term) => `Interesting — when you say ${term}, are you thinking more about the tooling or the process?`,
+  (term) => `Got it — and on ${term}, what have you tried so far?`,
+  (term) => `So with ${term} — what would a better version of that look like for you?`,
+  (term) => `That's helpful — on ${term}, how does your team handle that today?`,
+  (term) => `Right — and when ${term} comes up, who usually gets pulled in?`,
+  (term) => `Makes sense — is ${term} the biggest pain point, or is there something else behind it?`,
+];
+
+/** Fallback when no keyword can be extracted — still cooperative, never scolding. */
+const GENERIC_COOPERATIVE_CLARIFIERS: string[] = [
+  "Can you tell me more about how that works for your team day-to-day?",
+  "Interesting — what does that look like in practice?",
+  "Got it — and how has your team been handling that so far?",
+  "That's helpful context. What's been the biggest challenge there?",
+  "Right — and how long has that been the situation?",
 ];
 
 const DEMO_PHRASES: string[] = [
@@ -95,6 +117,50 @@ const EXIT_PHRASES: string[] = [
   "I should get moving—thanks for the overview.",
   "Can you send me a link or a one-pager? I need to run.",
   "I appreciate it—can you scan my badge for a follow-up?",
+];
+
+// ── Small-talk answer banks ──────────────────────────────────────────────────
+
+const SMALL_TALK_ANSWERS: string[] = [
+  "Pretty good — busy but fun.",
+  "Hectic, but I've seen a couple great talks.",
+  "Good so far — my feet are already done.",
+  "Not bad — just bouncing between booths.",
+  "Honestly a bit chaotic, but in a good way.",
+];
+
+const SMALL_TALK_PIVOTS: string[] = [
+  "I'm mostly looking at observability and incident response tooling.",
+  "We're trying to get better at debugging incidents and reducing alert noise.",
+  "I'm here to see what's new in tracing and incident workflows.",
+  "We've got some pain around debugging and on-call right now.",
+  "We're evaluating a few options to speed up root cause during incidents.",
+];
+
+// ── Answer move — first-person response templates ────────────────────────────
+
+/**
+ * Wrappers that make a pain statement sound like a natural answer to a question.
+ * Each takes the formatted pain statement and prepends a conversational opener.
+ */
+const ANSWER_WRAPPERS: Array<(statement: string) => string> = [
+  (s) => `Yeah, ${s.charAt(0).toLowerCase()}${s.slice(1)}`,
+  (s) => `For us, ${s.charAt(0).toLowerCase()}${s.slice(1)}`,
+  (s) => `Honestly, ${s.charAt(0).toLowerCase()}${s.slice(1)}`,
+  (s) => `On our end, ${s.charAt(0).toLowerCase()}${s.slice(1)}`,
+  (s) => `Right now, ${s.charAt(0).toLowerCase()}${s.slice(1)}`,
+];
+
+/**
+ * Generic first-person answers when no pain anchors are available.
+ * Used as fallback for the answer move.
+ */
+const GENERIC_FIRST_PERSON_ANSWERS: string[] = [
+  "For us, the biggest challenge has been the debugging cycles during incidents.",
+  "On our end, we've been struggling with alert noise and on-call fatigue.",
+  "Honestly, our monitoring setup is pretty fragmented right now.",
+  "For our team, incident response is still really manual and slow.",
+  "Right now we're dealing with a lot of toil around deployments and rollbacks.",
 ];
 
 // ── Helper: pick unused phrase avoiding recent attendee repetition ─────────────
@@ -363,6 +429,131 @@ function generateFromDirective(
       return null;
     }
 
+    case "ask_hook": {
+      // Safety net: if the attendee has already spoken, ask_hook should not
+      // produce another neutral question.  Return a light context + pivot
+      // to prevent question-looping regression.
+      const hookAttendeeCount = session.transcript.filter(
+        (m) => m.type === "attendee"
+      ).length;
+      if (hookAttendeeCount > 0) {
+        const HOOK_PIVOTS = [
+          "Pretty good so far — I'm mostly checking out observability tools. What kinds of folks have you been talking to today?",
+          "Yeah, it's been a good conference — I'm looking at monitoring and reliability tools. What's the product about?",
+          "Doing well — we're evaluating some options for our incident workflow. Tell me more about what you do here.",
+        ];
+        const pivotText =
+          HOOK_PIVOTS[traineeTurnCount % HOOK_PIVOTS.length];
+        recordDirectorMove(session, move);
+        return {
+          text: postProcessAttendeeText(pivotText, persona),
+          source: "template",
+          confidence: 0.85,
+        };
+      }
+      // First-turn hook: use hookOverride or neutral hook bank
+      const hookText =
+        directive.hookOverride ??
+        NEUTRAL_HOOK_BANK[traineeTurnCount % NEUTRAL_HOOK_BANK.length];
+      recordDirectorMove(session, move);
+      return {
+        text: postProcessAttendeeText(hookText, persona),
+        source: "template",
+        confidence: 0.9,
+      };
+    }
+
+    case "answer": {
+      // Small-talk fast path: casual 1-sentence answer + optional pivot
+      if (directive.smallTalk) {
+        const nonSystem = session.transcript.filter((m) => m.type !== "system");
+        const stIdx = nonSystem.length % SMALL_TALK_ANSWERS.length;
+        let smallTalkText = SMALL_TALK_ANSWERS[stIdx];
+        // Append a gentle pivot unless attendee intent is hard_exit
+        if (directive.intent !== "hard_exit") {
+          const pivotIdx = nonSystem.length % SMALL_TALK_PIVOTS.length;
+          smallTalkText += " " + SMALL_TALK_PIVOTS[pivotIdx];
+        }
+        recordDirectorMove(session, move);
+        return {
+          text: postProcessAttendeeText(smallTalkText, persona),
+          source: "template",
+          confidence: 0.9,
+        };
+      }
+
+      // The attendee should answer the trainee's question with a first-person
+      // statement about their own situation — NOT ask a question back.
+      // This prevents role-reversal (attendee interrogating the trainee).
+
+      let answerText: string | null = null;
+      let answerPainId: string | null = null;
+
+      // 1. Try keyword-match pain on trainee text
+      if (persona?.painAnchors) {
+        const matched = matchPersonaPain(traineeText, persona);
+        if (matched && !hasAlreadySurfacedPain(session, { id: matched.painId })) {
+          answerText = formatPainAsStatement(matched.pain);
+          answerPainId = matched.painId;
+        }
+      }
+
+      // 2. Try specifically directed pain anchor
+      if (!answerText && directive.mustInclude?.painAnchorId && persona?.painAnchors) {
+        const anchor = persona.painAnchors.find(
+          (p) => p.id === directive.mustInclude!.painAnchorId
+        );
+        if (anchor && !hasAlreadySurfacedPain(session, anchor)) {
+          answerText = formatPainAsStatement(anchor.pain);
+          answerPainId = anchor.id;
+        }
+      }
+
+      // 3. Next unsurfaced pain anchor
+      if (!answerText && persona?.painAnchors) {
+        const unsurfaced = persona.painAnchors.filter(
+          (p) => !hasAlreadySurfacedPain(session, p)
+        );
+        const primary = unsurfaced.filter((p) => p.priority === "primary");
+        const picked = primary.length > 0 ? primary[0] : unsurfaced[0];
+        if (picked) {
+          answerText = formatPainAsStatement(picked.pain);
+          answerPainId = picked.id;
+        }
+      }
+
+      // Wrap pain statement with a conversational answer opener
+      if (answerText && answerPainId) {
+        markPainAsSurfaced(session, answerPainId);
+        const wrapperIdx = traineeTurnCount % ANSWER_WRAPPERS.length;
+        let wrapped = ANSWER_WRAPPERS[wrapperIdx](answerText);
+        // Role-reversal guard: ensure the response is a statement, not a question
+        if (wrapped.endsWith("?")) {
+          wrapped = wrapped.slice(0, -1) + ".";
+        }
+        const sanitized = persona ? sanitizeResponse(wrapped, persona) : wrapped;
+        recordDirectorMove(session, move);
+        return {
+          text: postProcessAttendeeText(sanitized, persona),
+          source: "persona_pain",
+          confidence: 0.85,
+        };
+      }
+
+      // 4. Fallback: generic first-person answers
+      const chosen = pickUnused(
+        GENERIC_FIRST_PERSON_ANSWERS,
+        recentAttendeeText,
+        traineeTurnCount
+      );
+      recordDirectorMove(session, move);
+      return {
+        text: postProcessAttendeeText(chosen, persona),
+        source: "template",
+        confidence: 0.75,
+      };
+    }
+
     case "ask_clarifying": {
       // 1. Try persona question bank for a contextual match
       if (persona?.questionBank) {
@@ -380,17 +571,36 @@ function generateFromDirective(
         }
       }
 
-      // 2. Built-in repair questions
-      const chosen = pickUnused(
-        REPAIR_QUESTIONS,
-        recentAttendeeText,
-        traineeTurnCount
-      );
+      // 2. Cooperative clarifiers — keyword-templated when possible
+      const lastAttendee =
+        session.transcript
+          .filter((m) => m.type === "attendee")
+          .at(-1)?.text ?? "";
+      const clarifyTerms = extractKeyPhrases(traineeText + " " + lastAttendee);
+
+      if (clarifyTerms.length > 0) {
+        const term = clarifyTerms[0];
+        const idx = traineeTurnCount % COOPERATIVE_CLARIFIERS.length;
+        const candidate = COOPERATIVE_CLARIFIERS[idx](term);
+        // Check for repetition
+        if (!recentAttendeeText.includes(candidate.toLowerCase().slice(0, 30))) {
+          recordDirectorMove(session, move);
+          return {
+            text: postProcessAttendeeText(candidate, persona),
+            source: "persona_question",
+            confidence: 0.8,
+          };
+        }
+      }
+
+      // 3. Generic cooperative fallback
+      const genIdx = traineeTurnCount % GENERIC_COOPERATIVE_CLARIFIERS.length;
+      const generic = GENERIC_COOPERATIVE_CLARIFIERS[genIdx];
       recordDirectorMove(session, move);
       return {
-        text: postProcessAttendeeText(chosen, persona),
+        text: postProcessAttendeeText(generic, persona),
         source: "persona_question",
-        confidence: 0.8,
+        confidence: 0.75,
       };
     }
 
@@ -527,20 +737,6 @@ function generateFromDirective(
 
 // ── Internal generator ────────────────────────────────────────────────────────
 
-/**
- * Moves that are inherently reactive by structure — no callback prefix needed.
- * Questions and CTAs speak for themselves; only statements (share_pain,
- * ask_rollout_effort, ask_pricing) benefit from an explicit callback prefix.
- */
-const REACTIVENESS_EXEMPT_MOVES = new Set<string>([
-  "ask_clarifying",
-  "ask_demo",
-  "ask_docs",
-  "ask_badge",
-  "deflect",
-  "exit",
-]);
-
 function generateAttendeeReplyInternal(params: {
   traineeText: string;
   session: SessionState;
@@ -556,48 +752,34 @@ function generateAttendeeReplyInternal(params: {
   (session as any).currentDirective = directive;
 
   // 3. Generate content that matches the directive
-  const result = generateFromDirective(directive, traineeText, session, persona, traineeTurnCount);
+  let result = generateFromDirective(directive, traineeText, session, persona, traineeTurnCount);
 
   if (!result) return null;
 
-  // 4. Reactiveness contract
-  // For statement-type moves (share_pain, ask_rollout_effort, ask_pricing):
-  // check that the response sounds like it heard the trainee's last message.
-  // If not, prepend a callback phrase.  If still not reactive, fall back to
-  // ask_clarifying with the callback phrase prepended.
-  if (!REACTIVENESS_EXEMPT_MOVES.has(directive.move) && traineeText.trim().length > 0) {
-    const alreadyReactive = isReactiveEnough(result.text, traineeText);
+  // 4. Continuity contract
+  // Every reply (except ask_hook / exit) must visibly connect to the
+  // conversation.  enforceContinuity checks reactiveness, strips mustAvoid
+  // openers, and prepends an intent-aware callback prefix when needed.
+  if (traineeText.trim().length > 0) {
+    const lastAttendeeText =
+      session.transcript
+        .filter((m) => m.type === "attendee")
+        .at(-1)?.text ?? "";
 
-    if (!alreadyReactive) {
-      const lastAttendeeText =
-        session.transcript
-          .filter((m) => m.type === "attendee")
-          .at(-1)?.text ?? "";
-      const callback = makeCallbackPhrase(lastAttendeeText, traineeText);
+    const continuityText = enforceContinuity(result.text, {
+      lastTraineeText: traineeText,
+      lastAttendeeText,
+      intent: directive.intent ?? "neutral",
+      stage: directive.stage,
+      move: directive.move,
+      mustAvoid: directive.mustAvoid?.phrases,
+      smallTalk: directive.smallTalk,
+    });
 
-      if (callback) {
-        // Prepend callback phrase to make the response feel grounded
-        const patched: AttendeeReplyResult = {
-          ...result,
-          text: callback + result.text.charAt(0).toLowerCase() + result.text.slice(1),
-        };
-
-        // Re-check: if the patched text is now reactive, return it
-        if (isReactiveEnough(patched.text, traineeText)) {
-          return patched;
-        }
-      }
-
-      // Still not reactive enough — fall back to ask_clarifying with callback prefix
-      const repairQuestion =
-        REPAIR_QUESTIONS[traineeTurnCount % REPAIR_QUESTIONS.length];
-      const prefix = callback || "Hmm — ";
-      return {
-        text: postProcessAttendeeText(prefix + repairQuestion.charAt(0).toLowerCase() + repairQuestion.slice(1), persona),
-        source: "persona_question",
-        confidence: 0.75,
-      };
-    }
+    result = {
+      ...result,
+      text: postProcessAttendeeText(continuityText, persona),
+    };
   }
 
   return result;

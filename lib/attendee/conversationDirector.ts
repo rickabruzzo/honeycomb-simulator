@@ -6,14 +6,17 @@
  * intentionally state-machine-agnostic: it derives stage from transcript
  * signals rather than trusting session.currentState.
  *
+ * Architecture (3 layers, evaluated top-to-bottom):
+ *   1. INTENT LAYER  — infer the attendee's current disposition from their
+ *      most recent message (confused? exiting? evaluating?).  Intent gates
+ *      which moves are even allowed, preventing CTAs during confusion, etc.
+ *   2. STAGE LAYER   — infer conversation stage from transcript signals
+ *      (HOOK → RAPPORT → DISCOVERY → VALUE → OBJECTION → COMMITMENT).
+ *   3. MOVE SELECTION — pick the best move from the stage-recommended set,
+ *      constrained by intent gates, anti-repeat, CTA depth, and lockouts.
+ *
  * The output is a DirectorDirective consumed by generateAttendeeReply to
  * select and filter persona bank entries (or constrain the LLM fallback).
- *
- * Key properties:
- *  - Misaligned trainee → repair move (ask_clarifying / deflect)
- *  - Stage inferred from transcript keywords, not preset scripts
- *  - Momentum band gates how willing the attendee is to commit
- *  - Director history prevents move repetition (anti-loop)
  */
 
 import type { SessionState } from "../storage";
@@ -34,6 +37,8 @@ export type DirectorStage =
 export type DirectorMove =
   | "ask_clarifying"    // follow-up question or repair question
   | "share_pain"        // surface a pain anchor as a statement
+  | "ask_hook"          // neutral opening question (HOOK stage only)
+  | "answer"            // answer trainee's question in first person (prevents role-reversal)
   | "ask_demo"          // request to see the product
   | "ask_docs"          // ask for docs / free tier
   | "ask_rollout_effort"// object about adoption overhead
@@ -44,6 +49,20 @@ export type DirectorMove =
 
 export type DirectorTone = "guarded" | "curious" | "engaged" | "committed";
 
+/**
+ * Attendee intent — inferred from the most recent attendee message.
+ * Constrains which director moves are allowed on the next turn.
+ */
+export type AttendeeIntent =
+  | "rapport"          // small talk / conference chat
+  | "pain_sharing"     // describing a work pain point
+  | "evaluating_fit"   // asking about docs / free tier / self-serve
+  | "confused"         // meta-confusion / not following
+  | "soft_exit"        // time pressure / wrapping up / send materials
+  | "hard_exit"        // explicit disinterest / already have something
+  | "commit_ready"     // badge scan / demo request / follow-up
+  | "neutral";         // default — no strong signal
+
 export interface DirectorDirective {
   stage: DirectorStage;
   move: DirectorMove;
@@ -52,6 +71,135 @@ export interface DirectorDirective {
   mustInclude?: { painAnchorId?: string };
   /** Opening phrases to avoid (drawn from recent attendee messages) */
   mustAvoid?: { phrases?: string[] };
+  /** Override reply text for ask_hook moves (neutral hook bank) */
+  hookOverride?: string;
+  /** Override reply text for concrete follow-ups (abstract compare limiter) */
+  concreteOverride?: string;
+  /** Inferred attendee intent (for debugging / telemetry) */
+  intent?: AttendeeIntent;
+  /** When true, the trainee asked a small-talk question (conference/day) — reply with casual answer, not contextual callback */
+  smallTalk?: boolean;
+}
+
+// ── Meta-confusion lockout ────────────────────────────────────────────────────
+// When the attendee just expressed confusion / repair, suppress further
+// ask_clarifying for the next 2 attendee turns to prevent spiral loops.
+
+const META_CONFUSION_RE =
+  /\b(not sure|lost|explain|clarify|not following|how does that relate|what were you trying to say|try again)\b/i;
+
+export function isMetaConfusion(text: string): boolean {
+  return META_CONFUSION_RE.test(text);
+}
+
+// ── Small-talk detection ─────────────────────────────────────────────────────
+
+const SMALL_TALK_PATTERNS: RegExp[] = [
+  /how'?s (your day|the conference|it going|things going)/i,
+  /conference (treating you|so far)/i,
+  /seen .* today .* stood out/i,
+];
+
+/**
+ * Returns true when the trainee is asking a small-talk/conference question.
+ * Requires a '?' to be present AND a pattern match.
+ */
+export function isSmallTalkQuestion(text: string): boolean {
+  if (!text.includes("?")) return false;
+  return SMALL_TALK_PATTERNS.some((p) => p.test(text));
+}
+
+/**
+ * Scan attendee messages for the most recent meta-confusion signal.
+ * If found, return true when fewer than 2 attendee messages have occurred since.
+ */
+export function metaConfusionLockoutActive(
+  attendeeMessages: Array<{ text: string }>
+): boolean {
+  for (let i = attendeeMessages.length - 1; i >= 0; i--) {
+    if (isMetaConfusion(attendeeMessages[i].text)) {
+      const attendeeMsgsSince = attendeeMessages.length - 1 - i;
+      return attendeeMsgsSince < 2;
+    }
+  }
+  return false;
+}
+
+/**
+ * When meta-confusion lockout prevents ask_clarifying, fall back to an
+ * alternative move.  Priority: share_pain > ask_docs > exit.
+ * Never falls back to deflect — a deflect after confusion reads as hostility.
+ */
+function chooseNonClarifyingFallback(
+  stage: DirectorStage,
+  history: DirectorMove[]
+): DirectorMove {
+  if (!isMoveTooRecent("share_pain", history)) return "share_pain";
+  if (!isMoveTooRecent("ask_docs", history)) return "ask_docs";
+  return "exit";
+}
+
+// ── Abstract compare limiter ────────────────────────────────────────────────
+// Prevent the director from repeatedly selecting abstract multi-part/binary
+// questions that cause confusion spirals (e.g. "is it more X or Y?").
+
+/**
+ * Returns true when text is a question containing an abstract binary comparison.
+ */
+export function isAbstractCompareQuestion(text: string): boolean {
+  if (!text.includes("?")) return false;
+  return /(more about|which is it|is it .* or .*)/i.test(text);
+}
+
+/**
+ * If 2+ of the last 3 trainee messages are abstract compare questions,
+ * the limiter is active and we should force concrete follow-ups.
+ */
+export function abstractCompareLimiterActive(
+  recentTrainee: Array<{ text: string }>
+): boolean {
+  const last3 = recentTrainee.slice(-3);
+  const count = last3.filter((m) => isAbstractCompareQuestion(m.text)).length;
+  return count >= 2;
+}
+
+/**
+ * Fixed bank of concrete single-question follow-ups.
+ * Deterministic selection avoids repeats by using message count as seed.
+ */
+export const CONCRETE_FOLLOWUPS: string[] = [
+  "What happens right after that?",
+  "What's the first thing you check when this starts?",
+  "Can you walk me through the last time it happened?",
+  "When did you first notice it getting worse?",
+];
+
+// ── Neutral hook rule ────────────────────────────────────────────────────────
+// When the attendee hasn't spoken yet and the system opener is non-verbal
+// (e.g. "approaches looking visibly frustrated"), the first move should be a
+// neutral hook — not a work-context assumption.
+
+const NON_VERBAL_OPENER_RE = /\b(frustrated|visibly|approaches|walks up|sighs|looking)\b/i;
+
+/**
+ * Fixed bank of neutral hook questions for first contact after a non-verbal opener.
+ */
+export const NEUTRAL_HOOK_BANK: string[] = [
+  "Hey, how's your day going?",
+  "How's the conference treating you so far?",
+  "Anything you've seen today that stood out?",
+];
+
+/**
+ * Returns true if the session's first system message looks like a non-verbal
+ * stage direction and the attendee has not yet spoken.
+ */
+function isNonVerbalOpener(session: SessionState): boolean {
+  const attendeeMessages = session.transcript.filter((m) => m.type === "attendee");
+  if (attendeeMessages.length > 0) return false;
+  const firstSystem = session.transcript.find((m) => m.type === "system");
+  if (!firstSystem) return false;
+  return NON_VERBAL_OPENER_RE.test(firstSystem.text);
 }
 
 // ── Signal patterns ───────────────────────────────────────────────────────────
@@ -111,6 +259,189 @@ const PAIN_KEYWORDS: string[] = [
   "complex", "hard", "difficult", "mess", "painful", "broken", "fragmented",
 ];
 
+// ── Intent inference patterns ─────────────────────────────────────────────────
+
+const SOFT_EXIT_RE =
+  /\b(send me (a |the )?(link|email|info|flyer|card)|one[ -]pager|got to (run|go)|need to run|short on time|in a hurry|just browsing|just looking|only have a (minute|second))\b/i;
+
+const HARD_EXIT_RE =
+  /\b(not (really )?(interested|looking)|maybe later|we already have (something|that)|not what we('re| are) looking for)\b/i;
+
+const EVALUATING_FIT_RE =
+  /\b(documentation|free tier|docs|trial|self[- ]serve|materials|brochure|links|review on my own)\b/i;
+
+const COMMIT_READY_RE =
+  /\b(scan (my|your|the) badge|badge scan|follow[ -]?up|reach out|book a call|schedule (a call|time)|show me (a |the )?(demo|product)|walk me through)\b/i;
+
+const RAPPORT_RE =
+  /\b(how'?s the conference|how'?s your day|seen anything|anything stand out|what brings you|nice to meet)\b/i;
+
+const PAIN_SHARING_RE =
+  /\b(incident|outage|alert|debug|trace|latency|slow|error|failure|on[- ]call|toil|noise|alert fatigue|painful|broken|fragmented|debugging|tracing|incidents|outages)\b/i;
+
+// ── Intent inference ──────────────────────────────────────────────────────────
+
+/**
+ * Infer the attendee's current disposition from their most recent message.
+ *
+ * Uses short context (last 2 attendee messages) as a tiebreaker:
+ *   - "docs" after confusion → soft_exit (not evaluating_fit)
+ *   - "scan badge" after confusion/soft-exit → commit_ready only if COMMITTED
+ */
+export function inferAttendeeIntent(
+  session: SessionState,
+  band?: MomentumBand
+): AttendeeIntent {
+  const attendeeMessages = session.transcript.filter((m) => m.type === "attendee");
+  if (attendeeMessages.length === 0) return "neutral";
+
+  const lastMsg = attendeeMessages[attendeeMessages.length - 1].text;
+  const last2 = attendeeMessages.slice(-2);
+  const recentHasConfusion = last2.some(
+    (m, i) => i < last2.length - 1 && isMetaConfusion(m.text)
+  );
+
+  // 1. Confused — highest priority (blocks all escalation)
+  if (isMetaConfusion(lastMsg)) return "confused";
+
+  // 2. Hard exit — explicit disinterest
+  if (HARD_EXIT_RE.test(lastMsg)) return "hard_exit";
+
+  // 3. Soft exit — time pressure / wrapping up
+  if (SOFT_EXIT_RE.test(lastMsg)) return "soft_exit";
+
+  // 4. Commit ready — badge scan / follow-up
+  //    Tiebreaker: confusion in previous message downgrades unless COMMITTED
+  if (COMMIT_READY_RE.test(lastMsg)) {
+    if (recentHasConfusion && band !== "COMMITTED") {
+      return "soft_exit";
+    }
+    return "commit_ready";
+  }
+
+  // 5. Evaluating fit — asking about docs / free tier
+  //    Tiebreaker: confusion in previous message → soft_exit
+  if (EVALUATING_FIT_RE.test(lastMsg)) {
+    if (recentHasConfusion) return "soft_exit";
+    return "evaluating_fit";
+  }
+
+  // 6. Rapport — small talk / conference questions
+  if (RAPPORT_RE.test(lastMsg)) return "rapport";
+
+  // 7. Pain sharing — describing work pain
+  if (PAIN_SHARING_RE.test(lastMsg)) return "pain_sharing";
+
+  // 8. Neutral — no strong signal
+  return "neutral";
+}
+
+// ── Intent-gated move sets ────────────────────────────────────────────────────
+
+/**
+ * Returns the set of director moves allowed for a given attendee intent.
+ *
+ * Stage and band are passed for intent-specific gating (e.g. ask_badge
+ * requires COMMITTED band + COMMITMENT stage during evaluating_fit).
+ */
+export function allowedMovesForIntent(
+  intent: AttendeeIntent,
+  stage: DirectorStage,
+  band: MomentumBand
+): Set<DirectorMove> {
+  switch (intent) {
+    case "rapport":
+      return new Set<DirectorMove>(["ask_hook", "ask_clarifying", "share_pain", "answer"]);
+
+    case "pain_sharing": {
+      const moves = new Set<DirectorMove>([
+        "ask_clarifying", "share_pain", "answer", "ask_rollout_effort", "ask_pricing",
+      ]);
+      // ask_demo allowed only in VALUE+ with depth (checked by caller)
+      if (stage === "VALUE" || stage === "OBJECTION" || stage === "COMMITMENT") {
+        moves.add("ask_demo");
+      }
+      return moves;
+    }
+
+    case "evaluating_fit": {
+      const moves = new Set<DirectorMove>([
+        "ask_docs", "ask_demo", "ask_rollout_effort", "ask_pricing", "ask_clarifying", "answer",
+      ]);
+      // ask_badge only if fully committed AND in commitment stage
+      if (band === "COMMITTED" && stage === "COMMITMENT") {
+        moves.add("ask_badge");
+      }
+      return moves;
+    }
+
+    case "confused":
+      return new Set<DirectorMove>(["share_pain", "ask_clarifying", "answer"]);
+
+    case "soft_exit":
+      return new Set<DirectorMove>(["ask_docs", "exit"]);
+
+    case "hard_exit":
+      return new Set<DirectorMove>(["exit"]);
+
+    case "commit_ready":
+      return new Set<DirectorMove>([
+        "ask_demo", "ask_badge", "ask_docs", "ask_pricing",
+        "ask_rollout_effort", "exit",
+      ]);
+
+    case "neutral":
+    default:
+      // No additional restriction — stage-based behavior applies
+      return new Set<DirectorMove>([
+        "ask_clarifying", "share_pain", "answer", "ask_hook", "ask_demo", "ask_docs",
+        "ask_rollout_effort", "ask_pricing", "ask_badge", "deflect", "exit",
+      ]);
+  }
+}
+
+/**
+ * When the selected move is not allowed by intent, pick the best fallback.
+ */
+function intentFallbackMove(
+  intent: AttendeeIntent,
+  history: DirectorMove[]
+): DirectorMove {
+  switch (intent) {
+    case "confused":
+      // Prefer share_pain if ask_clarifying is overused (3+ in last 4)
+      if (history.slice(-4).filter((m) => m === "ask_clarifying").length >= 3) {
+        return "share_pain";
+      }
+      return "ask_clarifying";
+
+    case "soft_exit":
+      if (!isMoveTooRecent("ask_docs", history)) return "ask_docs";
+      return "exit";
+
+    case "hard_exit":
+      return "exit";
+
+    case "rapport":
+      return "ask_hook";
+
+    case "pain_sharing":
+      if (!isMoveTooRecent("ask_clarifying", history)) return "ask_clarifying";
+      return "share_pain";
+
+    case "evaluating_fit":
+      if (!isMoveTooRecent("ask_docs", history)) return "ask_docs";
+      return "ask_rollout_effort";
+
+    case "commit_ready":
+      return "ask_badge"; // permissive — keep candidate when possible
+
+    case "neutral":
+    default:
+      return "ask_clarifying";
+  }
+}
+
 // ── Director history helpers ──────────────────────────────────────────────────
 
 /** Read recent director moves from session (last 8 stored) */
@@ -157,6 +488,12 @@ function inferStage(session: SessionState): DirectorStage {
   if (hasAha) return "VALUE";
   if (hasSurfacedPain) return "DISCOVERY";
   if (hasRoleStated) return "RAPPORT";
+
+  // If the attendee has already spoken at least once but no role/pain/aha/
+  // objection/exit/commitment was detected, treat as RAPPORT rather than
+  // lingering in HOOK forever.  This prevents infinite ask_hook loops.
+  if (attendeeMessages.length >= 1) return "RAPPORT";
+
   return "HOOK";
 }
 
@@ -189,11 +526,6 @@ function extractKeywords(text: string): Set<string> {
   return new Set(words.filter((w) => w.length > 3 && !STOPWORDS.has(w)));
 }
 
-/**
- * Partial word matching: "alert" matches "alerting", "trace" matches "tracing".
- * Returns true when wordA is a prefix of wordB or vice versa, with at most
- * 4 characters of difference (prevents false matches like "is" ~ "instance").
- */
 function partialWordMatch(a: string, b: string): boolean {
   if (a === b) return true;
   const diff = Math.abs(a.length - b.length);
@@ -202,48 +534,24 @@ function partialWordMatch(a: string, b: string): boolean {
   return longer.startsWith(shorter) && shorter.length >= 4;
 }
 
-/**
- * Count keyword overlap between two word sets using partial matching.
- * An attendee keyword counts as matching when any trainee keyword is a
- * prefix match — "alert" → "alerting", "debug" → "debugging", etc.
- */
 function countPartialOverlap(
   attendeeKw: Set<string>,
   traineeKw: Set<string>
 ): number {
   let count = 0;
-  for (const akw of attendeeKw) {
-    for (const tkw of traineeKw) {
-      if (partialWordMatch(akw, tkw)) {
+  const aArr = Array.from(attendeeKw);
+  const tArr = Array.from(traineeKw);
+  for (let i = 0; i < aArr.length; i++) {
+    for (let j = 0; j < tArr.length; j++) {
+      if (partialWordMatch(aArr[i], tArr[j])) {
         count++;
-        break; // Each attendee keyword counts at most once
+        break;
       }
     }
   }
   return count;
 }
 
-/**
- * 3-tier alignment check.
- *
- * Tier 1 — Reflection marker → ALWAYS aligned.
- *   Trainee uses "sounds like", "you mentioned", "I hear that", etc.
- *   These phrases explicitly reference the attendee's words.
- *
- * Tier 2 — Question + 1 overlap (with partial matching) → aligned.
- *   A trainee asking a question with even one shared keyword is on-topic.
- *
- * Tier 3 — Follow-up reference + substantive trainee message (8+ words) → aligned.
- *   "your" / "that" / "this" / "those" pointing back to the attendee's turn.
- *   Keep "your" in the pattern — it is the most common follow-up reference
- *   in SRE selling conversations ("How does your setup handle X?").
- *
- * MISALIGNED only when ALL of:
- *   - zero keyword overlap (even partial)
- *   - no reflection marker
- *   - no follow-up reference (or trainee message is too short to matter)
- *   - trainee message is 6+ words (ignore very short bridging phrases)
- */
 export function isTraineeAligned(
   lastTraineText: string,
   lastAttendeeText: string
@@ -251,11 +559,8 @@ export function isTraineeAligned(
   if (!lastAttendeeText || !lastTraineText) return true;
 
   const traineeWords = lastTraineText.trim().split(/\s+/);
-
-  // Very short trainee message (≤5 words) — treat as aligned filler/acknowledgement
   if (traineeWords.length <= 5) return true;
 
-  // Tier 1: Reflection marker → always aligned
   const REFLECTION = /\b(sounds like|it sounds|it seems|you mentioned|you said|from what you('?re| are) (saying|describing)|when you say|i (hear|understand) (that|you))\b/i;
   if (REFLECTION.test(lastTraineText)) return true;
 
@@ -263,62 +568,61 @@ export function isTraineeAligned(
   const traineeKw = extractKeywords(lastTraineText);
   const overlap = countPartialOverlap(attendeeKw, traineeKw);
 
-  // Tier 2: Question + 1 overlap → aligned
   const isAsking = /\?/.test(lastTraineText);
   if (isAsking && overlap >= 1) return true;
 
-  // Tier 3: Follow-up reference → aligned (keep "your" for SRE follow-up questions)
   const hasFollowUp =
     /\b(that|this|those|your|same|them|there|what you (said|mentioned)|what you're)\b/i.test(
       lastTraineText
     );
   if (hasFollowUp) return true;
 
-  // 2+ overlap (partial) → aligned even without question/follow-up
   if (overlap >= 2) return true;
 
-  // Misaligned: no overlap, no markers, substantive message
   return false;
+}
+
+// ── Question detection ─────────────────────────────────────────────────────────
+
+/**
+ * Returns true if the text contains a question mark, indicating the speaker
+ * is asking a question.
+ */
+export function isQuestion(text: string): boolean {
+  return text.includes("?");
 }
 
 // ── Move anti-repeat check ────────────────────────────────────────────────────
 
-/**
- * Returns true if the candidate move is overused or in its cooldown window.
- *
- * Rules (in priority order):
- *  1. ask_clarifying: never blocked — it is the universal repair/fallback.
- *  2. ask_badge / ask_demo: 2-turn hard cooldown (commitment CTAs should feel deliberate).
- *  3. ask_rollout_effort: never consecutive (two skepticism questions in a row = annoying).
- *  4. deflect / exit: 3-turn cooldown (avoid getting stuck in disengaged mode).
- *  5. Any move used 2x in the last 4 turns is overused → blocked (anti-loop).
- *  6. Default: 4-turn window prevents any move from dominating.
- */
 function isMoveTooRecent(move: DirectorMove, history: DirectorMove[]): boolean {
-  // Rule 1: ask_clarifying is the universal fallback — never blocked
+  // ask_clarifying is universal — never blocked
   if (move === "ask_clarifying") return false;
 
-  // Rule 2: CTA commitment moves — 2-turn hard cooldown
+  // ask_hook should only fire once per session — blocked if ever used before
+  if (move === "ask_hook") return history.includes("ask_hook");
+
+  // answer can repeat frequently (attendee should answer questions), but cap
+  // at 3+ in last 4 to ensure conversational variety
+  if (move === "answer") {
+    return history.slice(-4).filter((m) => m === "answer").length >= 3;
+  }
+
   if (move === "ask_badge" || move === "ask_demo") {
     return history.slice(-2).includes(move);
   }
 
-  // Rule 3: ask_rollout_effort — never twice in a row
   if (move === "ask_rollout_effort") {
     return history.at(-1) === "ask_rollout_effort";
   }
 
-  // Rule 4: deflect / exit — 3-turn cooldown
   if (move === "deflect" || move === "exit") {
     return history.slice(-3).includes(move);
   }
 
-  // Rule 5: Anti-loop — any move used 2x in the last 4 turns is overused
   const last4 = history.slice(-4);
   const usageInLast4 = last4.filter((m) => m === move).length;
   if (usageInLast4 >= 2) return true;
 
-  // Rule 6: Default 4-turn cooldown
   return history.slice(-4).includes(move);
 }
 
@@ -329,36 +633,20 @@ interface DepthInfo {
   totalCount: number;
 }
 
-/**
- * Deterministic weighted picker — no true randomness so tests are stable.
- *
- * Picks among [move, weight] pairs in proportion to weights, seeded by
- * totalCount so each turn can produce a different choice without RNG.
- * This creates variety while remaining predictable and testable.
- */
 function weightedPick(
   candidates: Array<[DirectorMove, number]>,
   totalCount: number
 ): DirectorMove {
   const totalWeight = candidates.reduce((sum, [, w]) => sum + w, 0);
-  // Walk the cumulative weight, using totalCount as a deterministic seed
   const seed = totalCount % totalWeight;
   let cumulative = 0;
   for (const [move, weight] of candidates) {
     cumulative += weight;
     if (seed < cumulative) return move;
   }
-  // Fallback to last entry (should not reach here)
   return candidates[candidates.length - 1][0];
 }
 
-/**
- * CTA moves (demo/docs/badge) require "discovery depth" to feel earned:
- *  - Not in HOOK or RAPPORT stage (we need to know something about their pain)
- *  - At least 2 attendee messages (they've had a real conversation)
- *  - At least 4 total messages (enough context to pitch a next step)
- *  - Band is at least CURIOUS (not GUARDED)
- */
 const CTA_MOVES = new Set<DirectorMove>(["ask_demo", "ask_docs", "ask_badge"]);
 
 function hasDiscoveryDepth(
@@ -378,24 +666,36 @@ function selectMove(
   band: MomentumBand,
   aligned: boolean,
   history: DirectorMove[],
-  depth: DepthInfo
+  depth: DepthInfo,
+  isTraineeQuestion: boolean
 ): DirectorMove {
-  // 1. Repair takes highest priority (skip only on the very first message — no prior context)
+  // 1. Repair takes highest priority
   if (!aligned && depth.totalCount > 1) {
     return "ask_clarifying";
+  }
+
+  // 1b. Answer prioritization — when the trainee asks a question, answer it
+  //     instead of asking a question back (prevents role-reversal).
+  //     Intent gating (step 6 in decideNextMove) will filter this out for
+  //     hard_exit / soft_exit since "answer" is not in those allowed sets.
+  if (aligned && isTraineeQuestion && stage !== "HOOK" && !isMoveTooRecent("answer", history)) {
+    return "answer";
   }
 
   let candidate: DirectorMove;
 
   switch (stage) {
     case "HOOK":
-      // Guarded deflection at booth opening; slight eagerness → share pain
-      candidate = band === "GUARDED" ? "deflect" : "share_pain";
+      // ask_hook is ONLY for the very first attendee turn.
+      // After that, even if stage infers HOOK, progress the conversation.
+      if (depth.attendeeCount === 0) {
+        candidate = "ask_hook";
+      } else {
+        candidate = aligned ? "share_pain" : "ask_clarifying";
+      }
       break;
 
     case "RAPPORT":
-      // Role stated but no pain yet — surface a pain anchor to advance the conversation
-      // 70% share_pain / 30% ask_clarifying for variety
       candidate = weightedPick(
         [["share_pain", 7], ["ask_clarifying", 3]],
         depth.totalCount
@@ -403,8 +703,6 @@ function selectMove(
       break;
 
     case "DISCOVERY": {
-      // Pain is on the table — keep surfacing + asking to deepen
-      // 65% share_pain / 35% ask_clarifying
       candidate = weightedPick(
         [["share_pain", 65], ["ask_clarifying", 35]],
         depth.totalCount
@@ -416,7 +714,6 @@ function selectMove(
       if (band === "GUARDED") {
         candidate = "ask_clarifying";
       } else if (band === "CURIOUS") {
-        // 70% ask_clarifying (keep probing) / 30% ask_demo only if depth earned
         const allowDemo = hasDiscoveryDepth(stage, band, depth);
         if (allowDemo) {
           candidate = weightedPick(
@@ -427,7 +724,6 @@ function selectMove(
           candidate = "ask_clarifying";
         }
       } else {
-        // ENGAGED / COMMITTED: probe rollout/pricing before requesting demo
         if (!history.includes("ask_rollout_effort")) {
           candidate = "ask_rollout_effort";
         } else if (!history.includes("ask_pricing")) {
@@ -442,7 +738,6 @@ function selectMove(
     }
 
     case "OBJECTION":
-      // Stay on the objection — more detail or rollout probe
       candidate = weightedPick(
         [["ask_clarifying", 5], ["ask_rollout_effort", 3], ["ask_pricing", 2]],
         depth.totalCount
@@ -452,8 +747,6 @@ function selectMove(
     case "COMMITMENT":
       if (hasDiscoveryDepth(stage, band, depth)) {
         if (!history.includes("ask_badge")) {
-          // TDM persona heuristic: prefer badge (meeting); IC prefer demo
-          // Without persona info, default to ask_badge first
           candidate = "ask_badge";
         } else if (!history.includes("ask_demo")) {
           candidate = "ask_demo";
@@ -461,7 +754,6 @@ function selectMove(
           candidate = "ask_docs";
         }
       } else {
-        // Not enough depth yet — probe first
         candidate = band === "ENGAGED" ? "ask_rollout_effort" : "ask_clarifying";
       }
       break;
@@ -475,7 +767,7 @@ function selectMove(
     candidate = "ask_clarifying";
   }
 
-  // 3. Anti-repeat: if this move was used too recently, ask for clarification instead
+  // 3. Anti-repeat
   if (isMoveTooRecent(candidate, history)) {
     return "ask_clarifying";
   }
@@ -493,7 +785,6 @@ function selectNextPainAnchorId(
   const surfaced = ((session as any).surfacedPainIds as string[] | undefined) ?? [];
   const unsurfaced = persona.painAnchors.filter((p) => !surfaced.includes(p.id));
   if (unsurfaced.length === 0) return undefined;
-  // Prefer primary over secondary
   const primary = unsurfaced.filter((p) => p.priority === "primary");
   const pool = primary.length > 0 ? primary : unsurfaced;
   return pool[0].id;
@@ -501,17 +792,16 @@ function selectNextPainAnchorId(
 
 // ── LLM prompt hint ───────────────────────────────────────────────────────────
 
-/**
- * Returns a one-sentence instruction for the LLM system prompt that reflects
- * the current directive move.  Appended to the composed system prompt when
- * the template path returned null.
- */
 export function directiveToPromptHint(directive: DirectorDirective): string {
   const moveHints: Record<DirectorMove, string> = {
     ask_clarifying:
-      "Ask a direct clarifying question or push back on the trainee's last message — do not introduce a new topic.",
+      "Ask a short clarifying question that connects directly to what the trainee just said. Be cooperative and assume good intent. Do not scold or argue.",
     share_pain:
       "Express one specific, concrete pain point your team is dealing with as a plain statement — not a question.",
+    ask_hook:
+      "Open with a warm, neutral greeting or question — no work-context assumptions yet.",
+    answer:
+      "Answer the trainee's question directly, speaking in first person about your own team's situation. Do not ask a question back — describe your experience as a statement.",
     ask_demo:
       "Ask to see a quick live example or demo of the product.",
     ask_docs:
@@ -530,14 +820,30 @@ export function directiveToPromptHint(directive: DirectorDirective): string {
   return moveHints[directive.move] ?? "Respond directly to the trainee's last message.";
 }
 
+// ── Tone sanitization ─────────────────────────────────────────────────────────
+
+/**
+ * ask_clarifying must never carry tone="guarded" — at worst it should be
+ * "curious", because a guarded clarifying question reads as an attack.
+ */
+function sanitizeDirectiveTone(move: DirectorMove, tone: DirectorTone): DirectorTone {
+  if (move === "ask_clarifying" && tone === "guarded") return "curious";
+  return tone;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
  * Decide what kind of reply the attendee should generate next.
  *
- * @param session        - Full session state (transcript + momentum + history)
- * @param persona        - Persona object (pain anchors, question bank, etc.)
- * @param lastTraineeText - The trainee's most recent message
+ * Flow:
+ *   1. Infer attendee intent (from last attendee message)
+ *   2. Infer stage + band + alignment (from full transcript)
+ *   3. Select candidate move (stage-based)
+ *   4. Apply meta-confusion lockout
+ *   5. Apply abstract compare limiter
+ *   6. Apply intent constraint (gate + fallback)
+ *   7. Sanitize tone, build directive
  */
 export function decideNextMove(
   session: SessionState,
@@ -545,6 +851,7 @@ export function decideNextMove(
   lastTraineeText: string
 ): DirectorDirective {
   const attendeeMessages = session.transcript.filter((m) => m.type === "attendee");
+  const traineeMessages = session.transcript.filter((m) => m.type === "trainee");
   const nonSystem = session.transcript.filter((m) => m.type !== "system");
   const lastAttendeeText = attendeeMessages.at(-1)?.text ?? "";
   const history = getDirectorHistory(session);
@@ -556,10 +863,91 @@ export function decideNextMove(
     totalCount: nonSystem.length,
   };
 
-  const aligned = isTraineeAligned(lastTraineeText, lastAttendeeText);
-  const move = selectMove(stage, band, aligned, history, depth);
+  // ── 1. Infer attendee intent ──────────────────────────────────────────────
+  const intent = inferAttendeeIntent(session, band);
 
-  // Pain anchor selection for share_pain moves
+  // ── 2. Neutral hook rule ──────────────────────────────────────────────────
+  // Non-verbal system opener + no attendee messages yet → neutral hook question
+  if (isNonVerbalOpener(session)) {
+    const hookIdx = nonSystem.length % NEUTRAL_HOOK_BANK.length;
+    return {
+      stage: "HOOK",
+      move: "ask_hook",
+      tone: "curious",
+      hookOverride: NEUTRAL_HOOK_BANK[hookIdx],
+      intent,
+    };
+  }
+
+  // ── 2b. Small-talk short-circuit ────────────────────────────────────────
+  // When the trainee asks a conference/day question in HOOK or RAPPORT,
+  // return an "answer" directive with smallTalk=true so the generator
+  // picks from the casual small-talk bank instead of contextual callbacks.
+  // Note: alignment check is skipped because small-talk naturally lacks
+  // keyword overlap ("how's your day?" shares no terms with prior turn).
+  const aligned = isTraineeAligned(lastTraineeText, lastAttendeeText);
+  if (
+    (stage === "HOOK" || stage === "RAPPORT") &&
+    isSmallTalkQuestion(lastTraineeText)
+  ) {
+    const mustAvoid: DirectorDirective["mustAvoid"] = {
+      phrases: attendeeMessages
+        .slice(-3)
+        .map((m) => m.text.slice(0, 50).trim())
+        .filter((p) => p.length > 10),
+    };
+    return {
+      stage,
+      move: "answer",
+      tone,
+      intent,
+      smallTalk: true,
+      mustAvoid,
+    };
+  }
+
+  // ── 3. Stage-based move selection ─────────────────────────────────────────
+  let move = selectMove(stage, band, aligned, history, depth, isQuestion(lastTraineeText));
+
+  // ── 4. Meta-confusion lockout ─────────────────────────────────────────────
+  const lockout = metaConfusionLockoutActive(attendeeMessages);
+  if (lockout && move === "ask_clarifying") {
+    move = chooseNonClarifyingFallback(stage, history);
+  }
+
+  // ── 5. Abstract compare limiter ───────────────────────────────────────────
+  let concreteOverride: string | undefined;
+  if (move === "ask_clarifying" && abstractCompareLimiterActive(traineeMessages)) {
+    const idx = depth.totalCount % CONCRETE_FOLLOWUPS.length;
+    concreteOverride = CONCRETE_FOLLOWUPS[idx];
+  }
+
+  // ── 6. Intent constraint ──────────────────────────────────────────────────
+  // If intent is non-neutral, check whether the selected move is allowed.
+  // If not, replace with the intent-specific fallback.
+  if (intent !== "neutral") {
+    const allowed = allowedMovesForIntent(intent, stage, band);
+    if (!allowed.has(move)) {
+      move = intentFallbackMove(intent, history);
+    }
+
+    // Double-check: if lockout pushed us to ask_docs/exit but intent is
+    // "confused", the confused gate only allows share_pain/ask_clarifying.
+    if (intent === "confused" && !allowed.has(move)) {
+      move = intentFallbackMove(intent, history);
+    }
+
+    // Anti-repeat on intent fallback: if the fallback move is too recent,
+    // scan the allowed set for a non-recent alternative.
+    if (isMoveTooRecent(move, history)) {
+      const allowedArr = Array.from(allowed);
+      const alt = allowedArr.find((m) => !isMoveTooRecent(m, history));
+      if (alt) move = alt;
+      // If every allowed move is too recent, keep the fallback (least bad option)
+    }
+  }
+
+  // ── 7. Pain anchor selection ──────────────────────────────────────────────
   let mustInclude: DirectorDirective["mustInclude"] | undefined;
   if (move === "share_pain") {
     const painAnchorId = selectNextPainAnchorId(session, persona);
@@ -574,5 +962,11 @@ export function decideNextMove(
       .filter((p) => p.length > 10),
   };
 
-  return { stage, move, tone, mustInclude, mustAvoid };
+  // ── 8. Build directive ────────────────────────────────────────────────────
+  const finalTone = sanitizeDirectiveTone(move, tone);
+  const directive: DirectorDirective = {
+    stage, move, tone: finalTone, mustInclude, mustAvoid, intent,
+  };
+  if (concreteOverride) directive.concreteOverride = concreteOverride;
+  return directive;
 }
