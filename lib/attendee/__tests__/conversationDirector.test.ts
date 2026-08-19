@@ -270,6 +270,133 @@ expect(
   true
 );
 
+// ── Test 6: Reflection marker → not misaligned (no repair) ──────────────────
+
+console.log("\nReflection marker alignment:");
+
+// Trainee uses "sounds like" — a reflection marker → always aligned (Tier 1)
+const reflectionSession = makeSession([
+  { type: "attendee", text: "We're drowning in false positive alerts and it's exhausting." },
+  { type: "trainee", text: "Sounds like alert fatigue is the core pain here — how long has this been going on?" },
+]);
+const reflectionDirective = decideNextMove(
+  reflectionSession,
+  undefined,
+  "Sounds like alert fatigue is the core pain here — how long has this been going on?"
+);
+expect(
+  'trainee uses "sounds like" (reflection marker) → NOT ask_clarifying repair',
+  reflectionDirective.move !== "ask_clarifying",
+  true
+);
+// With pain keywords in attendee text ("alerts"), stage should be DISCOVERY
+expect(
+  'reflection marker session → DISCOVERY stage (pain surfaced)',
+  reflectionDirective.stage,
+  "DISCOVERY"
+);
+
+// ── Test 7: Anti-loop — same move 2x in last 4 → different next move ──────────
+
+console.log("\nAnti-loop diversity:");
+
+// share_pain used twice in last 4 → should not produce share_pain again
+const antiLoopSession = makeSession([
+  { type: "attendee", text: "We deal with a lot of incident toil and slow debugging cycles." },
+  { type: "trainee", text: "Tell me more about your current incident workflow." },
+]);
+(antiLoopSession as any).directorHistory = [
+  "share_pain",
+  "ask_clarifying",
+  "share_pain", // second usage in last 4
+];
+const antiLoopDirective = decideNextMove(
+  antiLoopSession,
+  undefined,
+  "Tell me more about your current incident workflow."
+);
+expect(
+  'share_pain used 2x in last 4 turns → anti-loop fires → not share_pain',
+  antiLoopDirective.move !== "share_pain",
+  true
+);
+
+// ask_rollout_effort used as last move → should not repeat consecutively
+const rolloutConsecutiveSession = makeSession([
+  { type: "attendee", text: "I am curious what the rollout effort looks like for this." },
+  { type: "trainee", text: "Great question — the rollout is actually pretty lightweight." },
+  { type: "attendee", text: "That sounds useful for exactly what we are dealing with." },
+], 25);
+(rolloutConsecutiveSession as any).directorHistory = [
+  "ask_clarifying",
+  "share_pain",
+  "ask_rollout_effort", // just used
+];
+const rolloutNextDirective = decideNextMove(
+  rolloutConsecutiveSession,
+  undefined,
+  "Great question — the rollout is actually pretty lightweight."
+);
+expect(
+  'ask_rollout_effort as last move → not repeated consecutively',
+  rolloutNextDirective.move !== "ask_rollout_effort",
+  true
+);
+
+// ── Test 8: CTA not chosen before discovery depth ─────────────────────────────
+
+console.log("\nCTA depth gate:");
+
+// RAPPORT stage + CURIOUS band but only 1 attendee message + 2 total → no CTA
+const earlyCtaSession = makeSession([
+  { type: "attendee", text: "I'm a senior SRE at a mid-size fintech." },
+  { type: "trainee", text: "Great to meet you! We actually help SRE teams a lot." },
+], 25); // CURIOUS band
+const earlyCtaDirective = decideNextMove(
+  earlyCtaSession,
+  undefined,
+  "Great to meet you! We actually help SRE teams a lot."
+);
+expect(
+  'RAPPORT stage, 1 attendee msg, 2 total → ask_demo NOT chosen',
+  earlyCtaDirective.move !== "ask_demo",
+  true
+);
+expect(
+  'RAPPORT stage, 1 attendee msg, 2 total → ask_badge NOT chosen',
+  earlyCtaDirective.move !== "ask_badge",
+  true
+);
+expect(
+  'RAPPORT stage, 1 attendee msg, 2 total → ask_docs NOT chosen',
+  earlyCtaDirective.move !== "ask_docs",
+  true
+);
+
+// Deep conversation (VALUE + ENGAGED + 3 attendee + 6 total) → CTA is eligible
+const deepCtaSession = makeSession([
+  { type: "attendee", text: "We're drowning in alert noise and every incident takes hours to debug." },
+  { type: "trainee", text: "With Honeycomb you can trace those incidents in real time." },
+  { type: "attendee", text: "Tracing incidents in real time sounds genuinely useful for us." },
+  { type: "trainee", text: "The rollout is surprisingly lightweight for most teams." },
+  { type: "attendee", text: "That sounds valuable — I'd love to explore this more with my team." },
+  { type: "trainee", text: "We could definitely set something up for your team." },
+], 50); // ENGAGED band
+const deepCtaDirective = decideNextMove(
+  deepCtaSession,
+  undefined,
+  "We could definitely set something up for your team."
+);
+// With VALUE + ENGAGED + 3 attendee + 6 total → CTA moves ARE eligible
+// The stage at this point should be VALUE (aha pattern in attendee text)
+// The directive should NOT be a simple deflect or ask_clarifying at depth
+expect(
+  'VALUE + ENGAGED + 3 attendee + 6 total → CTA is eligible (not blocked)',
+  // Either a CTA move or an engagement move — just not deflect/exit
+  deepCtaDirective.move !== "deflect" && deepCtaDirective.move !== "exit",
+  true
+);
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed\n`);

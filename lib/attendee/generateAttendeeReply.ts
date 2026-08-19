@@ -22,6 +22,7 @@ import {
   recordDirectorMove,
   type DirectorDirective,
 } from "./conversationDirector";
+import { isReactiveEnough, makeCallbackPhrase } from "./reactiveness";
 
 export interface AttendeeReplyResult {
   text: string;
@@ -526,6 +527,20 @@ function generateFromDirective(
 
 // ── Internal generator ────────────────────────────────────────────────────────
 
+/**
+ * Moves that are inherently reactive by structure — no callback prefix needed.
+ * Questions and CTAs speak for themselves; only statements (share_pain,
+ * ask_rollout_effort, ask_pricing) benefit from an explicit callback prefix.
+ */
+const REACTIVENESS_EXEMPT_MOVES = new Set<string>([
+  "ask_clarifying",
+  "ask_demo",
+  "ask_docs",
+  "ask_badge",
+  "deflect",
+  "exit",
+]);
+
 function generateAttendeeReplyInternal(params: {
   traineeText: string;
   session: SessionState;
@@ -541,7 +556,51 @@ function generateAttendeeReplyInternal(params: {
   (session as any).currentDirective = directive;
 
   // 3. Generate content that matches the directive
-  return generateFromDirective(directive, traineeText, session, persona, traineeTurnCount);
+  const result = generateFromDirective(directive, traineeText, session, persona, traineeTurnCount);
+
+  if (!result) return null;
+
+  // 4. Reactiveness contract
+  // For statement-type moves (share_pain, ask_rollout_effort, ask_pricing):
+  // check that the response sounds like it heard the trainee's last message.
+  // If not, prepend a callback phrase.  If still not reactive, fall back to
+  // ask_clarifying with the callback phrase prepended.
+  if (!REACTIVENESS_EXEMPT_MOVES.has(directive.move) && traineeText.trim().length > 0) {
+    const alreadyReactive = isReactiveEnough(result.text, traineeText);
+
+    if (!alreadyReactive) {
+      const lastAttendeeText =
+        session.transcript
+          .filter((m) => m.type === "attendee")
+          .at(-1)?.text ?? "";
+      const callback = makeCallbackPhrase(lastAttendeeText, traineeText);
+
+      if (callback) {
+        // Prepend callback phrase to make the response feel grounded
+        const patched: AttendeeReplyResult = {
+          ...result,
+          text: callback + result.text.charAt(0).toLowerCase() + result.text.slice(1),
+        };
+
+        // Re-check: if the patched text is now reactive, return it
+        if (isReactiveEnough(patched.text, traineeText)) {
+          return patched;
+        }
+      }
+
+      // Still not reactive enough — fall back to ask_clarifying with callback prefix
+      const repairQuestion =
+        REPAIR_QUESTIONS[traineeTurnCount % REPAIR_QUESTIONS.length];
+      const prefix = callback || "Hmm — ";
+      return {
+        text: postProcessAttendeeText(prefix + repairQuestion.charAt(0).toLowerCase() + repairQuestion.slice(1), persona),
+        source: "persona_question",
+        confidence: 0.75,
+      };
+    }
+  }
+
+  return result;
 }
 
 // ── Public wrapper (with loop detection) ─────────────────────────────────────

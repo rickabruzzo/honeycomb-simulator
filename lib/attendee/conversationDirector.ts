@@ -19,6 +19,7 @@
 import type { SessionState } from "../storage";
 import type { Persona } from "../scenarioTypes";
 import { getMomentumBand, type MomentumBand } from "./momentumBands";
+import { extractKeyPhrases } from "./reactiveness";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -189,9 +190,59 @@ function extractKeywords(text: string): Set<string> {
 }
 
 /**
- * Returns false when the trainee's message shares no meaningful keywords with
- * the last attendee message AND does not appear to be a follow-up question.
- * This is the primary misalignment detector.
+ * Partial word matching: "alert" matches "alerting", "trace" matches "tracing".
+ * Returns true when wordA is a prefix of wordB or vice versa, with at most
+ * 4 characters of difference (prevents false matches like "is" ~ "instance").
+ */
+function partialWordMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  const diff = Math.abs(a.length - b.length);
+  if (diff > 4) return false;
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  return longer.startsWith(shorter) && shorter.length >= 4;
+}
+
+/**
+ * Count keyword overlap between two word sets using partial matching.
+ * An attendee keyword counts as matching when any trainee keyword is a
+ * prefix match — "alert" → "alerting", "debug" → "debugging", etc.
+ */
+function countPartialOverlap(
+  attendeeKw: Set<string>,
+  traineeKw: Set<string>
+): number {
+  let count = 0;
+  for (const akw of attendeeKw) {
+    for (const tkw of traineeKw) {
+      if (partialWordMatch(akw, tkw)) {
+        count++;
+        break; // Each attendee keyword counts at most once
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * 3-tier alignment check.
+ *
+ * Tier 1 — Reflection marker → ALWAYS aligned.
+ *   Trainee uses "sounds like", "you mentioned", "I hear that", etc.
+ *   These phrases explicitly reference the attendee's words.
+ *
+ * Tier 2 — Question + 1 overlap (with partial matching) → aligned.
+ *   A trainee asking a question with even one shared keyword is on-topic.
+ *
+ * Tier 3 — Follow-up reference + substantive trainee message (8+ words) → aligned.
+ *   "your" / "that" / "this" / "those" pointing back to the attendee's turn.
+ *   Keep "your" in the pattern — it is the most common follow-up reference
+ *   in SRE selling conversations ("How does your setup handle X?").
+ *
+ * MISALIGNED only when ALL of:
+ *   - zero keyword overlap (even partial)
+ *   - no reflection marker
+ *   - no follow-up reference (or trainee message is too short to matter)
+ *   - trainee message is 6+ words (ignore very short bridging phrases)
  */
 export function isTraineeAligned(
   lastTraineText: string,
@@ -199,40 +250,76 @@ export function isTraineeAligned(
 ): boolean {
   if (!lastAttendeeText || !lastTraineText) return true;
 
+  const traineeWords = lastTraineText.trim().split(/\s+/);
+
+  // Very short trainee message (≤5 words) — treat as aligned filler/acknowledgement
+  if (traineeWords.length <= 5) return true;
+
+  // Tier 1: Reflection marker → always aligned
+  const REFLECTION = /\b(sounds like|it sounds|it seems|you mentioned|you said|from what you('?re| are) (saying|describing)|when you say|i (hear|understand) (that|you))\b/i;
+  if (REFLECTION.test(lastTraineText)) return true;
+
   const attendeeKw = extractKeywords(lastAttendeeText);
   const traineeKw = extractKeywords(lastTraineText);
+  const overlap = countPartialOverlap(attendeeKw, traineeKw);
 
-  // Count shared keywords
-  const overlap = [...attendeeKw].filter((kw) => traineeKw.has(kw)).length;
-
-  // Is the trainee asking a question? (follow-ups count)
+  // Tier 2: Question + 1 overlap → aligned
   const isAsking = /\?/.test(lastTraineText);
+  if (isAsking && overlap >= 1) return true;
 
-  // Does the trainee use follow-up references to the prior turn?
-  const hasFollowUp = /\b(that|this|those|your|same|it|them|there)\b/i.test(lastTraineText);
+  // Tier 3: Follow-up reference → aligned (keep "your" for SRE follow-up questions)
+  const hasFollowUp =
+    /\b(that|this|those|your|same|them|there|what you (said|mentioned)|what you're)\b/i.test(
+      lastTraineText
+    );
+  if (hasFollowUp) return true;
 
-  // Aligned if: 2+ keyword overlap, asking with 1+ overlap, or any follow-up reference
-  // (A trainee saying "that/this/those" IS responding to the attendee even without exact
-  //  keyword overlap — e.g. "That slow debugging is what we solve.")
-  return overlap >= 2 || (isAsking && overlap >= 1) || hasFollowUp;
+  // 2+ overlap (partial) → aligned even without question/follow-up
+  if (overlap >= 2) return true;
+
+  // Misaligned: no overlap, no markers, substantive message
+  return false;
 }
 
 // ── Move anti-repeat check ────────────────────────────────────────────────────
 
 /**
- * Returns true if the candidate move is too recent in the history.
- * Badge/demo commitment moves have shorter cooldown (2 turns) so they can
- * re-fire faster when the attendee is genuinely committed.
+ * Returns true if the candidate move is overused or in its cooldown window.
+ *
+ * Rules (in priority order):
+ *  1. ask_clarifying: never blocked — it is the universal repair/fallback.
+ *  2. ask_badge / ask_demo: 2-turn hard cooldown (commitment CTAs should feel deliberate).
+ *  3. ask_rollout_effort: never consecutive (two skepticism questions in a row = annoying).
+ *  4. deflect / exit: 3-turn cooldown (avoid getting stuck in disengaged mode).
+ *  5. Any move used 2x in the last 4 turns is overused → blocked (anti-loop).
+ *  6. Default: 4-turn window prevents any move from dominating.
  */
 function isMoveTooRecent(move: DirectorMove, history: DirectorMove[]): boolean {
-  if (move === "ask_clarifying") return false; // Never too recent — repair is always valid
+  // Rule 1: ask_clarifying is the universal fallback — never blocked
+  if (move === "ask_clarifying") return false;
+
+  // Rule 2: CTA commitment moves — 2-turn hard cooldown
   if (move === "ask_badge" || move === "ask_demo") {
-    return history.slice(-2).includes(move);   // 2-turn cooldown
+    return history.slice(-2).includes(move);
   }
+
+  // Rule 3: ask_rollout_effort — never twice in a row
+  if (move === "ask_rollout_effort") {
+    return history.at(-1) === "ask_rollout_effort";
+  }
+
+  // Rule 4: deflect / exit — 3-turn cooldown
   if (move === "deflect" || move === "exit") {
-    return history.slice(-3).includes(move);   // 3-turn cooldown
+    return history.slice(-3).includes(move);
   }
-  return history.slice(-4).includes(move);     // 4-turn cooldown for all others
+
+  // Rule 5: Anti-loop — any move used 2x in the last 4 turns is overused
+  const last4 = history.slice(-4);
+  const usageInLast4 = last4.filter((m) => m === move).length;
+  if (usageInLast4 >= 2) return true;
+
+  // Rule 6: Default 4-turn cooldown
+  return history.slice(-4).includes(move);
 }
 
 // ── Move selection ────────────────────────────────────────────────────────────
@@ -240,6 +327,50 @@ function isMoveTooRecent(move: DirectorMove, history: DirectorMove[]): boolean {
 interface DepthInfo {
   attendeeCount: number;
   totalCount: number;
+}
+
+/**
+ * Deterministic weighted picker — no true randomness so tests are stable.
+ *
+ * Picks among [move, weight] pairs in proportion to weights, seeded by
+ * totalCount so each turn can produce a different choice without RNG.
+ * This creates variety while remaining predictable and testable.
+ */
+function weightedPick(
+  candidates: Array<[DirectorMove, number]>,
+  totalCount: number
+): DirectorMove {
+  const totalWeight = candidates.reduce((sum, [, w]) => sum + w, 0);
+  // Walk the cumulative weight, using totalCount as a deterministic seed
+  const seed = totalCount % totalWeight;
+  let cumulative = 0;
+  for (const [move, weight] of candidates) {
+    cumulative += weight;
+    if (seed < cumulative) return move;
+  }
+  // Fallback to last entry (should not reach here)
+  return candidates[candidates.length - 1][0];
+}
+
+/**
+ * CTA moves (demo/docs/badge) require "discovery depth" to feel earned:
+ *  - Not in HOOK or RAPPORT stage (we need to know something about their pain)
+ *  - At least 2 attendee messages (they've had a real conversation)
+ *  - At least 4 total messages (enough context to pitch a next step)
+ *  - Band is at least CURIOUS (not GUARDED)
+ */
+const CTA_MOVES = new Set<DirectorMove>(["ask_demo", "ask_docs", "ask_badge"]);
+
+function hasDiscoveryDepth(
+  stage: DirectorStage,
+  band: MomentumBand,
+  depth: DepthInfo
+): boolean {
+  if (stage === "HOOK" || stage === "RAPPORT") return false;
+  if (depth.attendeeCount < 2) return false;
+  if (depth.totalCount < 4) return false;
+  if (band === "GUARDED") return false;
+  return true;
 }
 
 function selectMove(
@@ -258,17 +389,26 @@ function selectMove(
 
   switch (stage) {
     case "HOOK":
+      // Guarded deflection at booth opening; slight eagerness → share pain
       candidate = band === "GUARDED" ? "deflect" : "share_pain";
       break;
 
     case "RAPPORT":
-      candidate = "share_pain";
+      // Role stated but no pain yet — surface a pain anchor to advance the conversation
+      // 70% share_pain / 30% ask_clarifying for variety
+      candidate = weightedPick(
+        [["share_pain", 7], ["ask_clarifying", 3]],
+        depth.totalCount
+      );
       break;
 
     case "DISCOVERY": {
-      // Alternate: share pain → ask clarifying → share pain → …
-      const last = history.at(-1);
-      candidate = last === "share_pain" ? "ask_clarifying" : "share_pain";
+      // Pain is on the table — keep surfacing + asking to deepen
+      // 65% share_pain / 35% ask_clarifying
+      candidate = weightedPick(
+        [["share_pain", 65], ["ask_clarifying", 35]],
+        depth.totalCount
+      );
       break;
     }
 
@@ -276,34 +416,53 @@ function selectMove(
       if (band === "GUARDED") {
         candidate = "ask_clarifying";
       } else if (band === "CURIOUS") {
-        // Alternate: clarifying ↔ demo interest
-        const last = history.at(-1);
-        candidate = last === "ask_clarifying" ? "ask_demo" : "ask_clarifying";
+        // 70% ask_clarifying (keep probing) / 30% ask_demo only if depth earned
+        const allowDemo = hasDiscoveryDepth(stage, band, depth);
+        if (allowDemo) {
+          candidate = weightedPick(
+            [["ask_clarifying", 7], ["ask_demo", 3]],
+            depth.totalCount
+          );
+        } else {
+          candidate = "ask_clarifying";
+        }
       } else {
         // ENGAGED / COMMITTED: probe rollout/pricing before requesting demo
-        if (!history.includes("ask_rollout_effort")) candidate = "ask_rollout_effort";
-        else if (!history.includes("ask_pricing")) candidate = "ask_pricing";
-        else candidate = "ask_demo";
+        if (!history.includes("ask_rollout_effort")) {
+          candidate = "ask_rollout_effort";
+        } else if (!history.includes("ask_pricing")) {
+          candidate = "ask_pricing";
+        } else {
+          candidate = hasDiscoveryDepth(stage, band, depth)
+            ? "ask_demo"
+            : "ask_clarifying";
+        }
       }
       break;
     }
 
     case "OBJECTION":
-      // Stay on the objection — ask for more detail rather than jumping forward
-      candidate = "ask_clarifying";
+      // Stay on the objection — more detail or rollout probe
+      candidate = weightedPick(
+        [["ask_clarifying", 5], ["ask_rollout_effort", 3], ["ask_pricing", 2]],
+        depth.totalCount
+      );
       break;
 
     case "COMMITMENT":
-      if (
-        (band === "COMMITTED" || band === "ENGAGED") &&
-        depth.attendeeCount >= 2 &&
-        depth.totalCount >= 4
-      ) {
-        if (!history.includes("ask_badge")) candidate = "ask_badge";
-        else if (!history.includes("ask_demo")) candidate = "ask_demo";
-        else candidate = "ask_docs";
+      if (hasDiscoveryDepth(stage, band, depth)) {
+        if (!history.includes("ask_badge")) {
+          // TDM persona heuristic: prefer badge (meeting); IC prefer demo
+          // Without persona info, default to ask_badge first
+          candidate = "ask_badge";
+        } else if (!history.includes("ask_demo")) {
+          candidate = "ask_demo";
+        } else {
+          candidate = "ask_docs";
+        }
       } else {
-        candidate = band === "ENGAGED" ? "ask_demo" : "ask_docs";
+        // Not enough depth yet — probe first
+        candidate = band === "ENGAGED" ? "ask_rollout_effort" : "ask_clarifying";
       }
       break;
 
@@ -311,7 +470,12 @@ function selectMove(
       candidate = "ask_clarifying";
   }
 
-  // 2. Anti-repeat: if this move was used too recently, ask for clarification instead
+  // 2. CTA gate: ask_demo / ask_docs / ask_badge must have discovery depth
+  if (CTA_MOVES.has(candidate) && !hasDiscoveryDepth(stage, band, depth)) {
+    candidate = "ask_clarifying";
+  }
+
+  // 3. Anti-repeat: if this move was used too recently, ask for clarification instead
   if (isMoveTooRecent(candidate, history)) {
     return "ask_clarifying";
   }
