@@ -24,15 +24,54 @@ const model =
   ids.find((id) => /gpt-5/.test(id));
 
 console.log(`\n--- generating with ${model} ---`);
-const res = await generateText({
-  model,
-  system:
-    "You are a tired SRE at a conference booth, mid-conversation. Natural imperfect speech. No lists, no markdown, no stage directions.",
-  messages: [
-    { role: "user", content: "That sounds rough. What does an incident like that actually cost you?" },
-  ],
-  temperature: 0.8,
-  maxOutputTokens: 600,
-});
-console.log(res.text);
-console.log("\nusage:", res.usage);
+try {
+  const res = await generateText({
+    model,
+    system:
+      "You are a tired SRE at a conference booth, mid-conversation. Natural imperfect speech. No lists, no markdown, no stage directions.",
+    messages: [
+      {
+        role: "user",
+        content: "That sounds rough. What does an incident like that actually cost you?",
+      },
+    ],
+    temperature: 0.8,
+    maxOutputTokens: 600,
+  });
+  console.log(res.text);
+  console.log("\nusage:", res.usage);
+  console.log("\nGateway is working. Set CHAT_PROVIDER=gateway to use it.");
+} catch (error) {
+  // The gateway's failure modes are all billing-shaped and the raw stack is 100+ lines,
+  // so translate them into the one action that actually unblocks each case.
+  const body = String(error?.cause?.responseBody ?? error?.message ?? error);
+  const status = error?.statusCode ?? error?.cause?.statusCode;
+
+  let advice;
+  if (/RestrictedModelsError|Free tier users do not have access/.test(body)) {
+    advice = [
+      `Model listing works, but generating with ${model} is blocked: this team is on the free tier.`,
+      "",
+      "A card on file is NOT enough - Vercel gates model access behind purchased credits.",
+      "Top up at: Vercel dashboard > your team > AI > Top up",
+      "",
+      "Until then use direct OpenAI instead, which needs no gateway credits:",
+      '  CHAT_PROVIDER="openai"',
+      '  OPENAI_CHAT_MODEL="gpt-5.2"',
+    ].join("\n");
+  } else if (/credit card|customer_verification_required/.test(body)) {
+    advice = [
+      "The gateway needs a payment method on the Vercel team before serving requests.",
+      "Add one at: Vercel dashboard > your team > AI",
+    ].join("\n");
+  } else if (status === 429) {
+    advice = "Rate limited by the gateway. Retry shortly, or check per-user rate limits in project settings.";
+  } else if (status === 402) {
+    advice = "Gateway budget exhausted. Add credits or raise the budget in project settings.";
+  } else {
+    advice = `Unexpected gateway error (status ${status ?? "unknown"}):\n${body.slice(0, 500)}`;
+  }
+
+  console.error("\n" + advice);
+  process.exit(1);
+}
