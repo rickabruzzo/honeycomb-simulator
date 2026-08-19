@@ -14,6 +14,7 @@ export default defineConfig({
       "lib/*.test.ts",
       "lib/attendee/*.test.ts",
       "lib/llm/*.test.ts",
+      "lib/scoring/*.test.ts",
       "lib/__tests__/guardrail.test.ts",
     ],
     exclude: ["**/node_modules/**"],
