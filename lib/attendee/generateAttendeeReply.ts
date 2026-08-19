@@ -1,25 +1,27 @@
 /**
  * Main attendee response generation engine.
  *
- * NEW PRIORITY ORDER (persona-first approach):
- * 1. Early-turn pain surfacing (turns 1-3) as STATEMENTS
- * 2. Check persona.questionBank (contextual keyword match)
- * 3. Check persona.painAnchors (surface primary pains, 2+ keyword matches)
- * 4. Check persona.objectionBank (when trainee suggests change/rollout/cost)
- * 5. Template/intent fallback (with persona-specific tool stacks)
- * 6. LLM fallback with strict persona contract
+ * DIRECTOR-DRIVEN FLOW (Phase 8):
+ *  1. decideNextMove() → DirectorDirective (stage + move + tone)
+ *  2. generateFromDirective() → picks content from persona banks or phrase banks
+ *  3. If no match → return null (LLM fallback, constrained by directive hint in route)
+ *  4. banned phrase filter + postProcess
+ *  5. Return
  *
- * All responses are checked for banned phrases before returning.
+ * The director decides what KIND of reply to generate.  generateFromDirective
+ * finds content that matches that move type.  The old cascading priority
+ * chain is replaced by this two-step model.
  */
 
 import { SessionState } from "../storage";
-import { classifyAttendeeIntent } from "./intentClassifier";
-import { AttendeeIntent } from "./intentTypes";
-import { TEMPLATES, getPersonaToolStack } from "./templates";
-import { pickVariant } from "./variantPicker";
 import { postProcessAttendeeText } from "./postProcess";
-import { containsBannedPhrase, sanitizeResponse } from "./bannedPhraseFilter";
+import { sanitizeResponse } from "./bannedPhraseFilter";
 import type { Persona } from "../scenarioTypes";
+import {
+  decideNextMove,
+  recordDirectorMove,
+  type DirectorDirective,
+} from "./conversationDirector";
 
 export interface AttendeeReplyResult {
   text: string;
@@ -35,93 +37,81 @@ export interface AttendeeReplyResult {
   confidence?: number;
 }
 
-/**
- * Check if candidate response is too similar to recent attendee messages
- *
- * Prevents loop where attendee repeats the exact same question indefinitely.
- */
-function isRepetitiveResponse(
-  candidateText: string,
-  session: SessionState
-): boolean {
-  // Get last 3 attendee messages
-  const recentAttendeeMessages = session.transcript
-    .filter((m) => m.type === "attendee")
-    .slice(-3)
-    .map((m) => m.text.toLowerCase().trim());
+// ── Built-in phrase banks for move types ─────────────────────────────────────
 
-  if (recentAttendeeMessages.length === 0) {
-    return false;
-  }
+const REPAIR_QUESTIONS: string[] = [
+  "Sorry, I'm not sure how that connects to what we were discussing—can you clarify?",
+  "Hmm, I think I got a bit lost. What were you trying to say?",
+  "Can you explain that differently? I'm not quite following.",
+  "Wait—how does that relate to what I just mentioned?",
+  "I'm not sure that answered what I was asking. Can you try again?",
+];
 
-  const candidateLower = candidateText.toLowerCase().trim();
+const DEMO_PHRASES: string[] = [
+  "Can you actually walk me through what this looks like in practice?",
+  "I'd have to see it to believe it—can you show me a quick example?",
+  "Do you have something you can pull up right now?",
+  "Can you show me a concrete use case?",
+];
 
-  // Check for exact match
-  if (recentAttendeeMessages.includes(candidateLower)) {
-    return true;
-  }
+const DOCS_PHRASES: string[] = [
+  "Is there documentation I could review on my own time?",
+  "Do you have a free tier I could try before committing to anything?",
+  "Can you send me some links to look at later?",
+  "Is there a trial environment I can poke around in?",
+];
 
-  // Check for near-identical match (> 90% similarity)
-  for (const recentMsg of recentAttendeeMessages) {
-    const longerLength = Math.max(candidateLower.length, recentMsg.length);
-    const shorterLength = Math.min(candidateLower.length, recentMsg.length);
+const ROLLOUT_PHRASES: string[] = [
+  "Okay, but how much work is it to actually roll this out?",
+  "What's the real adoption overhead? We're pretty lean on bandwidth.",
+  "How long does it take most teams to get up and running?",
+  "What does the onboarding process actually look like?",
+];
 
-    // If one is a substring of the other and they're similar length
-    if (
-      (candidateLower.includes(recentMsg) || recentMsg.includes(candidateLower)) &&
-      shorterLength / longerLength > 0.9
-    ) {
-      return true;
-    }
-  }
+const PRICING_PHRASES: string[] = [
+  "What does this cost? I'll have to justify it to someone.",
+  "What's the pricing model—per seat, usage-based, something else?",
+  "Any chance there's a free tier, or is it paid from day one?",
+  "What do teams like ours typically pay?",
+];
 
-  return false;
-}
+const BADGE_PHRASES: string[] = [
+  "Can you scan my badge so someone can follow up with me?",
+  "This sounds interesting—can we set up a follow-up?",
+  "I'd like to loop in a couple people from my team. Can you grab my badge?",
+  "Can I get your card? I want to continue this conversation.",
+];
 
-/**
- * Get a wrap-up CTA question to break out of loops
- *
- * Returns a "next step" style question that doesn't repeat recent output.
- */
-function getWrapUpQuestion(persona: Persona, session: SessionState): string {
-  const wrapUpOptions = [
-    "Is there a free tier we could try?",
-    "Do you have documentation I can review?",
-    "Can you scan my badge for follow-up?",
-    "What's the pricing model?",
-    "Can you show me a quick demo?",
-    "How hard is the rollout? We're pretty lean on bandwidth.",
-  ];
+const DEFLECT_PHRASES: string[] = [
+  "I'm just browsing for now.",
+  "We already have something for that.",
+  "I'm a bit time-pressured today.",
+  "Not really what we're looking for right now.",
+];
 
-  // Filter out any that were recently used
-  const recentText = session.transcript
-    .filter((m) => m.type === "attendee")
-    .slice(-5)
-    .map((m) => m.text.toLowerCase())
-    .join(" ");
+const EXIT_PHRASES: string[] = [
+  "This has been useful. Do you have anything I can take away?",
+  "I should get moving—thanks for the overview.",
+  "Can you send me a link or a one-pager? I need to run.",
+  "I appreciate it—can you scan my badge for a follow-up?",
+];
 
-  const unused = wrapUpOptions.filter(
-    (q) => !recentText.includes(q.toLowerCase())
+// ── Helper: pick unused phrase avoiding recent attendee repetition ─────────────
+
+function pickUnused(
+  bank: string[],
+  recentAttendeeText: string,
+  fallbackIndex: number
+): string {
+  const unused = bank.filter(
+    (p) => !recentAttendeeText.includes(p.toLowerCase().slice(0, 30))
   );
-
-  if (unused.length > 0) {
-    return unused[0];
-  }
-
-  // Fallback: pick a random one
-  return wrapUpOptions[Math.floor(Math.random() * wrapUpOptions.length)];
+  return unused.length > 0 ? unused[0] : bank[fallbackIndex % bank.length];
 }
 
-/**
- * Convert pain question to declarative statement
- *
- * Examples:
- * - "How do I minimize on-call pain?" → "We're dealing with a lot of on-call pain."
- * - "How quickly can we debug?" → "We need to debug issues faster."
- * - "How do I balance scaling needs with reliability?" → "It's hard to balance scaling with our reliability targets."
- */
+// ── Pain anchor helpers ───────────────────────────────────────────────────────
+
 function formatPainAsStatement(pain: string): string {
-  // Common pain question patterns → statements
   const patterns = [
     {
       pattern: /^how do (?:I|we) minimize (.+)\?$/i,
@@ -149,7 +139,6 @@ function formatPainAsStatement(pain: string): string {
     }
   }
 
-  // If no pattern matched, try a generic conversion
   if (statement === pain && pain.startsWith("How ")) {
     statement = pain
       .replace(/^How /, "We need to figure out how to ")
@@ -159,21 +148,14 @@ function formatPainAsStatement(pain: string): string {
   return statement;
 }
 
-/**
- * Check if this pain has already been surfaced in the conversation
- */
 function hasAlreadySurfacedPain(
   session: SessionState,
   pain: { id: string }
 ): boolean {
-  // Check if pain ID is in session's expressed intents or pain tracking
   const surfacedPains = (session as any).surfacedPainIds || [];
   return surfacedPains.includes(pain.id);
 }
 
-/**
- * Mark pain as surfaced in session
- */
 function markPainAsSurfaced(session: SessionState, painId: string): void {
   if (!(session as any).surfacedPainIds) {
     (session as any).surfacedPainIds = [];
@@ -181,88 +163,57 @@ function markPainAsSurfaced(session: SessionState, painId: string): void {
   (session as any).surfacedPainIds.push(painId);
 }
 
-/**
- * Match persona question based on keywords
- */
 function matchPersonaQuestion(
   traineeText: string,
   persona: Persona
 ): { question: string; category: string } | null {
-  if (!persona.questionBank || persona.questionBank.length === 0) {
-    return null;
-  }
+  if (!persona.questionBank || persona.questionBank.length === 0) return null;
 
   const lowerText = traineeText.toLowerCase();
   const words = lowerText.split(/\s+/);
 
-  // Find questions with keyword matches
   const matches = persona.questionBank
     .map((q) => {
-      // Extract keywords from triggerContext or question itself
       const contextWords = q.triggerContext?.toLowerCase().split(/\s+/) || [];
       const questionWords = q.question.toLowerCase().split(/\s+/);
       const allKeywords = [...contextWords, ...questionWords];
-
-      // Count how many keywords appear in trainee text
       const matchCount = allKeywords.filter((kw) =>
         words.some((w) => w.includes(kw) || kw.includes(w))
       ).length;
-
       return { question: q, matchCount };
     })
-    .filter((m) => m.matchCount >= 2); // Require at least 2 keyword matches
+    .filter((m) => m.matchCount >= 2);
 
-  if (matches.length === 0) {
-    return null;
-  }
+  if (matches.length === 0) return null;
 
-  // Select best match (highest keyword count)
   matches.sort((a, b) => b.matchCount - a.matchCount);
   const selected = matches[0].question;
-
-  return {
-    question: selected.question,
-    category: selected.category,
-  };
+  return { question: selected.question, category: selected.category };
 }
 
-/**
- * Match persona pain anchor based on keywords
- */
 function matchPersonaPain(
   traineeText: string,
   persona: Persona
 ): { pain: string; painId: string; priority: string } | null {
-  if (!persona.painAnchors || persona.painAnchors.length === 0) {
-    return null;
-  }
+  if (!persona.painAnchors || persona.painAnchors.length === 0) return null;
 
   const lowerText = traineeText.toLowerCase();
 
-  // Find pain anchors with keyword matches
   const matches = persona.painAnchors
     .map((p) => {
-      // Count how many keywords appear in trainee text
       const matchCount = p.keywords.filter((kw) =>
         lowerText.includes(kw.toLowerCase())
       ).length;
-
       return { pain: p, matchCount };
     })
-    .filter((m) => m.matchCount >= 2); // Require at least 2 keyword matches
+    .filter((m) => m.matchCount >= 2);
 
-  if (matches.length === 0) {
-    return null;
-  }
+  if (matches.length === 0) return null;
 
-  // Prioritize primary pains over secondary
   const primaryMatches = matches.filter((m) => m.pain.priority === "primary");
   const selectedMatches = primaryMatches.length > 0 ? primaryMatches : matches;
-
-  // Select best match (highest keyword count)
   selectedMatches.sort((a, b) => b.matchCount - a.matchCount);
   const selected = selectedMatches[0].pain;
-
   return {
     pain: selected.pain,
     painId: selected.id,
@@ -270,317 +221,336 @@ function matchPersonaPain(
   };
 }
 
-/**
- * Match persona objection based on trainee text suggesting change/rollout/cost
- */
-function matchPersonaObjection(
-  traineeText: string,
-  persona: Persona
-): { objection: string; type: string } | null {
-  if (!persona.objectionBank || persona.objectionBank.length === 0) {
-    return null;
+// ── Loop detection (kept from original) ──────────────────────────────────────
+
+function isRepetitiveResponse(
+  candidateText: string,
+  session: SessionState
+): boolean {
+  const recentAttendeeMessages = session.transcript
+    .filter((m) => m.type === "attendee")
+    .slice(-3)
+    .map((m) => m.text.toLowerCase().trim());
+
+  if (recentAttendeeMessages.length === 0) return false;
+
+  const candidateLower = candidateText.toLowerCase().trim();
+
+  if (recentAttendeeMessages.includes(candidateLower)) return true;
+
+  for (const recentMsg of recentAttendeeMessages) {
+    const longerLength = Math.max(candidateLower.length, recentMsg.length);
+    const shorterLength = Math.min(candidateLower.length, recentMsg.length);
+    if (
+      (candidateLower.includes(recentMsg) ||
+        recentMsg.includes(candidateLower)) &&
+      shorterLength / longerLength > 0.9
+    ) {
+      return true;
+    }
   }
 
-  const lowerText = traineeText.toLowerCase();
+  return false;
+}
 
-  // Detect if trainee is suggesting change/adoption/rollout
-  const suggestionPatterns = [
-    /should we|could we|would you|let'?s|how about|what if/i,
-    /adopt|switch|migrate|roll out|implement|try|use/i,
-    /cost|price|budget|expensive/i,
-    /effort|work|time|difficult|hard/i,
+function getWrapUpQuestion(persona: Persona, session: SessionState): string {
+  const wrapUpOptions = [
+    "Is there a free tier we could try?",
+    "Do you have documentation I can review?",
+    "Can you scan my badge for follow-up?",
+    "What's the pricing model?",
+    "Can you show me a quick demo?",
+    "How hard is the rollout? We're pretty lean on bandwidth.",
   ];
 
-  const isSuggestion = suggestionPatterns.some((pattern) =>
-    pattern.test(traineeText)
+  const recentText = session.transcript
+    .filter((m) => m.type === "attendee")
+    .slice(-5)
+    .map((m) => m.text.toLowerCase())
+    .join(" ");
+
+  const unused = wrapUpOptions.filter(
+    (q) => !recentText.includes(q.toLowerCase())
   );
 
-  if (!isSuggestion) {
-    return null;
-  }
-
-  // Find matching objections by type
-  let matchingType: string | null = null;
-
-  if (/cost|price|budget|expensive/i.test(lowerText)) {
-    matchingType = "cost";
-  } else if (/effort|work|time|difficult|hard/i.test(lowerText)) {
-    matchingType = "effort";
-  } else if (/technical|integrate|compatible|work with/i.test(lowerText)) {
-    matchingType = "technical";
-  } else if (/timing|when|schedule|ready/i.test(lowerText)) {
-    matchingType = "timing";
-  } else if (/proof|evidence|case study|reference/i.test(lowerText)) {
-    matchingType = "proof";
-  }
-
-  if (!matchingType) {
-    return null;
-  }
-
-  const matchingObjections = persona.objectionBank.filter(
-    (o) => o.type === matchingType
-  );
-
-  if (matchingObjections.length === 0) {
-    // Fall back to any objection
-    const randomObjection =
-      persona.objectionBank[
-        Math.floor(Math.random() * persona.objectionBank.length)
-      ];
-    return {
-      objection: randomObjection.objection,
-      type: randomObjection.type,
-    };
-  }
-
-  const selected =
-    matchingObjections[Math.floor(Math.random() * matchingObjections.length)];
-  return {
-    objection: selected.objection,
-    type: selected.type,
-  };
+  if (unused.length > 0) return unused[0];
+  return wrapUpOptions[Math.floor(Math.random() * wrapUpOptions.length)];
 }
 
-/**
- * Fill template slots with context-specific values.
- */
-function fillTemplateSlots(
-  template: string,
-  slots: {
-    tool1?: string;
-    tool2?: string;
-    stack?: string;
-    pain?: string;
-    timeframe?: string;
-    customerImpactPhrase?: string;
-  }
-): string {
-  let filled = template;
+// ── Director-driven content generation ───────────────────────────────────────
 
-  Object.entries(slots).forEach(([key, value]) => {
-    if (value) {
-      filled = filled.replace(new RegExp(`\\{${key}\\}`, "g"), value);
+/**
+ * Picks attendee reply content that matches the directive's move type.
+ * Returns null only when move === "share_pain" and no pain anchors exist
+ * (in which case the caller triggers LLM fallback).
+ */
+function generateFromDirective(
+  directive: DirectorDirective,
+  traineeText: string,
+  session: SessionState,
+  persona: Persona | undefined,
+  traineeTurnCount: number
+): AttendeeReplyResult | null {
+  const { move } = directive;
+
+  const recentAttendeeText = session.transcript
+    .filter((m) => m.type === "attendee")
+    .slice(-5)
+    .map((m) => m.text.toLowerCase())
+    .join(" ");
+
+  switch (move) {
+    case "share_pain": {
+      const targetPainId = directive.mustInclude?.painAnchorId;
+      let painText: string | null = null;
+      let painId: string | null = null;
+
+      // 1. Use specifically directed pain anchor
+      if (targetPainId && persona?.painAnchors) {
+        const anchor = persona.painAnchors.find((p) => p.id === targetPainId);
+        if (anchor && !hasAlreadySurfacedPain(session, anchor)) {
+          painText = formatPainAsStatement(anchor.pain);
+          painId = anchor.id;
+        }
+      }
+
+      // 2. Keyword-match pain on trainee text
+      if (!painText && persona?.painAnchors) {
+        const matched = matchPersonaPain(traineeText, persona);
+        if (matched && !hasAlreadySurfacedPain(session, { id: matched.painId })) {
+          painText = formatPainAsStatement(matched.pain);
+          painId = matched.painId;
+        }
+      }
+
+      // 3. Next unsurfaced primary pain anchor
+      if (!painText && persona?.painAnchors) {
+        const primary = persona.painAnchors.filter(
+          (p) => p.priority === "primary" && !hasAlreadySurfacedPain(session, p)
+        );
+        if (primary.length > 0) {
+          painText = formatPainAsStatement(primary[0].pain);
+          painId = primary[0].id;
+        }
+      }
+
+      // 4. Any unsurfaced pain anchor
+      if (!painText && persona?.painAnchors) {
+        const any = persona.painAnchors.filter(
+          (p) => !hasAlreadySurfacedPain(session, p)
+        );
+        if (any.length > 0) {
+          painText = formatPainAsStatement(any[0].pain);
+          painId = any[0].id;
+        }
+      }
+
+      if (painText && painId) {
+        markPainAsSurfaced(session, painId);
+        const sanitized = persona
+          ? sanitizeResponse(painText, persona)
+          : painText;
+        recordDirectorMove(session, move);
+        return {
+          text: postProcessAttendeeText(sanitized, persona),
+          source: "persona_pain",
+          confidence: 0.9,
+        };
+      }
+
+      // No pain content available — fall through to LLM
+      return null;
     }
-  });
 
-  // Remove any unfilled slots
-  filled = filled.replace(/\{[^}]+\}/g, "");
+    case "ask_clarifying": {
+      // 1. Try persona question bank for a contextual match
+      if (persona?.questionBank) {
+        const matched = matchPersonaQuestion(traineeText, persona);
+        if (matched) {
+          const sanitized = persona
+            ? sanitizeResponse(matched.question, persona)
+            : matched.question;
+          recordDirectorMove(session, move);
+          return {
+            text: postProcessAttendeeText(sanitized, persona),
+            source: "persona_question",
+            confidence: 0.85,
+          };
+        }
+      }
 
-  return filled;
+      // 2. Built-in repair questions
+      const chosen = pickUnused(
+        REPAIR_QUESTIONS,
+        recentAttendeeText,
+        traineeTurnCount
+      );
+      recordDirectorMove(session, move);
+      return {
+        text: postProcessAttendeeText(chosen, persona),
+        source: "persona_question",
+        confidence: 0.8,
+      };
+    }
+
+    case "ask_demo": {
+      const chosen = pickUnused(
+        DEMO_PHRASES,
+        recentAttendeeText,
+        traineeTurnCount
+      );
+      recordDirectorMove(session, move);
+      return {
+        text: postProcessAttendeeText(chosen, persona),
+        source: "template",
+        confidence: 0.9,
+      };
+    }
+
+    case "ask_docs": {
+      const chosen = pickUnused(
+        DOCS_PHRASES,
+        recentAttendeeText,
+        traineeTurnCount
+      );
+      recordDirectorMove(session, move);
+      return {
+        text: postProcessAttendeeText(chosen, persona),
+        source: "template",
+        confidence: 0.9,
+      };
+    }
+
+    case "ask_rollout_effort": {
+      // Try persona objection bank (effort type) first
+      if (persona?.objectionBank) {
+        const effortObjections = persona.objectionBank.filter(
+          (o) => o.type === "effort"
+        );
+        if (effortObjections.length > 0) {
+          const idx = traineeTurnCount % effortObjections.length;
+          const sanitized = persona
+            ? sanitizeResponse(effortObjections[idx].objection, persona)
+            : effortObjections[idx].objection;
+          recordDirectorMove(session, move);
+          return {
+            text: postProcessAttendeeText(sanitized, persona),
+            source: "persona_objection",
+            confidence: 0.9,
+          };
+        }
+      }
+      const chosen = pickUnused(
+        ROLLOUT_PHRASES,
+        recentAttendeeText,
+        traineeTurnCount
+      );
+      recordDirectorMove(session, move);
+      return {
+        text: postProcessAttendeeText(chosen, persona),
+        source: "template",
+        confidence: 0.85,
+      };
+    }
+
+    case "ask_pricing": {
+      // Try persona objection bank (cost type) first
+      if (persona?.objectionBank) {
+        const costObjections = persona.objectionBank.filter(
+          (o) => o.type === "cost"
+        );
+        if (costObjections.length > 0) {
+          const idx = traineeTurnCount % costObjections.length;
+          const sanitized = persona
+            ? sanitizeResponse(costObjections[idx].objection, persona)
+            : costObjections[idx].objection;
+          recordDirectorMove(session, move);
+          return {
+            text: postProcessAttendeeText(sanitized, persona),
+            source: "persona_objection",
+            confidence: 0.9,
+          };
+        }
+      }
+      const chosen = pickUnused(
+        PRICING_PHRASES,
+        recentAttendeeText,
+        traineeTurnCount
+      );
+      recordDirectorMove(session, move);
+      return {
+        text: postProcessAttendeeText(chosen, persona),
+        source: "template",
+        confidence: 0.85,
+      };
+    }
+
+    case "ask_badge": {
+      const chosen = pickUnused(
+        BADGE_PHRASES,
+        recentAttendeeText,
+        traineeTurnCount
+      );
+      recordDirectorMove(session, move);
+      return {
+        text: postProcessAttendeeText(chosen, persona),
+        source: "template",
+        confidence: 0.9,
+      };
+    }
+
+    case "deflect": {
+      const chosen = DEFLECT_PHRASES[traineeTurnCount % DEFLECT_PHRASES.length];
+      recordDirectorMove(session, move);
+      return {
+        text: postProcessAttendeeText(chosen, persona),
+        source: "template",
+        confidence: 0.8,
+      };
+    }
+
+    case "exit": {
+      const chosen = EXIT_PHRASES[traineeTurnCount % EXIT_PHRASES.length];
+      recordDirectorMove(session, move);
+      return {
+        text: postProcessAttendeeText(chosen, persona),
+        source: "template",
+        confidence: 0.8,
+      };
+    }
+  }
+
+  // TypeScript exhaustiveness guard — should never reach here
+  return null;
 }
 
-/**
- * Generate attendee reply using persona-first approach with template/LLM fallback.
- *
- * LOOP PREVENTION: Detects repeated attendee output and forces diversity.
- */
+// ── Internal generator ────────────────────────────────────────────────────────
+
 function generateAttendeeReplyInternal(params: {
   traineeText: string;
   session: SessionState;
   traineeTurnCount: number;
 }): AttendeeReplyResult | null {
   const { traineeText, session, traineeTurnCount } = params;
-
-  // Get persona object (should be full Persona, not just string)
   const persona = (session as any).persona as Persona | undefined;
 
-  // 1. EARLY-TURN PAIN SURFACING (turns 1-3) as STATEMENTS
-  if (traineeTurnCount <= 3 && persona?.painAnchors) {
-    const primaryPains = persona.painAnchors.filter(
-      (p) => p.priority === "primary"
-    );
+  // 1. Ask the director what the attendee should do next
+  const directive = decideNextMove(session, persona, traineeText);
 
-    if (primaryPains.length > 0) {
-      // Find unsurfaced primary pains
-      const unsurfacedPains = primaryPains.filter(
-        (p) => !hasAlreadySurfacedPain(session, p)
-      );
+  // 2. Store directive on session so the message route can inject the LLM hint
+  (session as any).currentDirective = directive;
 
-      if (unsurfacedPains.length > 0) {
-        // Select random unsurfaced pain
-        const selectedPain =
-          unsurfacedPains[Math.floor(Math.random() * unsurfacedPains.length)];
-
-        // Mark as surfaced
-        markPainAsSurfaced(session, selectedPain.id);
-
-        // Format as statement
-        const statement = formatPainAsStatement(selectedPain.pain);
-
-        // Sanitize for banned phrases (should not trigger, but safety check)
-        const sanitized = sanitizeResponse(statement, persona);
-
-        return {
-          text: postProcessAttendeeText(sanitized, persona),
-          source: "early_pain_anchor",
-          confidence: 1.0,
-        };
-      }
-    }
-  }
-
-  // 2. CHECK PERSONA QUESTION BANK (contextual keyword match)
-  if (persona?.questionBank) {
-    const matchedQuestion = matchPersonaQuestion(traineeText, persona);
-
-    if (matchedQuestion) {
-      const sanitized = sanitizeResponse(matchedQuestion.question, persona);
-
-      return {
-        text: postProcessAttendeeText(sanitized, persona),
-        source: "persona_question",
-        confidence: 0.9,
-      };
-    }
-  }
-
-  // 3. CHECK PERSONA PAIN ANCHORS (2+ keyword matches)
-  if (persona?.painAnchors) {
-    const matchedPain = matchPersonaPain(traineeText, persona);
-
-    if (matchedPain && !hasAlreadySurfacedPain(session, { id: matchedPain.painId })) {
-      // Mark as surfaced
-      markPainAsSurfaced(session, matchedPain.painId);
-
-      // Format as statement
-      const statement = formatPainAsStatement(matchedPain.pain);
-      const sanitized = sanitizeResponse(statement, persona);
-
-      return {
-        text: postProcessAttendeeText(sanitized, persona),
-        source: "persona_pain",
-        confidence: 0.85,
-      };
-    }
-  }
-
-  // 4. CHECK PERSONA OBJECTION BANK
-  if (persona?.objectionBank) {
-    const matchedObjection = matchPersonaObjection(traineeText, persona);
-
-    if (matchedObjection) {
-      const sanitized = sanitizeResponse(matchedObjection.objection, persona);
-
-      return {
-        text: postProcessAttendeeText(sanitized, persona),
-        source: "persona_objection",
-        confidence: 0.85,
-      };
-    }
-  }
-
-  // 5. TEMPLATE/INTENT FALLBACK (with persona-specific tool stacks)
-  const recentTranscript = session.transcript
-    .slice(-10)
-    .map((m) => m.text)
-    .join(" ");
-
-  const context = {
-    state: session.currentState,
-    persona: session.kickoff.attendeeProfile,
-    transcript: recentTranscript,
-    expressedIntents: session.expressedIntents || [],
-  };
-
-  // Classify intent
-  let intentResult = classifyAttendeeIntent(traineeText, context);
-
-  // Apply exhaustion check and transitions
-  const { applyIntentExhaustion } = require("./intentClassifier");
-  intentResult = applyIntentExhaustion(
-    intentResult,
-    session.expressedIntents || [],
-    traineeText
-  );
-
-  // If not exhausted and confidence is good, use template
-  if (!intentResult.exhausted && intentResult.confidence >= 0.7) {
-    const template = TEMPLATES[intentResult.intent];
-
-    if (template && template.variants.length > 0) {
-      // Prepare template slots with persona-specific tool stack
-      const slots: {
-        tool1?: string;
-        tool2?: string;
-        stack?: string;
-        pain?: string;
-        timeframe?: string;
-        customerImpactPhrase?: string;
-      } = {};
-
-      // Get tool stack from persona or establish default
-      if (persona) {
-        const toolStack = getPersonaToolStack(persona);
-        slots.tool1 = toolStack.tool1;
-        slots.tool2 = toolStack.tool2;
-        slots.stack = toolStack.stack;
-
-        // Store in session for consistency
-        if (!session.toolingContext) {
-          session.toolingContext = {
-            apm: toolStack.tool1,
-            logs: toolStack.tool2,
-            stack: toolStack.stack,
-          };
-        }
-      } else {
-        // Legacy fallback
-        if (!session.toolingContext) {
-          session.toolingContext = {
-            apm: "New Relic",
-            logs: "Splunk",
-            stack: "a mix of legacy APM tools",
-          };
-        }
-        slots.tool1 = session.toolingContext.apm;
-        slots.tool2 = session.toolingContext.logs;
-        slots.stack = session.toolingContext.stack;
-      }
-
-      // Pick variant deterministically
-      const key = `intent:${intentResult.intent}:turn:${traineeTurnCount}`;
-      const selectedVariant = pickVariant(
-        session.outcomeSeed || session.id,
-        key,
-        template.variants
-      );
-
-      // Fill slots
-      const filledTemplate = fillTemplateSlots(selectedVariant, slots);
-
-      // Sanitize for banned phrases
-      const sanitized = persona
-        ? sanitizeResponse(filledTemplate, persona)
-        : filledTemplate;
-
-      // Post-process
-      const finalText = postProcessAttendeeText(sanitized, persona);
-
-      // Check if sanitization replaced with fallback
-      const source =
-        sanitized !== filledTemplate && persona
-          ? "banned_phrase_fallback"
-          : "template";
-
-      return {
-        text: finalText,
-        source: source as any,
-        intent: intentResult.intent,
-        confidence: intentResult.confidence,
-      };
-    }
-  }
-
-  // 6. LLM FALLBACK - Return null to trigger LLM in caller
-  // (LLM fallback will be constrained by persona contract in the caller)
-  return null;
+  // 3. Generate content that matches the directive
+  return generateFromDirective(directive, traineeText, session, persona, traineeTurnCount);
 }
 
+// ── Public wrapper (with loop detection) ─────────────────────────────────────
+
 /**
- * Public wrapper with loop detection
+ * Generate an attendee reply driven by the conversation director.
  *
- * Prevents attendee from repeating the exact same question indefinitely.
+ * Returns null when no template/bank match was found — the caller (message
+ * route) should then invoke the LLM with the directive hint attached.
  */
 export function generateAttendeeReply(params: {
   traineeText: string;
@@ -590,26 +560,20 @@ export function generateAttendeeReply(params: {
   const { session } = params;
   const persona = (session as any).persona as Persona | undefined;
 
-  // Generate initial response
-  let result = generateAttendeeReplyInternal(params);
+  const result = generateAttendeeReplyInternal(params);
 
-  // If result is null (LLM fallback), return null
   if (!result) {
-    return null;
+    return null; // LLM fallback — route picks up (session as any).currentDirective
   }
 
-  // LOOP DETECTION: If response is repetitive, force a different question
+  // Loop detection: if this text was recently used, force a different question
   if (isRepetitiveResponse(result.text, session)) {
     console.log(
-      `[Loop Detection] Repetitive response detected: "${result.text.substring(0, 50)}..."`
+      `[Director] Repetitive response detected: "${result.text.substring(0, 50)}..."`
     );
-    console.log("[Loop Detection] Forcing wrap-up question to break loop");
-
-    // Force a wrap-up question
     const wrapUpQuestion = persona
       ? getWrapUpQuestion(persona, session)
       : "Can you show me how this works?";
-
     return {
       text: postProcessAttendeeText(wrapUpQuestion, persona),
       source: "persona_question",

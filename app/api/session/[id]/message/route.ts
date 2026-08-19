@@ -33,6 +33,11 @@ import { addToLeaderboardIndex } from "@/lib/leaderboardStore";
 import { getOutcomeAction, shouldShowCompletionCTA } from "@/lib/outcomeActions";
 import { generateAttendeeReply } from "@/lib/attendee/generateAttendeeReply";
 import { postProcessAttendeeText } from "@/lib/attendee/postProcess";
+import {
+  directiveToPromptHint,
+  recordDirectorMove,
+  type DirectorDirective,
+} from "@/lib/attendee/conversationDirector";
 import { detectCommittedOutcome } from "@/lib/outcomeCommitment";
 import { isEvaluationQuestion } from "@/lib/outcomeEvaluation";
 import { updateMomentum } from "@/lib/attendee/momentumModel";
@@ -342,9 +347,23 @@ export async function POST(
           span.setAttribute("prompt_bundle_version", composedPrompt.bundleVersion);
           span.setAttribute("prompt_has_trainer_guidance", composedPrompt.hasTrainerGuidance);
 
+          // Inject conversation director hint when a directive was chosen
+          const currentDirective = (session as any).currentDirective as DirectorDirective | undefined;
+          const directiveHint = currentDirective
+            ? directiveToPromptHint(currentDirective)
+            : null;
+
+          if (currentDirective) {
+            span.setAttribute("director_stage", currentDirective.stage);
+            span.setAttribute("director_move", currentDirective.move);
+            span.setAttribute("director_tone", currentDirective.tone);
+          }
+
           // Prepare chat input
           const chatInput: ChatInput = {
-            systemPrompt: composedPrompt.content,
+            systemPrompt: directiveHint
+              ? `${composedPrompt.content}\n\nNEXT MOVE: ${directiveHint}`
+              : composedPrompt.content,
             conversation: conversationHistory,
             sessionId: session.id,
           };
@@ -386,6 +405,11 @@ export async function POST(
             provider: result.provider,
             model: result.model,
           };
+
+          // Record director move after successful LLM generation
+          if (currentDirective) {
+            recordDirectorMove(session, currentDirective.move);
+          }
 
           span.setAttribute("attendee_reply_source", attendeeReplySource);
           span.setAttribute("chat_provider", result.provider);
