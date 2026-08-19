@@ -6,6 +6,8 @@
  * editable, and stored server-side to allow prompt iteration without code changes.
  */
 
+import type { EnrichmentResult } from "./enrichmentTypes";
+
 export interface PromptBundle {
   /** Unique identifier (e.g., 'default', 'v1', 'v2-experimental') */
   id: string;
@@ -57,12 +59,31 @@ export interface PromptRuntimeContext {
     emotionalPosture: string;
     toolingBias: string;
     otelFamiliarity: string;
+    /**
+     * Character brief and the attendee's private pain inventory, in plain language.
+     *
+     * These come from lib/personas/canonicalPersonas.ts, which encodes the PMM persona
+     * research. Before this existed, none of it reached the prompt - the attendee model only
+     * ever saw title/modifiers/posture/tooling/otel, which is why a DevOps Engineer and a
+     * Technical Decision-Maker returned byte-identical pain text. Their differentiating
+     * material existed and was never shown to the model.
+     */
+    behaviorBrief?: string;
+    /** True for buyer-type personas (director, VP, TDM) who do not control hands-on work. */
+    isBuyer?: boolean;
+    /** Plain-language pains, most central first. Private until a question earns them. */
+    painPoints?: string[];
   };
 
-  /** Optional OpenAI enrichment result (adds contextual guidance) */
-  enrichment?: {
-    promptAddendum?: string;
-  } | null;
+  /**
+   * Optional enrichment result (adds contextual guidance).
+   *
+   * This was previously narrowed to just promptAddendum, which is why the rest of the
+   * enrichment payload was generated on every session, stored, and then discarded -
+   * ventingTriggers, resistIfPitched, revealWhenEarned, and the vocab hints are all
+   * per-persona behavioral data the composer now uses.
+   */
+  enrichment?: Partial<EnrichmentResult> | null;
 
   /** Current conversation state (ICEBREAKER, EXPLORATION, etc.) */
   sessionState: string;

@@ -67,8 +67,53 @@ export async function composeAttendeeSystemPrompt(
   sections.push(scenarioContext);
 
   // 6. Enrichment guidance (if available)
-  if (context.enrichment?.promptAddendum) {
-    sections.push(`\nENRICHMENT GUIDANCE:\n${context.enrichment.promptAddendum}`);
+  // Enrichment previously contributed only promptAddendum; everything else it generates was
+  // stored and discarded. ventingTriggers, resistIfPitched, revealWhenEarned, and avoidTerms
+  // are per-persona behavioral data that map directly onto the mechanics this simulator is
+  // built around, so they now reach the prompt too.
+  if (context.enrichment) {
+    const e = context.enrichment;
+    const enrichmentLines: string[] = [];
+
+    if (e.promptAddendum) enrichmentLines.push(e.promptAddendum);
+
+    const venting = e.attendeeStyleGuide?.ventingTriggers ?? [];
+    if (venting.length) {
+      enrichmentLines.push(
+        `What gets you talking: ${venting.join("; ")}. When one of these shows up and the ` +
+          `staffer has actually listened, let yourself go further than you normally would.`
+      );
+    }
+
+    const resist = e.personaBehavior?.resistIfPitched ?? [];
+    if (resist.length) {
+      enrichmentLines.push(
+        `What makes you close up: ${resist.join("; ")}. Go shorter and cooler - do not say why.`
+      );
+    }
+
+    const reveal = e.personaBehavior?.revealWhenEarned ?? [];
+    if (reveal.length) {
+      enrichmentLines.push(
+        `Hold these back until the staffer earns them: ${reveal.join("; ")}.`
+      );
+    }
+
+    const avoid = e.vocabHints?.avoidTerms ?? [];
+    if (avoid.length) {
+      enrichmentLines.push(
+        `Words you would not use: ${avoid.join(", ")}. Say it your own way instead.`
+      );
+    }
+
+    const mirror = e.vocabHints?.mirrorTerms ?? [];
+    if (mirror.length) {
+      enrichmentLines.push(`Language that sounds like you: ${mirror.join(", ")}.`);
+    }
+
+    if (enrichmentLines.length) {
+      sections.push(`\nENRICHMENT GUIDANCE:\n${enrichmentLines.join("\n\n")}`);
+    }
   }
 
   // 7. Trainer guidance (if provided)
@@ -161,6 +206,35 @@ function buildScenarioContext(context: PromptRuntimeContext): string {
   sections.push(`Emotional posture: ${context.persona.emotionalPosture}`);
   sections.push(`Tooling bias: ${context.persona.toolingBias}`);
   sections.push(`OpenTelemetry familiarity: ${context.persona.otelFamiliarity}`);
+
+  if (context.persona.behaviorBrief) {
+    sections.push(`\nHOW YOU COME ACROSS\n${context.persona.behaviorBrief}`);
+  }
+
+  if (context.persona.isBuyer) {
+    sections.push(
+      `\nYOUR VANTAGE POINT
+You are senior enough that you are not the one doing the hands-on work. You hear about
+problems through your teams, your own metrics, and what customers escalate. Talk about
+consequence - delivery, cost, risk, people burning out - rather than narrating commands you
+personally ran.`
+    );
+  }
+
+  if (context.persona.painPoints?.length) {
+    // Rendered as private inventory in the attendee's own words, most central first.
+    // Explicitly NOT a checklist: reciting these is the scripted behavior the simulator is
+    // meant to train against, and volunteering them unprompted breaks the earn-it rule.
+    sections.push(
+      `\nWHAT ACTUALLY BOTHERS YOU (private - yours, in your words)
+${context.persona.painPoints.map((pain) => `- ${pain}`).join("\n")}
+
+These are the things you would complain about if someone got you talking. Do not list them,
+do not work through them in order, and do not raise one unprompted. When a question genuinely
+lands on one, answer from it - with the specifics of your own situation, not this phrasing.
+Anything not on this list is not your problem; do not borrow someone else's complaints.`
+    );
+  }
 
   return sections.join("\n");
 }

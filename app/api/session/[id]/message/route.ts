@@ -324,6 +324,14 @@ export async function POST(
             }
           }
 
+          const sessionPersona = (session as any).persona as
+            | {
+                behaviorBrief?: string;
+                isBuyer?: boolean;
+                painAnchors?: Array<{ pain: string; priority?: string }>;
+              }
+            | undefined;
+
           const runtimeContext: PromptRuntimeContext = {
             persona: {
               title: profileParsed["Persona"] || "Unknown",
@@ -331,6 +339,17 @@ export async function POST(
               emotionalPosture: profileParsed["Emotional posture"] || "Neutral",
               toolingBias: profileParsed["Tooling bias"] || "None specified",
               otelFamiliarity: profileParsed["OpenTelemetry familiarity"] || "Unknown",
+              // The canonical persona object carries the differentiating material - character
+              // brief and pain inventory. Without this the model saw only the five fields
+              // above, so different personas produced identical pain text.
+              behaviorBrief: sessionPersona?.behaviorBrief,
+              isBuyer: sessionPersona?.isBuyer,
+              painPoints: (sessionPersona?.painAnchors ?? [])
+                .slice()
+                .sort((a, b) =>
+                  a.priority === b.priority ? 0 : a.priority === "primary" ? -1 : 1
+                )
+                .map((anchor) => anchor.pain),
             },
             enrichment: session.kickoff.enrichment || null,
             sessionState: session.currentState,
