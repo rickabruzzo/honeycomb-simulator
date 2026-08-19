@@ -25,6 +25,8 @@ import { getEnrichment, saveEnrichment } from "@/lib/llm/enrichmentStore";
 import { getEnrichmentProvider } from "@/lib/llm/provider";
 import type { EnrichmentInput } from "@/lib/llm/enrichmentTypes";
 import { composeAttendeeSystemPrompt } from "@/lib/llm/promptComposer";
+import { getRevealBudget } from "@/lib/attendee/revealBudget";
+import { getMomentumBand } from "@/lib/attendee/momentumBands";
 import type { PromptRuntimeContext } from "@/lib/llm/promptBundleTypes";
 import { getInviteForSession } from "@/lib/invites";
 import { scoreSession } from "@/lib/scoring";
@@ -34,7 +36,6 @@ import { getOutcomeAction, shouldShowCompletionCTA } from "@/lib/outcomeActions"
 import { generateAttendeeReply } from "@/lib/attendee/generateAttendeeReply";
 import { postProcessAttendeeText } from "@/lib/attendee/postProcess";
 import {
-  getLengthBudget,
   budgetToPostProcessOptions,
 } from "@/lib/attendee/lengthBudget";
 import {
@@ -353,6 +354,7 @@ export async function POST(
             },
             enrichment: session.kickoff.enrichment || null,
             sessionState: session.currentState,
+            momentumBand: getMomentumBand(session.momentum?.score ?? 0),
             trainerGuidance: session.trainerFeedback?.guidance || null,
             turnLimitExceeded,
             selfServiceCuesDetected: selfServiceDetected,
@@ -428,7 +430,12 @@ export async function POST(
           attendeeResponseText = postProcessAttendeeText(
             result.text,
             undefined,
-            budgetToPostProcessOptions(getLengthBudget(session.currentState))
+            budgetToPostProcessOptions(
+              getRevealBudget(
+                session.currentState,
+                getMomentumBand(session.momentum?.score ?? 0)
+              ).lengthBudget
+            )
           );
           attendeeReplySource = "llm";
           chatMeta = {

@@ -21,10 +21,9 @@ import {
   getBannedKeywords,
 } from "../simulatorConfig";
 import { getActivePromptBundle } from "./promptBundleStore";
-import {
-  getLengthBudget,
-  renderLengthDirective,
-} from "../attendee/lengthBudget";
+import { renderLengthDirective } from "../attendee/lengthBudget";
+import { getRevealBudget } from "../attendee/revealBudget";
+import type { MomentumBand } from "../attendee/momentumBands";
 
 /**
  * Compose the full system prompt for an attendee response.
@@ -169,9 +168,14 @@ useful, your instinct is to work out how you would make the case internally.`);
     sections.push(`\nRECENT CONVERSATION (most recent last):\n${historyText}`);
   }
 
-  // 8b. Reply length budget. Phase-derived for now; should become trust-derived so that
-  //      being listened to visibly buys longer, more candid answers.
-  sections.push(`\n${renderLengthDirective(getLengthBudget(context.sessionState))}`);
+  // 8b. Reveal budget: how open the attendee is on this turn, derived from BOTH the phase
+  //      (what is on the table) and the earned-trust band (what the trainee has earned). This
+  //      is what makes listening pay off - a steamrolled attendee stays short even in pain
+  //      discovery, and only a listened-to one unlocks the war story.
+  const band = (context.momentumBand ?? "GUARDED") as MomentumBand;
+  const reveal = getRevealBudget(context.sessionState, band);
+  sections.push(`\n${reveal.opennessDirective}`);
+  sections.push(`\n${renderLengthDirective(reveal.lengthBudget)}`);
 
   // 9. Final instruction
   sections.push("\nNow respond as the attendee.");

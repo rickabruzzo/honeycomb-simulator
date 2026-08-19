@@ -89,6 +89,14 @@ export interface PromptRuntimeContext {
   sessionState: string;
 
   /**
+   * Earned-trust band from the momentum model (GUARDED..COMMITTED).
+   *
+   * Drives the reveal budget: how open the attendee is, and whether a war story is reachable.
+   * Optional so older callers still compose; absent means treat as GUARDED (earn it first).
+   */
+  momentumBand?: string;
+
+  /**
    * Optional trainer feedback/guidance - injected into system prompt
    * when a trainer provides specific instructions or adjustments
    * for this session.
