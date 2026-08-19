@@ -3,6 +3,7 @@ import type { EnrichmentResult } from "./llm/enrichmentTypes";
 import type { Persona } from "./scenarioTypes";
 import type { ConversationMomentum } from "./attendee/momentumModel";
 
+import { useKv } from "./kvConfig";
 export interface SessionState {
   id: string;
   currentState: string;
@@ -93,9 +94,6 @@ const inMemoryStorage = new Map<string, SessionState>();
  * KV is configured when Vercel/Upstash env vars are present.
  * (Locally, these appear after `vercel env pull .env.local`.)
  */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
 
 export async function saveSession(session: SessionState): Promise<void> {
   if (useKv()) {

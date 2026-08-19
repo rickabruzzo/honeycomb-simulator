@@ -1,5 +1,6 @@
 import { kv } from "@vercel/kv";
 
+import { useKv } from "./kvConfig";
 export interface InviteRecord {
   token: string;
   sessionId: string;
@@ -21,9 +22,6 @@ const inMemorySessionInvites = new Map<string, { token: string }>();
 /**
  * KV is configured when Vercel/Upstash env vars are present.
  */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
 
 export async function saveInvite(invite: InviteRecord): Promise<void> {
   if (useKv()) {

@@ -1,5 +1,6 @@
 import { kv } from "@vercel/kv";
 
+import { useKv } from "./kvConfig";
 export type LeaderboardEntry = {
   token: string;
   score: number;
@@ -20,9 +21,6 @@ const MAX_LEADERBOARD_SIZE = 2000;
 /**
  * KV is configured when Vercel/Upstash env vars are present.
  */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
 
 /**
  * Add or update an entry in the leaderboard index

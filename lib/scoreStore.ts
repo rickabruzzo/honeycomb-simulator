@@ -1,6 +1,7 @@
 import { kv } from "@vercel/kv";
 import { ScoreRecord } from "./scoring";
 
+import { useKv } from "./kvConfig";
 const inMemoryScores = new Map<string, ScoreRecord>();
 const inMemoryScoreIndex: string[] = [];
 const MAX_SCORE_INDEX_SIZE = 5000;
@@ -8,9 +9,6 @@ const MAX_SCORE_INDEX_SIZE = 5000;
 /**
  * KV is configured when Vercel/Upstash env vars are present.
  */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
 
 export async function saveScore(record: ScoreRecord): Promise<void> {
   if (useKv()) {

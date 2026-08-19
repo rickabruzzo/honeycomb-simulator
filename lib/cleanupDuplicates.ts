@@ -2,12 +2,10 @@ import { kv } from "@vercel/kv";
 import { listPersonas, archivePersona } from "./personaStore";
 import { listConferences, archiveConference } from "./conferenceStore";
 
+import { useKv } from "./kvConfig";
 /**
  * KV is configured when Vercel/Upstash env vars are present.
  */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
 
 /**
  * Normalize name for comparison (trim, lowercase, collapse whitespace)
