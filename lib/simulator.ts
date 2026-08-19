@@ -1,6 +1,7 @@
 // lib/simulator.ts
 import config from "./simulator.config.json";
 import type { EnrichmentResult } from "./llm/enrichmentTypes";
+import { isAllowedProductTerm } from "./guardrails/allowedProductTerms";
 
 export const SIMULATOR_CONFIG = config as any;
 
@@ -121,8 +122,10 @@ export function analyzeTraineeMessage(text: string, currentState: string) {
   const issues: string[] = [];
 
   // 1) Check banned keywords (trainee used Honeycomb-specific/internal terms)
+  // Terms in ALLOWED_PRODUCT_TERMS are never violations.
   const banned = SIMULATOR_CONFIG.keyword_restrictions?.banned_product_keywords ?? [];
   for (const keyword of banned) {
+    if (isAllowedProductTerm(String(keyword))) continue; // allowlist override
     if (lower.includes(String(keyword).toLowerCase())) {
       issues.push(`Used banned keyword: "${keyword}"`);
     }
@@ -131,10 +134,10 @@ export function analyzeTraineeMessage(text: string, currentState: string) {
   // 2) Early pitch detection - ONLY flag unsolicited feature dumps, not booth-appropriate framing
   // Allow: "What Honeycomb is", "We help with observability", "We're an observability platform"
   // Allow: Standard industry terminology like "high-cardinality" or "cardinality"
-  // Flag: Multiple features listed, pricing push, demo push, competitor bashing
+  // Allow: Honeycomb product names (BubbleUp, service map, etc.) — covered by allowlist
+  // Flag: Competitor bashing, pricing push, demo push
   const isQuestion = text.includes("?");
   const featureDumpSignals = [
-    /\b(bubbleup|wide events|service map)\b/i,
     /unlike (datadog|splunk|newrelic)/i,
     /better than/i,
   ];

@@ -166,14 +166,8 @@
     }
   },
   "keyword_restrictions": {
-    "banned_product_keywords": [
-      "bubbleup",
-      "wide events",
-      "refinery",
-      "query builder",
-      "service map",
-      "slo triggers"
-    ],
+    "banned_product_keywords": [],
+    "banned_product_keywords_note": "Honeycomb product/feature terms are managed by lib/guardrails/allowedProductTerms.ts and are never violations",
     "behavior_if_used_by_attendee": {
       "acknowledge_neutrally": true,
       "do_not_expand": true,
