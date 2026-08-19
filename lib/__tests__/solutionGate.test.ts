@@ -48,6 +48,30 @@ function assertNotNull(label: string, actual: unknown) {
   }
 }
 
+/**
+ * The attendee must never go silent. Since the reply-ownership split
+ * (lib/attendee/replyPolicy.ts), expressive turns are deliberately handed to the LLM:
+ * generateAttendeeReply returns null and the message route generates from
+ * session.currentDirective. So "produced something" now means either a template reply or a
+ * directive-carrying handoff. This is stricter than a plain non-null check, because a null
+ * WITHOUT a directive would leave the route with nothing to generate from.
+ */
+function assertReplyOrLlmHandoff(label: string, actual: unknown, session: any) {
+  if (actual != null) {
+    console.log(`  \u2713 ${label} (template)`);
+    passed++;
+  } else if (session?.currentDirective) {
+    console.log(
+      `  \u2713 ${label} (handed to LLM; move=${session.currentDirective.move})`
+    );
+    passed++;
+  } else {
+    console.error(`  \u2717 ${label}`);
+    console.error("      null with no directive on session - route has nothing to generate from");
+    failed++;
+  }
+}
+
 function assertNotIncludes(label: string, haystack: string, needle: string) {
   if (!haystack.toLowerCase().includes(needle.toLowerCase())) {
     console.log(`  \u2713 ${label}`);
@@ -294,7 +318,7 @@ console.log("\n\ud83d\udccb Test 2: After solution introduction → evaluation q
     traineeTurnCount: 3,
   });
 
-  assertNotNull("produces a reply after solution", result);
+  assertReplyOrLlmHandoff("produces a reply after solution", result, session);
   // The reply should be contextually relevant (not blocked)
   if (result) {
     assert("reply is a string", typeof result.text, "string");

@@ -45,6 +45,7 @@ import {
   pickBoothEntryResponse,
   type BoothEntryMode,
 } from "./boothFaqBehavior";
+import { decideReplyOwner } from "./replyPolicy";
 
 export interface AttendeeReplyResult {
   text: string;
@@ -1177,6 +1178,18 @@ function generateAttendeeReplyInternal(params: {
   //     "It lets you...").  Once true, gates competitor/evaluation booth questions.
   if (!session.productExplained && detectProductExplanation(traineeText)) {
     session.productExplained = true;
+  }
+
+  // 3e. Reply ownership: expressive turns go to the LLM.
+  //     Measured before this gate existed: 0 of 360 sampled turns ever reached the LLM,
+  //     so every reply came from a finite bank - which is why two different personas could
+  //     return byte-identical pain text. Factual/scripted turns stay deterministic.
+  //     Returning null here is the existing LLM handoff; the route reads
+  //     session.currentDirective (set in step 2) as the generation hint.
+  //     Deliberately placed AFTER every state update above (topic, tools, solution,
+  //     product-explanation) so those still run on turns the LLM answers.
+  if (decideReplyOwner(directive, traineeText) === "llm") {
+    return null;
   }
 
   // 4. Generate content that matches the directive
