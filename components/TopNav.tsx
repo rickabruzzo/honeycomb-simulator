@@ -14,7 +14,7 @@ export function TopNav() {
             className="opacity-90"
           />
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-white text-base">Honeycomb</span>
+            <span className="font-display font-semibold text-white text-base">Honeycomb</span>
             <span className="text-white/40">·</span>
             <span className="text-white/70 text-sm">Conference Simulator</span>
           </div>
