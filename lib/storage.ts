@@ -4,6 +4,7 @@ import type { Persona } from "./scenarioTypes";
 import type { ConversationMomentum } from "./attendee/momentumModel";
 
 import { useKv } from "./kvConfig";
+import { getMemStore } from "./memoryStore";
 export interface SessionState {
   id: string;
   currentState: string;
@@ -107,7 +108,17 @@ export interface SessionState {
   productExplained?: boolean;
 }
 
-const inMemoryStorage = new Map<string, SessionState>();
+/**
+ * Sessions live on the globalThis-backed store in development, NOT a module-local Map.
+ *
+ * Under Turbopack dev, API routes can execute in separate module instances, so a module-local
+ * Map diverges between routes: a session written by /message would be invisible to /end, which
+ * 404s with "Session not found". Every other store already uses getMemStore() for this reason;
+ * sessions were the last holdout. In production KV is used and this does not apply.
+ */
+function sessionMap(): Map<string, SessionState> {
+  return getMemStore().sessions;
+}
 
 /**
  * KV is configured when Vercel/Upstash env vars are present.
@@ -119,7 +130,7 @@ export async function saveSession(session: SessionState): Promise<void> {
     await kv.set(`session:${session.id}`, session);
     return;
   }
-  inMemoryStorage.set(session.id, session);
+  sessionMap().set(session.id, session);
 }
 
 export async function getSession(id: string): Promise<SessionState | null> {
@@ -127,7 +138,7 @@ export async function getSession(id: string): Promise<SessionState | null> {
     const result = await kv.get<SessionState>(`session:${id}`);
     return result ?? null;
   }
-  return inMemoryStorage.get(id) ?? null;
+  return sessionMap().get(id) ?? null;
 }
 
 export async function deleteSession(id: string): Promise<void> {
@@ -135,5 +146,5 @@ export async function deleteSession(id: string): Promise<void> {
     await kv.del(`session:${id}`);
     return;
   }
-  inMemoryStorage.delete(id);
+  sessionMap().delete(id);
 }

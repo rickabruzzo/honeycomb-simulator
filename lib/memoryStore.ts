@@ -31,6 +31,8 @@ export interface GlobalMemoryStore {
   invites: Map<string, InviteRecord>;
   inviteIndex: Map<string, string>; // token -> sessionId
   enrichments: Map<string, EnrichmentResult>;
+  scores: Map<string, unknown>;   // token -> ScoreRecord (typed at the scoreStore boundary)
+  scoreIndex: string[];           // tokens, newest first
   meta: {
     bootstrapCache?: any;
     bootstrapCacheAt?: number;
@@ -65,9 +67,31 @@ export function getMemStore(): GlobalMemoryStore {
       invites: new Map(),
       inviteIndex: new Map(),
       enrichments: new Map(),
+      scores: new Map(),
+      scoreIndex: [],
       meta: {},
     };
   }
+
+  // Backfill any field added after the store was first created. Without this, adding a new
+  // field to the store and hot-reloading leaves the already-initialized globalThis object
+  // missing that field, so accessors throw on undefined until a full server restart. Each
+  // guard is a no-op once the field exists.
+  const store = globalThis.__HC_SIM_MEM__ as Partial<GlobalMemoryStore>;
+  store.conferences ??= new Map();
+  store.conferenceIndex ??= [];
+  store.personas ??= new Map();
+  store.personaIndex ??= [];
+  store.trainees ??= new Map();
+  store.traineeIndex ??= [];
+  store.sessions ??= new Map();
+  store.invites ??= new Map();
+  store.inviteIndex ??= new Map();
+  store.enrichments ??= new Map();
+  store.scores ??= new Map();
+  store.scoreIndex ??= [];
+  store.meta ??= {};
+
   return globalThis.__HC_SIM_MEM__;
 }
 
