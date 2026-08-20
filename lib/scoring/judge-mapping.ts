@@ -9,49 +9,51 @@ import { SCORING_DIMENSIONS } from "./rubric";
 
 export interface MappedScore {
   breakdown: {
-    listening: number;
     discovery: number;
+    listening: number;
     empathy: number;
-    otel_assumptions: number;
+    qualification: number;
     guardrails: number;
+    handoff: number;
   };
-  score: number; // 0-100 including the outcome nudge
+  score: number; // 0-100, normalized from the six 0-20 dimensions
   evidence: { dimension: string; quote: string; comment: string }[];
 }
-
-const SUCCESS_OUTCOMES = new Set(["DEMO", "BADGE_SCAN", "DEMO_READY", "MQL_READY"]);
 
 function to20(score05: number): number {
   return Math.round((score05 / 5) * 20);
 }
 
+/**
+ * Map judged 0-5 dimensions to the 0-20 breakdown and a normalized 0-100 score.
+ *
+ * Outcome quality is scored ONLY through the Handoff dimension — there is no separate outcome
+ * nudge or floor, so `detectedOutcome` no longer affects the score (kept in the signature for
+ * call-site stability and future use).
+ */
 export function judgeResultToScore(
   judge: JudgeResult,
-  detectedOutcome: string | null
+  _detectedOutcome: string | null
 ): MappedScore {
   const breakdown = {
-    listening: to20(judge.listening.score),
     discovery: to20(judge.discovery.score),
+    listening: to20(judge.listening.score),
     empathy: to20(judge.empathy.score),
-    otel_assumptions: to20(judge.otel_assumptions.score),
+    qualification: to20(judge.qualification.score),
     guardrails: to20(judge.guardrails.score),
+    handoff: to20(judge.handoff.score),
   };
 
-  let score =
-    breakdown.listening +
+  const sum =
     breakdown.discovery +
+    breakdown.listening +
     breakdown.empathy +
-    breakdown.otel_assumptions +
-    breakdown.guardrails;
+    breakdown.qualification +
+    breakdown.guardrails +
+    breakdown.handoff;
 
-  // Outcome informs, does not floor. The nudge is withheld unless the conversation was
-  // actually conducted well, so closing cannot rescue a poorly-run session.
-  const earned = judge.discovery.score >= 3 && judge.listening.score >= 3;
-  if (detectedOutcome && SUCCESS_OUTCOMES.has(detectedOutcome) && earned) {
-    score += 5;
-  }
-
-  score = Math.min(100, Math.max(0, score));
+  // Normalize the six 0-20 dimensions (max 120) onto a 0-100 scale.
+  const score = Math.min(100, Math.max(0, Math.round((sum / 120) * 100)));
 
   const evidence = SCORING_DIMENSIONS.map((dim) => ({
     dimension: dim,

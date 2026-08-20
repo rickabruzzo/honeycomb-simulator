@@ -2,12 +2,13 @@ import { describe, it, expect } from "vitest";
 import { parseJudgeResult } from "./judge";
 
 const good = {
-  listening:        { score: 4, rationale: "reflected the pain", evidence: "starting over each time" },
-  discovery:        { score: 5, rationale: "full picture", evidence: "what do you use now" },
-  empathy:          { score: 3, rationale: "ok", evidence: "that sounds rough" },
-  otel_assumptions: { score: 2, rationale: "assumed", evidence: "since you're on otel" },
-  guardrails:       { score: 4, rationale: "restrained", evidence: "" },
-  summary:          "Solid discovery.",
+  discovery:     { score: 5, rationale: "full picture", evidence: "what do you use now" },
+  listening:     { score: 4, rationale: "reflected the pain", evidence: "starting over each time" },
+  empathy:       { score: 3, rationale: "ok", evidence: "that sounds rough" },
+  qualification: { score: 4, rationale: "read the fit", evidence: "are you the one who'd pick a tool" },
+  guardrails:    { score: 4, rationale: "restrained", evidence: "" },
+  handoff:       { score: 3, rationale: "set a follow-up", evidence: "let's have someone reach out" },
+  summary:       "Solid discovery.",
 };
 
 describe("parseJudgeResult", () => {
@@ -15,6 +16,8 @@ describe("parseJudgeResult", () => {
     const r = parseJudgeResult(JSON.stringify(good));
     expect(r.listening.score).toBe(4);
     expect(r.discovery.evidence).toBe("what do you use now");
+    expect(r.qualification.score).toBe(4);
+    expect(r.handoff.rationale).toBe("set a follow-up");
     expect(r.summary).toBe("Solid discovery.");
   });
 
@@ -28,7 +31,7 @@ describe("parseJudgeResult", () => {
   });
 
   it("throws when a dimension is missing", () => {
-    const { discovery, ...rest } = good;
+    const { qualification, ...rest } = good;
     expect(() => parseJudgeResult(JSON.stringify(rest))).toThrow();
   });
 
@@ -53,11 +56,12 @@ describe("parseJudgeResult", () => {
 import { judgeResultToScore, deriveGrade } from "./judge-mapping";
 
 const base = (over: Record<string, { score: number; rationale?: string; evidence?: string }> = {}) => ({
-  listening:        { score: 3, rationale: "", evidence: "x" },
-  discovery:        { score: 3, rationale: "", evidence: "x" },
-  empathy:          { score: 3, rationale: "", evidence: "x" },
-  otel_assumptions: { score: 3, rationale: "", evidence: "x" },
-  guardrails:       { score: 3, rationale: "", evidence: "x" },
+  discovery:     { score: 3, rationale: "", evidence: "x" },
+  listening:     { score: 3, rationale: "", evidence: "x" },
+  empathy:       { score: 3, rationale: "", evidence: "x" },
+  qualification: { score: 3, rationale: "", evidence: "x" },
+  guardrails:    { score: 3, rationale: "", evidence: "x" },
+  handoff:       { score: 3, rationale: "", evidence: "x" },
   summary: "",
   ...over,
 });
@@ -72,41 +76,55 @@ describe("judgeResultToScore", () => {
     expect(breakdown.discovery).toBe(12); // 3/5*20
   });
 
-  it("populates evidence from each dimension", () => {
+  it("normalizes the six 0-20 values over 120", () => {
+    // all 3s -> 12 each -> 72 -> 72/120*100 = 60
+    const { score } = judgeResultToScore(base() as never, null);
+    expect(score).toBe(60);
+  });
+
+  it("populates evidence from each of the six dimensions in order", () => {
     const { evidence } = judgeResultToScore(base() as never, null);
-    expect(evidence).toHaveLength(5);
-    expect(evidence[0].dimension).toBe("listening");
+    expect(evidence).toHaveLength(6);
+    expect(evidence[0].dimension).toBe("discovery");
+    expect(evidence[3].dimension).toBe("qualification");
+    expect(evidence[5].dimension).toBe("handoff");
   });
 });
 
-describe("deriveGrade — no outcome floor", () => {
-  it("gives a high-quality polite exit a better grade than a low-quality MQL", () => {
+describe("deriveGrade — no outcome nudge, no floor", () => {
+  it("gives a high-quality polite exit a better grade than a low-quality forced MQL", () => {
+    // Correct disqualification: strong discovery/listening and a clean-exit handoff.
     const goodExit = judgeResultToScore(
       base({
-        listening: { score: 5, rationale: "", evidence: "x" },
         discovery: { score: 5, rationale: "", evidence: "x" },
+        listening: { score: 5, rationale: "", evidence: "x" },
         empathy: { score: 4, rationale: "", evidence: "x" },
+        qualification: { score: 5, rationale: "", evidence: "x" },
+        handoff: { score: 5, rationale: "", evidence: "x" },
       }) as never,
       "POLITE_EXIT"
     );
+    // Forced MQL with no real conversation behind it.
     const badMql = judgeResultToScore(
       base({
-        listening: { score: 1, rationale: "", evidence: "" },
         discovery: { score: 1, rationale: "", evidence: "" },
+        listening: { score: 1, rationale: "", evidence: "" },
+        qualification: { score: 1, rationale: "", evidence: "" },
+        handoff: { score: 1, rationale: "", evidence: "" },
       }) as never,
       "BADGE_SCAN"
     );
     expect(goodExit.score).toBeGreaterThan(badMql.score);
     expect(deriveGrade(goodExit.score)).not.toBe("F");
+    expect(deriveGrade(badMql.score)).toBe("F");
   });
 
-  it("withholds the outcome nudge when discovery or listening scored below 3", () => {
-    const withNudge = judgeResultToScore(base() as never, "BADGE_SCAN").score; // both == 3 -> 60+5
-    const noNudge = judgeResultToScore(
-      base({ discovery: { score: 2, rationale: "", evidence: "" } }) as never,
-      "BADGE_SCAN"
-    ).score;
-    expect(withNudge).toBe(65);
-    expect(noNudge).toBeLessThan(withNudge);
+  it("ignores the detected outcome entirely — score depends only on the six dimensions", () => {
+    const asMql = judgeResultToScore(base() as never, "BADGE_SCAN").score;
+    const asExit = judgeResultToScore(base() as never, "POLITE_EXIT").score;
+    const asNone = judgeResultToScore(base() as never, null).score;
+    expect(asMql).toBe(60);
+    expect(asExit).toBe(60);
+    expect(asNone).toBe(60);
   });
 });

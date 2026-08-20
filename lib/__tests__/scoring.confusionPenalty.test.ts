@@ -88,11 +88,12 @@ assert(
 );
 
 // Overall score should NOT have the extra -5 (that's only for >= 3)
-// Base: listening(0) + discovery(0) + empathy(2) + otel(20) + guardrails(20) = 42
+// Six 0-20 dims: listening(0) discovery(0) empathy(2) qualification(8 floor)
+//   guardrails(20) handoff(6, UNKNOWN outcome) = 36; round(36/120*100) = 30.
 assert(
-  "2 confusion messages → overall score = 42 (no extra -5 for overall)",
+  "2 confusion messages → overall score = 30 (no extra -5 for overall)",
   twoConfusionResult.score,
-  42
+  30
 );
 
 // ── Scenario B: 3 confusion messages → listening -5 AND overall -5 ──────────
@@ -117,12 +118,12 @@ assert(
   0
 );
 
-// Overall: listening(0) + discovery(0) + empathy(2) + otel(20) + guardrails(20) = 42
-// Then -5 for confusionCount >= 3 → 37
+// Six 0-20 dims: listening(0) discovery(0) empathy(2) qualification(8) guardrails(20)
+//   handoff(6) = 36; round(36/120*100) = 30. Then -5 for confusionCount >= 3 → 25.
 assert(
-  "3 confusion messages → overall score = 37 (extra -5 for severe confusion)",
+  "3 confusion messages → overall score = 25 (extra -5 for severe confusion)",
   threeConfusionResult.score,
-  37
+  25
 );
 
 // ── Scenario C: 1 confusion message → NO penalty ────────────────────────────

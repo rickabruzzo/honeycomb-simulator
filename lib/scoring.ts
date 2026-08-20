@@ -41,11 +41,12 @@ export interface ScoreRecord {
   score: number; // 0-100
   grade: "A" | "B" | "C" | "D" | "F";
   breakdown: {
-    listening: number; // 0-20
     discovery: number; // 0-20
+    listening: number; // 0-20
     empathy: number; // 0-20
-    otel_assumptions: number; // 0-20
+    qualification: number; // 0-20
     guardrails: number; // 0-20
+    handoff: number; // 0-20
   };
   highlights: string[];
   mistakes: string[];
@@ -192,7 +193,7 @@ export function heuristicScore(
     openEndedPhrases.some((phrase) => msg.toLowerCase().includes(phrase))
   ).length;
 
-  const discovery = Math.min(
+  let discovery = Math.min(
     20,
     questionCount * 2 + openEndedCount * 3 // Questions + open-ended bonus
   );
@@ -215,9 +216,11 @@ export function heuristicScore(
   ).length;
   const empathy = Math.min(20, empathyCount * 4 + 2); // Base 2, +4 per phrase
 
-  // --- OTEL ASSUMPTIONS (0-20) ---
-  // REDUCED WEIGHT: Asking about OTel is good discovery, not a violation
-  // Only penalize if trainee ASSERTS without asking
+  // --- OTEL ASSUMPTION CHECK (folded into DISCOVERY) ---
+  // v3: OTel accuracy is no longer a standalone dimension. Asserting the attendee's OTel
+  // maturity without asking means discovery was built on an unverified assumption, which the
+  // rubric caps at 2/5 → 8/20. Asking about OTel is fine (good discovery), so only assertions
+  // trip the cap.
   const otelAssertions = traineeMessages.filter((msg) => {
     const lower = msg.toLowerCase();
     const hasOtel = lower.includes("opentelemetry") || /\botel\b/.test(lower);
@@ -237,7 +240,9 @@ export function heuristicScore(
 
     return assertsOtel && !asksAboutOtel; // Only flag assertions
   });
-  const otelAssumptions = Math.max(0, 20 - otelAssertions.length * 10); // -10 per actual assertion
+  if (otelAssertions.length > 0) {
+    discovery = Math.min(discovery, 8); // unverified OTel assumption caps discovery
+  }
 
   // --- GUARDRAILS (0-20) ---
   const violationCount = session.violations.length;
@@ -281,8 +286,9 @@ export function heuristicScore(
   const limit = 12; // Standard turn limit
   const isEfficient = traineeMessageCount <= limit;
 
-  // --- CUSTOMER IMPACT FOCUS (0-5 bonus) ---
-  // Reward framing around customer impact, not just developer pain
+  // --- CUSTOMER IMPACT FOCUS (folded into DISCOVERY) ---
+  // Framing around customer impact (not just developer pain) is a discovery-quality signal.
+  // v3 folds it into discovery rather than adding a standalone total bonus.
   const customerImpactPhrases = [
     "customer",
     "end user",
@@ -295,95 +301,65 @@ export function heuristicScore(
   const hasCustomerFocus = customerImpactPhrases.some((phrase) =>
     allTraineeText.includes(phrase)
   );
-  const customerImpactBonus = hasCustomerFocus ? 5 : 0;
+  if (hasCustomerFocus) discovery = Math.min(20, discovery + 5);
 
-  // --- TOTAL SCORE ---
-  let totalScore = listening + discovery + empathy + otelAssumptions + guardrails + customerImpactBonus;
+  // --- QUALIFICATION (0-20) — coarse fallback, no keyword signal ---
+  // Derived from discovery depth plus whether a next-step outcome was actually reached
+  // (a plausibly-qualified conversation). Floored so it is never blank. Precision is the
+  // judge's job; this only keeps a completed session from going unscored.
+  const resolvedOutcome = detectedOutcome !== "UNKNOWN";
+  let qualification = 8; // floor
+  if (discovery >= 15) qualification += 6;
+  else if (discovery >= 10) qualification += 4;
+  else if (discovery >= 5) qualification += 2;
+  if (resolvedOutcome) qualification += 4;
+  qualification = Math.min(20, qualification);
 
-  // Boost score for successful outcomes
-  if (detectedOutcome === "SELF_SERVICE_READY" || detectedOutcome === "MQL_READY" || detectedOutcome === "DEMO_READY") {
-    totalScore += 10; // Success bonus
-  } else if (detectedOutcome === "DEFERRED_INTEREST") {
-    totalScore += 5; // Smaller bonus for respectful close
+  // --- HANDOFF (0-20) — derived from the detected outcome type ---
+  // Outcome quality now lives here (and only here). A resolved next step scores high; a clean
+  // deferral/exit still scores well; no detected next step floors at 6.
+  let handoff: number;
+  switch (detectedOutcome) {
+    case "MQL_READY":
+    case "DEMO_READY":
+    case "SELF_SERVICE_READY":
+      handoff = 16; // earned next step
+      break;
+    case "DEFERRED_INTEREST":
+      handoff = 14; // respectful deferral
+      break;
+    case "POLITE_EXIT":
+      handoff = 12; // clean exit
+      break;
+    default:
+      handoff = 6; // UNKNOWN — no detected next step (floor, never blank)
   }
 
-  // Slight penalty for inefficiency (but don't penalize successful outcomes too much)
-  if (!isEfficient && detectedOutcome === "UNKNOWN") {
-    totalScore -= 5;
-  }
+  // --- TOTAL SCORE (normalized over six 0-20 dimensions) ---
+  const sum = discovery + listening + empathy + qualification + guardrails + handoff;
+  let normalized = Math.round((sum / 120) * 100);
 
   // Severe confusion penalty: attendee was confused 3+ times → trainee wasn't communicating well
   if (confusionCount >= 3) {
-    totalScore -= 5;
+    normalized -= 5;
   }
 
-  const score = Math.min(100, Math.max(0, totalScore));
+  const score = Math.min(100, Math.max(0, normalized));
 
-  // --- GRADE (OUTCOME-AWARE) ---
-  let grade: "A" | "B" | "C" | "D" | "F";
-
-  // Success outcomes have strict minimum grades
-  if (detectedOutcome === "DEMO_READY") {
-    // DEMO_READY: Earned explicit demo interest (high-value outcome)
-    if (score >= 90 || (isEfficient && score >= 85)) grade = "A";
-    else if (score >= 75) grade = "B";
-    else grade = "C"; // Minimum C for earning demo interest
-  } else if (detectedOutcome === "SELF_SERVICE_READY") {
-    // SELF_SERVICE_READY: Clean self-service close (success outcome)
-    // Tightened grading logic (Fix 3):
-    // - B- minimum if: no violations + clear pain discovered + respectful close
-    // - C only if: missed pain OR rushed close OR guardrail issues
-    const hasClearPain = discovery >= 12; // At least 12/20 in discovery
-    const hasRespectfulClose = guardrails >= 15; // At least 15/20 in guardrails
-    const noViolations = session.violations.length === 0;
-
-    if (score >= 90 || (isEfficient && score >= 85)) {
-      grade = "A";
-    } else if (noViolations && hasClearPain && hasRespectfulClose) {
-      // B- minimum for clean self-service success
-      grade = score >= 80 ? "B" : "B"; // B floor
-    } else {
-      // C if missed pain, rushed close, or guardrail issues
-      grade = "C";
-    }
-  } else if (detectedOutcome === "MQL_READY") {
-    // MQL_READY: Hot lead secured (highest-value outcome)
-    // MINIMUM GRADE: B (can never be below B)
-    if (score >= 90 || (isEfficient && score >= 85)) grade = "A";
-    else grade = "B"; // Floor is B for MQL success
-  } else if (detectedOutcome === "DEFERRED_INTEREST") {
-    // DEFERRED_INTEREST: Respectful close, timing not right
-    if (score >= 85 && isEfficient) grade = "B";
-    else if (score >= 75) grade = "C";
-    else if (score >= 65) grade = "D";
-    else grade = "F"; // Can still get F if many violations
-  } else {
-    // Standard grading for POLITE_EXIT and UNKNOWN
-    if (score >= 90) grade = "A";
-    else if (score >= 80) grade = "B";
-    else if (score >= 70) grade = "C";
-    else if (score >= 60) grade = "D";
-    else grade = "F";
-  }
+  // Grade from the normalized total — same thresholds as the judge path, no outcome floor.
+  const grade = deriveGrade(score);
 
   // --- HIGHLIGHTS ---
   const highlights: string[] = [];
-  if (detectedOutcome === "SELF_SERVICE_READY")
-    highlights.push("Closed with appropriate self-service path (SUCCESS)");
-  if (detectedOutcome === "MQL_READY")
-    highlights.push("Secured MQL/follow-up opportunity (SUCCESS)");
-  if (detectedOutcome === "DEMO_READY")
-    highlights.push("Earned genuine demo interest (SUCCESS)");
-  if (detectedOutcome === "DEFERRED_INTEREST")
-    highlights.push("Respectful close with deferred interest (POSITIVE)");
   if (listening >= 15)
     highlights.push("Strong active listening with reflection phrases");
   if (discovery >= 15)
     highlights.push("Good use of open-ended discovery questions");
   if (empathy >= 15) highlights.push("Showed empathy and validation");
-  if (otelAssumptions >= 18)
-    highlights.push("Avoided making OTel assumptions");
+  if (qualification >= 15)
+    highlights.push("Read the opportunity and gauged fit");
   if (guardrails >= 18) highlights.push("Maintained keyword discipline");
+  if (handoff >= 15) highlights.push("Secured an appropriate next step");
   if (hasCustomerFocus)
     highlights.push("Framed conversation around customer impact");
   // Count unique states visited (including current state)
@@ -408,10 +384,12 @@ export function heuristicScore(
     mistakes.push("Too few discovery questions - mostly statements");
   if (empathy < 10)
     mistakes.push("Missed opportunities to validate and show empathy");
-  if (otelAssumptions < 10)
-    mistakes.push("Made assumptions about OTel familiarity");
+  if (qualification < 10)
+    mistakes.push("Never established whether this was a real opportunity");
   if (guardrails < 15)
     mistakes.push("Used banned keywords or pitched too early");
+  if (handoff < 10)
+    mistakes.push("No clear next step or handoff secured");
   if (session.currentState === "ICEBREAKER")
     mistakes.push("Conversation stalled in ICEBREAKER state");
   if (session.violations.length > 0) {
@@ -431,11 +409,12 @@ export function heuristicScore(
     score,
     grade,
     breakdown: {
-      listening,
       discovery,
+      listening,
       empathy,
-      otel_assumptions: otelAssumptions,
+      qualification,
       guardrails,
+      handoff,
     },
     highlights: finalHighlights,
     mistakes: finalMistakes,

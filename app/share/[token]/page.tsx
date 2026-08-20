@@ -13,11 +13,12 @@ interface ScoreRecord {
   score: number;
   grade: "A" | "B" | "C" | "D" | "F";
   breakdown: {
-    listening: number;
     discovery: number;
+    listening: number;
     empathy: number;
-    otel_assumptions: number;
+    qualification: number;
     guardrails: number;
+    handoff: number;
   };
   highlights: string[];
   mistakes: string[];
@@ -157,9 +158,17 @@ export default function ShareScorePage() {
           </div>
           <div className="space-y-3">
             {Object.entries(scoreRecord.breakdown).map(([key, value]) => {
-              const label = key
-                .replace(/_/g, " ")
-                .replace(/\b\w/g, (c) => c.toUpperCase());
+              // Display names that don't fall out of the key nicely; every other key
+              // (including old five-key records) keeps the Title-Case derivation.
+              const LABELS: Record<string, string> = {
+                qualification: "Qualification & Fit",
+                handoff: "Next-Step / Handoff",
+              };
+              const label =
+                LABELS[key] ??
+                key
+                  .replace(/_/g, " ")
+                  .replace(/\b\w/g, (c) => c.toUpperCase());
               const percentage = (value / 20) * 100;
               const ev = scoreRecord.evidence?.find((e) => e.dimension === key);
               return (
