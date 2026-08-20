@@ -86,13 +86,23 @@ export async function scoreSession(
     const judge = await judgeSession(session);
     const mapped = judgeResultToScore(judge, session.detectedOutcome?.type ?? null);
 
+    // Highlights and mistakes come ONLY from the judge here - never fall back to the
+    // heuristic scorer's, whose separate logic can contradict the judge (e.g. the heuristic
+    // "Avoided making OTel assumptions" appearing while the judge scored OTel 0/20 for never
+    // asking). A strong dimension is >= 4; if none reached that, the best genuine positives
+    // (>= 3, "generally followed up") are surfaced as relative strengths rather than inventing
+    // praise. A truly weak session simply shows no "What You Did Well" items.
     const ranked = SCORING_DIMENSIONS.map((d) => ({ d, s: judge[d].score }));
-    const highlights = ranked
-      .filter((r) => r.s >= 4)
+    const strong = ranked.filter((r) => r.s >= 4);
+    const relativeStrengths = strong.length
+      ? strong
+      : ranked.filter((r) => r.s >= 3).sort((a, b) => b.s - a.s).slice(0, 2);
+    const highlights = relativeStrengths
       .map((r) => `${label(r.d)}: ${judge[r.d].rationale}`)
       .slice(0, 6);
     const mistakes = ranked
       .filter((r) => r.s <= 2)
+      .sort((a, b) => a.s - b.s)
       .map((r) => `${label(r.d)}: ${judge[r.d].rationale}`)
       .slice(0, 6);
 
@@ -101,8 +111,8 @@ export async function scoreSession(
       score: mapped.score,
       grade: deriveGrade(mapped.score),
       breakdown: mapped.breakdown,
-      highlights: highlights.length ? highlights : base.highlights,
-      mistakes: mistakes.length ? mistakes : base.mistakes,
+      highlights,
+      mistakes,
       evidence: mapped.evidence,
       scoringMethod: "judge",
       completedAt: now,
