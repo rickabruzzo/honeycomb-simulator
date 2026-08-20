@@ -43,6 +43,9 @@ yarn-error.log*
 # role-attributes may be paraphrased into code, but the source files never get committed.
 /docs/sources/
 
+# design canvas working files (mockups live as a hosted artifact, not in the repo)
+/design-work/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
