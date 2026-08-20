@@ -26,7 +26,7 @@ function HoneycombSimulator() {
   const [copied, setCopied] = useState(false);
 
   // Enrichment status
-  const [enrichmentProvider, setEnrichmentProvider] = useState<"openai" | "mock" | null>(null);
+  const [enrichmentProvider, setEnrichmentProvider] = useState<"openai" | "anthropic" | "mock" | null>(null);
   const [enrichmentStatus, setEnrichmentStatus] = useState<"fresh" | "cached" | "none">("none");
 
   const didLoadBootstrap = useRef(false);
