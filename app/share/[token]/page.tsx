@@ -22,6 +22,8 @@ interface ScoreRecord {
   highlights: string[];
   mistakes: string[];
   violations: string[];
+  evidence?: { dimension: string; quote: string; comment: string }[];
+  scoringMethod?: "judge" | "heuristic";
   createdAt: string;
   completedAt: string;
   inviteToken?: string | null;
@@ -141,15 +143,25 @@ export default function ShareScorePage() {
 
         {/* Breakdown */}
         <div className="rounded-lg border border-white/15 bg-white/7 p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <TrendingUp size={20} /> Score Breakdown
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <TrendingUp size={20} /> Score Breakdown
+            </h2>
+            {scoreRecord.scoringMethod && (
+              <span className="text-[11px] text-gray-500 uppercase tracking-wide">
+                {scoreRecord.scoringMethod === "judge"
+                  ? "AI-evaluated"
+                  : "Auto-scored"}
+              </span>
+            )}
+          </div>
           <div className="space-y-3">
             {Object.entries(scoreRecord.breakdown).map(([key, value]) => {
               const label = key
                 .replace(/_/g, " ")
                 .replace(/\b\w/g, (c) => c.toUpperCase());
               const percentage = (value / 20) * 100;
+              const ev = scoreRecord.evidence?.find((e) => e.dimension === key);
               return (
                 <div key={key}>
                   <div className="flex items-center justify-between text-sm mb-1">
@@ -164,6 +176,18 @@ export default function ShareScorePage() {
                       style={{ width: `${percentage}%` }}
                     />
                   </div>
+                  {ev && (ev.comment || ev.quote) && (
+                    <div className="mt-2 mb-1 pl-3 border-l-2 border-white/15">
+                      {ev.comment && (
+                        <p className="text-xs text-gray-400">{ev.comment}</p>
+                      )}
+                      {ev.quote && (
+                        <p className="text-xs text-gray-300 italic mt-0.5">
+                          &ldquo;{ev.quote}&rdquo;
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
