@@ -27,6 +27,7 @@ import type { EnrichmentInput } from "@/lib/llm/enrichmentTypes";
 import { composeAttendeeSystemPrompt } from "@/lib/llm/promptComposer";
 import { getRevealBudget } from "@/lib/attendee/revealBudget";
 import { getMomentumBand } from "@/lib/attendee/momentumBands";
+import { computeRevealed } from "@/lib/attendee/trainingWheels";
 import type { PromptRuntimeContext } from "@/lib/llm/promptBundleTypes";
 import { getInviteForSession } from "@/lib/invites";
 import { saveScore } from "@/lib/scoreStore";
@@ -714,6 +715,8 @@ export async function POST(
           detectedOutcome: outcome !== "UNKNOWN" ? outcome : undefined,
           endPrompt, // Completion CTA if outcome reached
           shouldSuggestEnd: endPrompt !== null,
+          // Training-wheels: refreshed earned-attribute reveal for this turn (null when off).
+          revealed: computeRevealed(session),
         });
       } catch (error) {
         console.error("Message error:", error);

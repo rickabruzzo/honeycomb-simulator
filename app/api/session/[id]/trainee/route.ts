@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/storage";
+import { computeRevealed } from "@/lib/attendee/trainingWheels";
 
 /**
  * Trainee-safe session endpoint that redacts kickoff.attendeeProfile
@@ -33,5 +34,8 @@ export async function GET(req: Request, ctx: any) {
     active: session.active,
     kickoff: redactedKickoff,
     startTime: session.startTime,
+    // Training-wheels: attributes the trainee has earned visibility into (null when off).
+    trainingWheels: Boolean(session.trainingWheels),
+    revealed: computeRevealed(session),
   });
 }

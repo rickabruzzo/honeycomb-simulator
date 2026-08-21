@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Send, Square } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { BrandButton } from "../../../components/ui/BrandButton";
+import type { RevealedAttributes } from "../../../lib/attendee/trainingWheels";
 
 interface Message {
   id: string;
@@ -35,6 +36,8 @@ export default function TraineePracticePage() {
   const [error, setError] = useState<string | null>(null);
   const [conferenceContext, setConferenceContext] = useState("");
   const [violations, setViolations] = useState<string[]>([]);
+  const [trainingWheels, setTrainingWheels] = useState(false);
+  const [revealed, setRevealed] = useState<RevealedAttributes | null>(null);
   const [endPrompt, setEndPrompt] = useState<{
     outcome: string;
     actionLabel: string;
@@ -126,6 +129,8 @@ export default function TraineePracticePage() {
         setMessages(sessionData.transcript || []);
         setCurrentState(sessionData.currentState || "ICEBREAKER");
         setViolations(sessionData.violations || []);
+        setTrainingWheels(Boolean(sessionData.trainingWheels));
+        setRevealed(sessionData.revealed ?? null);
 
         if (sessionData.kickoff?.conferenceContext) {
           setConferenceContext(sessionData.kickoff.conferenceContext);
@@ -179,6 +184,7 @@ export default function TraineePracticePage() {
       setMessages(newMessages);
       setCurrentState(data.currentState || currentState);
       setViolations(data.violations || []);
+      if (data.revealed !== undefined) setRevealed(data.revealed);
 
       // Handle completion CTA
       if (data.endPrompt) {
@@ -351,6 +357,53 @@ export default function TraineePracticePage() {
             )}
           </div>
         </div>
+
+        {/* Training-wheels reveal panel */}
+        {trainingWheels && (
+          <div className="rounded-lg border p-4 mb-4" style={{ borderColor: "rgba(255,176,0,0.3)", background: "rgba(255,176,0,0.06)" }}>
+            <div className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: "#ffb000" }}>
+              Training wheels · what you&apos;ve uncovered
+            </div>
+            {(() => {
+              const hasAny =
+                revealed &&
+                (revealed.role || (revealed.pains && revealed.pains.length) || revealed.posture || revealed.tooling || revealed.otel);
+              if (!hasAny) {
+                return (
+                  <p className="text-sm text-gray-400">
+                    Nothing yet — keep asking about their role and what&apos;s slowing them down. Details unlock as you earn their trust.
+                  </p>
+                );
+              }
+              return (
+                <div className="flex flex-col gap-1.5 text-sm">
+                  {revealed?.role && (
+                    <div><span className="text-gray-400">Role:</span> <span className="text-gray-100">{revealed.role}</span></div>
+                  )}
+                  {revealed?.pains && revealed.pains.length > 0 && (
+                    <div>
+                      <span className="text-gray-400">Top frustrations:</span>
+                      <ul className="mt-1 space-y-1">
+                        {revealed.pains.map((p, i) => (
+                          <li key={i} className="text-gray-100 flex gap-2"><span style={{ color: "#ffb000" }}>•</span>{p}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {revealed?.posture && (
+                    <div><span className="text-gray-400">Mood:</span> <span className="text-gray-100">{revealed.posture}</span></div>
+                  )}
+                  {revealed?.tooling && (
+                    <div><span className="text-gray-400">Tooling lean:</span> <span className="text-gray-100">{revealed.tooling}</span></div>
+                  )}
+                  {revealed?.otel && (
+                    <div><span className="text-gray-400">OpenTelemetry:</span> <span className="text-gray-100">{revealed.otel}</span></div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         {/* Chat panel - scrollable */}
         <div className="flex-1 overflow-y-auto rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
