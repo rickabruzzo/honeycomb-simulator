@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Suspense, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { BrandButton } from "../components/ui/BrandButton";
 import type { Persona } from "../lib/scenarioTypes";
@@ -199,17 +200,14 @@ function HoneycombSimulator() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div
-            className="flex items-center justify-center rounded-lg shrink-0"
-            style={{ width: 40, height: 40, background: "rgba(2,152,236,0.14)" }}
-          >
-            <svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true">
-              <path d="M11 6 L18 10 L18 18 L11 22 L4 18 L4 10 Z" fill="#F96E10" />
-              <path d="M19 2 L26 6 L26 14 L19 18 L12 14 L12 6 Z" fill="#64BA00" />
-              <path d="M27 6 L34 10 L34 18 L27 22 L20 18 L20 10 Z" fill="#0298EC" />
-              <path d="M19 18 L26 22 L26 30 L19 34 L12 30 L12 22 Z" fill="#FFB000" />
-            </svg>
-          </div>
+          <Image
+            src="/brand/2021-HC-Logomark-White-RGB.svg"
+            alt="Honeycomb"
+            width={38}
+            height={36}
+            className="shrink-0"
+            priority
+          />
           <div>
             <h1 className="text-2xl font-semibold">Scenario Builder</h1>
             <p className="text-white/70 text-sm">
@@ -298,19 +296,29 @@ function HoneycombSimulator() {
             Persona *
             {dataRefreshing && <span className="ml-2 text-xs text-gray-500">(Refreshing...)</span>}
           </label>
-          <select
-            value={selectedPersonaId}
-            onChange={(e) => setSelectedPersonaId(e.target.value)}
-            disabled={dataLoading}
-            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <option value="">{dataLoading ? "Loading personas..." : "Select a persona..."}</option>
-            {personas.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          {dataLoading ? (
+            <div className="text-sm text-gray-500">Loading personas...</div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {personas.map((p) => {
+                const active = selectedPersonaId === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setSelectedPersonaId(p.id)}
+                    className={`px-3 py-2 rounded-full text-sm font-medium transition border ${
+                      active
+                        ? "bg-[#0278cd] border-[#0298ec] text-white"
+                        : "bg-white/5 border-white/15 text-gray-200 hover:bg-white/10"
+                    }`}
+                  >
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {selectedPersonaId && (
             <div className="text-xs text-gray-400 space-y-1 pl-2 mt-3">

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Plus, Save, Archive, ExternalLink } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
@@ -392,17 +393,14 @@ export default function ScenarioEditorPage() {
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div
-          className="flex items-center justify-center rounded-lg shrink-0"
-          style={{ width: 40, height: 40, background: "rgba(2,152,236,0.14)" }}
-        >
-          <svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true">
-            <path d="M11 6 L18 10 L18 18 L11 22 L4 18 L4 10 Z" fill="#F96E10" />
-            <path d="M19 2 L26 6 L26 14 L19 18 L12 14 L12 6 Z" fill="#64BA00" />
-            <path d="M27 6 L34 10 L34 18 L27 22 L20 18 L20 10 Z" fill="#0298EC" />
-            <path d="M19 18 L26 22 L26 30 L19 34 L12 30 L12 22 Z" fill="#FFB000" />
-          </svg>
-        </div>
+        <Image
+          src="/brand/2021-HC-Logomark-White-RGB.svg"
+          alt="Honeycomb"
+          width={38}
+          height={36}
+          className="shrink-0"
+          priority
+        />
         <div>
           <h1 className="text-2xl font-semibold">Scenario Editor</h1>
           <p className="text-white/70 text-sm">
