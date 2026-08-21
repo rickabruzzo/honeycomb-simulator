@@ -20,19 +20,23 @@ function formatDate(isoString: string): string {
   });
 }
 
+// Honeycomb-motif grade badge: a brand-colored hexagon (lime/pacific/honey/tango/red).
 function GradeBadge({ grade }: { grade: string }) {
-  const styles = {
-    A: "bg-green-500/15 text-green-200 border border-green-400/20",
-    B: "bg-blue-500/15 text-blue-200 border border-blue-400/20",
-    C: "bg-yellow-500/15 text-yellow-200 border border-yellow-400/20",
-    D: "bg-orange-500/15 text-orange-200 border border-orange-400/20",
-    F: "bg-red-500/15 text-red-200 border border-red-400/20",
-  };
-
-  const style = styles[grade as keyof typeof styles] || styles.F;
-
+  const gradeHex =
+    { A: "#64ba00", B: "#0298ec", C: "#ffb000", D: "#f96e10", F: "#e65b53" }[
+      grade as "A" | "B" | "C" | "D" | "F"
+    ] ?? "#e65b53";
   return (
-    <span className={`px-2 py-1 rounded text-sm font-semibold ${style}`}>
+    <span
+      className="inline-flex items-center justify-center font-display font-bold text-xs"
+      style={{
+        width: 26,
+        height: 29,
+        clipPath: "polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)",
+        background: gradeHex,
+        color: grade === "C" ? "#25303e" : "#ffffff",
+      }}
+    >
       {grade}
     </span>
   );

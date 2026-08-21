@@ -364,10 +364,10 @@ export default function TraineePracticePage() {
                 const isTrainee = m.type === "trainee";
                 const isAttendee = m.type === "attendee";
                 const bubble = isTrainee
-                  ? "bg-violet-500/40 border border-violet-400/20 ml-auto"
+                  ? "bg-[#0278cd] text-white ml-auto"
                   : isAttendee
-                    ? "bg-white/10 border border-white/10"
-                    : "bg-sky-500/20 border border-sky-400/20";
+                    ? "bg-white/[0.06] border border-white/10"
+                    : "bg-[#51368d]/25 border border-[#51368d]/40";
 
                 const label = isTrainee ? "You" : isAttendee ? "Attendee" : "System";
 
