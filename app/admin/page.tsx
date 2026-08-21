@@ -8,13 +8,14 @@ import type { Trainee } from "../../lib/traineeStore";
 import { ExternalLink, Copy, Eye } from "lucide-react";
 
 function StatusBadge({ status }: { status: AdminInviteRow["status"] }) {
+  // Brand status pills: neutral / Pacific in-progress / Lime completed.
   const styles = {
     NOT_STARTED:
-      "bg-white/10 text-white/70 border border-white/10 px-2 py-1 rounded text-xs font-medium",
+      "bg-white/[0.06] text-white/70 border border-white/15 px-2.5 py-1 rounded-full text-xs font-medium",
     IN_PROGRESS:
-      "bg-sky-500/15 text-sky-200 border border-sky-400/20 px-2 py-1 rounded text-xs font-medium",
+      "bg-[#0298ec]/15 text-[#7cc6f2] border border-[#0298ec]/35 px-2.5 py-1 rounded-full text-xs font-medium",
     COMPLETED:
-      "bg-emerald-500/15 text-emerald-200 border border-emerald-400/20 px-2 py-1 rounded text-xs font-medium",
+      "bg-[#64ba00]/15 text-[#9ede5a] border border-[#64ba00]/35 px-2.5 py-1 rounded-full text-xs font-medium",
   };
 
   const labels = {

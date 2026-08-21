@@ -286,9 +286,9 @@ export function InsightsContent() {
                             trainee.improvement === null
                               ? "text-gray-400"
                               : trainee.improvement > 0
-                                ? "text-green-400"
+                                ? "text-[#64ba00]"
                                 : trainee.improvement < 0
-                                  ? "text-red-400"
+                                  ? "text-[#e65b53]"
                                   : "text-gray-400"
                           }`}
                         >
