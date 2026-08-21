@@ -246,7 +246,18 @@ export function LeaderboardContent() {
                         <GradeBadge grade={entry.grade} />
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-300">
-                        {entry.traineeNameShort || "—"}
+                        <span className="inline-flex items-center gap-2">
+                          {entry.traineeNameShort || "—"}
+                          {entry.trainingWheels && (
+                            <span
+                              className="text-[10px] uppercase tracking-wide rounded-full px-2 py-0.5"
+                              style={{ color: "#ffb000", background: "rgba(255,176,0,0.12)", border: "1px solid rgba(255,176,0,0.3)" }}
+                              title="Assisted — run with training wheels"
+                            >
+                              assisted
+                            </span>
+                          )}
+                        </span>
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-300">
                         <div className="max-w-[180px] truncate" title={entry.personaDisplayName || undefined}>

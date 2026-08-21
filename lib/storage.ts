@@ -30,6 +30,8 @@ export interface SessionState {
   };
   startTime: string;
   active: boolean;
+  /** Training-wheels (guided) mode: reveal earned attendee attributes to the trainee. */
+  trainingWheels?: boolean;
   trainerFeedback?: {
     guidance: string;
     applyToScenario?: boolean;

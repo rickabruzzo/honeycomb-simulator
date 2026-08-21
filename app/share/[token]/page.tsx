@@ -25,6 +25,7 @@ interface ScoreRecord {
   violations: string[];
   evidence?: { dimension: string; quote: string; comment: string }[];
   scoringMethod?: "judge" | "heuristic";
+  trainingWheels?: boolean;
   createdAt: string;
   completedAt: string;
   inviteToken?: string | null;
@@ -114,6 +115,16 @@ export default function ShareScorePage() {
           <p className="text-gray-400 text-sm">
             Practice Session
           </p>
+          {scoreRecord.trainingWheels && (
+            <div className="mt-3 flex justify-center">
+              <span
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide rounded-full px-3 py-1"
+                style={{ color: "#ffb000", background: "rgba(255,176,0,0.12)", border: "1px solid rgba(255,176,0,0.35)" }}
+              >
+                Assisted · training wheels
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Grade hero — hexagon badge (Honeycomb motif) */}

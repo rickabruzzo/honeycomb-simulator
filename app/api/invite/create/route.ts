@@ -111,6 +111,10 @@ export async function POST(request: NextRequest) {
         }
 
         const session = result.session;
+        // Training-wheels (guided) mode — persisted on the session so scoring + the trainee
+        // view can honor it.
+        const trainingWheels = Boolean(body.trainingWheels);
+        session.trainingWheels = trainingWheels;
         const token = randomUUID();
         const createdAt = new Date().toISOString();
 
@@ -123,6 +127,7 @@ export async function POST(request: NextRequest) {
           traineeId: resolvedTraineeId,
           traineeName: body.traineeName || `${trainee.firstName} ${trainee.lastName}`,
           createdBy: body.createdBy,
+          trainingWheels,
           // Snapshot fields from session
           personaDisplayName: session.kickoff.personaDisplayName,
           traineeNameShort: session.kickoff.traineeNameShort,

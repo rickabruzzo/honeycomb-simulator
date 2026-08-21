@@ -55,6 +55,8 @@ export interface ScoreRecord {
   evidence: { dimension: string; quote: string; comment: string }[];
   /** Which path produced this score. */
   scoringMethod: "judge" | "heuristic";
+  /** True when the session was run in training-wheels (assisted/guided) mode. */
+  trainingWheels?: boolean;
   createdAt: string;
   completedAt: string;
   // Snapshot fields
@@ -116,6 +118,7 @@ export async function scoreSession(
       mistakes,
       evidence: mapped.evidence,
       scoringMethod: "judge",
+      trainingWheels: session.trainingWheels,
       completedAt: now,
     };
   } catch (err) {
@@ -421,6 +424,7 @@ export function heuristicScore(
     violations: session.violations,
     evidence: [],
     scoringMethod: "heuristic",
+    trainingWheels: session.trainingWheels,
     createdAt: session.startTime,
     completedAt: now,
     // Snapshot fields from session

@@ -11,6 +11,8 @@ export interface InviteRecord {
   revoked?: boolean;
   expiresAt?: string;
   createdBy?: string;
+  /** Training-wheels (guided) mode: attendee attributes progressively reveal to the trainee. */
+  trainingWheels?: boolean;
   // Snapshot fields for session initialization
   personaDisplayName?: string;
   traineeNameShort?: string;

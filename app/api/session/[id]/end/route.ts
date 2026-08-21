@@ -175,6 +175,7 @@ Remember: Listen, discover pain, validate, then align to outcomes.
               // Trainee snapshot from score record
               traineeId: scoreRecord.traineeId || null,
               traineeNameShort: scoreRecord.traineeNameShort || null,
+              trainingWheels: scoreRecord.trainingWheels,
             });
           } catch (e) {
             console.error('Failed to save score:', e);

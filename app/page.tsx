@@ -16,6 +16,7 @@ function HoneycombSimulator() {
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>("");
   const [selectedTraineeId, setSelectedTraineeId] = useState<string>("");
+  const [trainingWheels, setTrainingWheels] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataRefreshing, setDataRefreshing] = useState(false);
 
@@ -165,6 +166,7 @@ function HoneycombSimulator() {
           personaId: selectedPersonaId,
           traineeId: selectedTraineeId,
           traineeName: formatTraineeFull(selectedTrainee),
+          trainingWheels,
         }),
       });
 
@@ -242,6 +244,31 @@ function HoneycombSimulator() {
             {isCreatingInvite ? "Creating..." : "Create Link"}
           </BrandButton>
         </div>
+
+        {/* Training wheels toggle */}
+        <label className="flex items-center gap-3 cursor-pointer select-none pt-1">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={trainingWheels}
+            onClick={() => setTrainingWheels((v) => !v)}
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+              trainingWheels ? "bg-[#0278cd]" : "bg-white/15"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                trainingWheels ? "translate-x-4" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+          <span className="text-sm text-gray-200">
+            Training wheels
+            <span className="text-gray-500">
+              {" "}— reveal the attendee&apos;s details to the trainee as they earn them
+            </span>
+          </span>
+        </label>
 
         {inviteError ? (
           <div className="mt-2 text-sm text-red-300">{inviteError}</div>

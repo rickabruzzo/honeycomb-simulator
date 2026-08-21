@@ -13,6 +13,8 @@ export type LeaderboardEntry = {
   // Trainee snapshot
   traineeId?: string | null;
   traineeNameShort?: string | null;
+  /** True when the session was run in training-wheels (assisted) mode. */
+  trainingWheels?: boolean;
 };
 
 const inMemoryLeaderboard: LeaderboardEntry[] = [];
