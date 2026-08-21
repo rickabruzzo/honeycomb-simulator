@@ -151,21 +151,29 @@ export async function upsertPersona(
     persona.otelFamiliarity ?? "never"
   );
 
+  // Merge existing → incoming so behaviour-driving fields the caller doesn't
+  // resend (painAnchors, isBuyer, questionBank, objectionBank, toolStackOptions)
+  // survive a partial update, then normalize the base fields on top. A fixed
+  // whitelist here previously dropped those fields entirely — the stored persona
+  // lost its pain inventory, which silently disabled the attendee prompt's
+  // painPoints injection and the training-wheels pain reveal.
   const fullPersona: Persona = {
+    ...(existing ?? {}),
+    ...persona,
     id,
     name: persona.name,
-    personaType: persona.personaType ?? "Unknown",
-    modifiers: persona.modifiers ?? [],
-    emotionalPosture: persona.emotionalPosture ?? "Neutral",
-    toolingBias: persona.toolingBias ?? "Various tools",
-    otelFamiliarity: persona.otelFamiliarity ?? "never",
-    sources: persona.sources,
+    personaType: persona.personaType ?? existing?.personaType ?? "Unknown",
+    modifiers: persona.modifiers ?? existing?.modifiers ?? [],
+    emotionalPosture: persona.emotionalPosture ?? existing?.emotionalPosture ?? "Neutral",
+    toolingBias: persona.toolingBias ?? existing?.toolingBias ?? "Various tools",
+    otelFamiliarity: persona.otelFamiliarity ?? existing?.otelFamiliarity ?? "never",
+    sources: persona.sources ?? existing?.sources,
     behaviorBrief,
     displaySubtitle,
     createdAt: existing?.createdAt ?? now,
-    createdBy: persona.createdBy ?? "admin",
+    createdBy: persona.createdBy ?? existing?.createdBy ?? "admin",
     updatedAt: isUpdate ? now : undefined,
-    isArchived: persona.isArchived ?? false,
+    isArchived: persona.isArchived ?? existing?.isArchived ?? false,
   };
 
   if (useKv()) {
