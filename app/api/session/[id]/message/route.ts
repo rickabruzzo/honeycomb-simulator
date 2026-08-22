@@ -25,16 +25,32 @@ import { getEnrichment, saveEnrichment } from "@/lib/llm/enrichmentStore";
 import { getEnrichmentProvider } from "@/lib/llm/provider";
 import type { EnrichmentInput } from "@/lib/llm/enrichmentTypes";
 import { composeAttendeeSystemPrompt } from "@/lib/llm/promptComposer";
+import { getRevealBudget } from "@/lib/attendee/revealBudget";
+import { getMomentumBand } from "@/lib/attendee/momentumBands";
+import { computeRevealed } from "@/lib/attendee/trainingWheels";
 import type { PromptRuntimeContext } from "@/lib/llm/promptBundleTypes";
 import { getInviteForSession } from "@/lib/invites";
-import { scoreSession } from "@/lib/scoring";
 import { saveScore } from "@/lib/scoreStore";
 import { addToLeaderboardIndex } from "@/lib/leaderboardStore";
 import { getOutcomeAction, shouldShowCompletionCTA } from "@/lib/outcomeActions";
 import { generateAttendeeReply } from "@/lib/attendee/generateAttendeeReply";
 import { postProcessAttendeeText } from "@/lib/attendee/postProcess";
+import {
+  budgetToPostProcessOptions,
+} from "@/lib/attendee/lengthBudget";
+import {
+  directiveToPromptHint,
+  recordDirectorMove,
+  type DirectorDirective,
+} from "@/lib/attendee/conversationDirector";
 import { detectCommittedOutcome } from "@/lib/outcomeCommitment";
 import { isEvaluationQuestion } from "@/lib/outcomeEvaluation";
+import { updateMomentum } from "@/lib/attendee/momentumModel";
+import {
+  detectOutcomeFromTranscript,
+  outcomeSignalToCommittedOutcome,
+} from "@/lib/attendee/outcomeSignals";
+import { shouldShowCTA } from "@/lib/attendee/ctaGating";
 
 /**
  * Simple canned responses keyed by simulator state.
@@ -98,35 +114,32 @@ export async function POST(
           );
         }
 
-        if (session.kickoff.conferenceId) {
-          span.setAttribute("conference_id", session.kickoff.conferenceId);
-        }
         if (session.kickoff.personaId) {
           span.setAttribute("persona_id", session.kickoff.personaId);
         }
         if (session.kickoff.traineeId) {
           span.setAttribute("trainee_id", session.kickoff.traineeId);
         }
-        span.setAttribute("difficulty", session.kickoff.difficulty);
         span.setAttribute("current_state", session.currentState);
 
         // On-demand enrichment: if missing, try to load from cache or generate
-        if (!session.kickoff.enrichment && session.kickoff.conferenceId && session.kickoff.personaId) {
+        if (!session.kickoff.enrichment && session.kickoff.personaId) {
           try {
+            const cacheKey = `persona:${session.kickoff.personaId}`;
             let enrichment = await getEnrichment(
-              session.kickoff.conferenceId,
+              cacheKey,
               session.kickoff.personaId
             );
 
             // If not in cache, generate on-demand (this CAN block message, but invite was fast)
-            if (!enrichment && session.kickoff.conferenceContext && session.kickoff.attendeeProfile) {
+            if (!enrichment && session.kickoff.attendeeProfile) {
               console.log("[message] Generating enrichment on-demand for session:", id);
 
               const provider = getEnrichmentProvider();
               const enrichmentInput: EnrichmentInput = {
-                conferenceId: session.kickoff.conferenceId,
+                conferenceId: cacheKey,
                 personaId: session.kickoff.personaId,
-                conferenceContext: session.kickoff.conferenceContext,
+                conferenceContext: "Tech conference booth",
                 attendeeProfile: session.kickoff.attendeeProfile,
               };
 
@@ -169,12 +182,23 @@ export async function POST(
 
         span.setAttribute("message_length", message.length);
 
-        // 1) Add trainee message to transcript
+        // 1) Add trainee message to transcript (with momentum snapshot)
+        const prevMomentumScoreTrainee = session.momentum?.score ?? 0;
+        if (session.momentum) {
+          session.momentum = updateMomentum(session.momentum, {
+            kind: "trainee",
+            text: message,
+          });
+        }
         const traineeMsg = {
           id: randomUUID(),
           type: "trainee" as const,
           text: message,
           timestamp: new Date().toISOString(),
+          ...(session.momentum !== undefined && {
+            momentumScore: session.momentum.score,
+            momentumDelta: session.momentum.score - prevMomentumScoreTrainee,
+          }),
         };
         session.transcript.push(traineeMsg);
 
@@ -189,7 +213,7 @@ export async function POST(
 
         // 3a) Check turn limits
         const traineeMessageCount = session.transcript.filter((m) => m.type === "trainee").length;
-        const turnLimitExceeded = hasExceededTurnLimit(traineeMessageCount, session.kickoff.difficulty);
+        const turnLimitExceeded = hasExceededTurnLimit(traineeMessageCount);
 
         if (turnLimitExceeded) {
           span.setAttribute("turn_limit_exceeded", true);
@@ -241,10 +265,17 @@ export async function POST(
 
         span.setAttribute("conversation_length", conversationHistory.length);
 
-        // 5) Generate attendee response (template-based with LLM fallback)
+        // 5) Generate attendee response (persona-driven with template/LLM fallback)
         let attendeeResponseText: string = "";
         let chatMeta: { provider: string; model?: string } | undefined;
-        let attendeeReplySource: "template" | "llm" = "llm";
+        let attendeeReplySource:
+          | "early_pain_anchor"
+          | "persona_question"
+          | "persona_pain"
+          | "persona_objection"
+          | "template"
+          | "llm"
+          | "banned_phrase_fallback" = "llm";
         let attendeeIntent: string | undefined;
         let attendeeIntentConfidence: number | undefined;
 
@@ -294,21 +325,36 @@ export async function POST(
             }
           }
 
+          const sessionPersona = (session as any).persona as
+            | {
+                behaviorBrief?: string;
+                isBuyer?: boolean;
+                painAnchors?: Array<{ pain: string; priority?: string }>;
+              }
+            | undefined;
+
           const runtimeContext: PromptRuntimeContext = {
-            conference: {
-              name: session.kickoff.conferenceName || "Unknown Conference",
-              themes: session.kickoff.conferenceContext || "General tech topics",
-            },
             persona: {
               title: profileParsed["Persona"] || "Unknown",
               modifiers: profileParsed["Modifiers"] || "None",
               emotionalPosture: profileParsed["Emotional posture"] || "Neutral",
               toolingBias: profileParsed["Tooling bias"] || "None specified",
               otelFamiliarity: profileParsed["OpenTelemetry familiarity"] || "Unknown",
+              // The canonical persona object carries the differentiating material - character
+              // brief and pain inventory. Without this the model saw only the five fields
+              // above, so different personas produced identical pain text.
+              behaviorBrief: sessionPersona?.behaviorBrief,
+              isBuyer: sessionPersona?.isBuyer,
+              painPoints: (sessionPersona?.painAnchors ?? [])
+                .slice()
+                .sort((a, b) =>
+                  a.priority === b.priority ? 0 : a.priority === "primary" ? -1 : 1
+                )
+                .map((anchor) => anchor.pain),
             },
-            difficulty: session.kickoff.difficulty,
             enrichment: session.kickoff.enrichment || null,
             sessionState: session.currentState,
+            momentumBand: getMomentumBand(session.momentum?.score ?? 0),
             trainerGuidance: session.trainerFeedback?.guidance || null,
             turnLimitExceeded,
             selfServiceCuesDetected: selfServiceDetected,
@@ -324,11 +370,26 @@ export async function POST(
           );
 
           span.setAttribute("prompt_bundle_version", composedPrompt.bundleVersion);
+          session.promptBundleVersion = composedPrompt.bundleVersion;
           span.setAttribute("prompt_has_trainer_guidance", composedPrompt.hasTrainerGuidance);
+
+          // Inject conversation director hint when a directive was chosen
+          const currentDirective = (session as any).currentDirective as DirectorDirective | undefined;
+          const directiveHint = currentDirective
+            ? directiveToPromptHint(currentDirective)
+            : null;
+
+          if (currentDirective) {
+            span.setAttribute("director_stage", currentDirective.stage);
+            span.setAttribute("director_move", currentDirective.move);
+            span.setAttribute("director_tone", currentDirective.tone);
+          }
 
           // Prepare chat input
           const chatInput: ChatInput = {
-            systemPrompt: composedPrompt.content,
+            systemPrompt: directiveHint
+              ? `${composedPrompt.content}\n\nNEXT MOVE: ${directiveHint}`
+              : composedPrompt.content,
             conversation: conversationHistory,
             sessionId: session.id,
           };
@@ -352,17 +413,40 @@ export async function POST(
               }
               childSpan.setAttribute("response_length", res.text.length);
 
+              // Track cache hits
+              const isCached = res.cached === true;
+              childSpan.setAttribute("cache_hit", isCached);
+              if (isCached) {
+                childSpan.setAttribute("cache_source", "semantic_cache");
+              }
+
               return res;
             },
             { dep_type: "chat" }
           );
 
-          attendeeResponseText = postProcessAttendeeText(result.text);
+          // Length comes from the phase budget, not the template-sized default:
+          // a two-sentence clip makes venting and war stories impossible to deliver.
+          attendeeResponseText = postProcessAttendeeText(
+            result.text,
+            undefined,
+            budgetToPostProcessOptions(
+              getRevealBudget(
+                session.currentState,
+                getMomentumBand(session.momentum?.score ?? 0)
+              ).lengthBudget
+            )
+          );
           attendeeReplySource = "llm";
           chatMeta = {
             provider: result.provider,
             model: result.model,
           };
+
+          // Record director move after successful LLM generation
+          if (currentDirective) {
+            recordDirectorMove(session, currentDirective.move);
+          }
 
           span.setAttribute("attendee_reply_source", attendeeReplySource);
           span.setAttribute("chat_provider", result.provider);
@@ -402,12 +486,23 @@ export async function POST(
           }
         }
 
-        // 6) Add attendee response to transcript
+        // 6) Add attendee response to transcript (with momentum snapshot)
+        const prevMomentumScoreAttendee = session.momentum?.score ?? 0;
+        if (session.momentum) {
+          session.momentum = updateMomentum(session.momentum, {
+            kind: "attendee",
+            text: attendeeResponseText,
+          });
+        }
         const attendeeMsg = {
           id: randomUUID(),
           type: "attendee" as const,
           text: attendeeResponseText,
           timestamp: new Date().toISOString(),
+          ...(session.momentum !== undefined && {
+            momentumScore: session.momentum.score,
+            momentumDelta: session.momentum.score - prevMomentumScoreAttendee,
+          }),
         };
         session.transcript.push(attendeeMsg);
 
@@ -462,15 +557,15 @@ export async function POST(
         }
 
         // 8) Detect outcome and prepare completion CTA (NO AUTO-END)
-        // Check for outcomes in SOLUTION_FRAMING and OUTCOME states
+        // State-agnostic: scans transcript for explicit outcome signals first,
+        // then falls back to state-machine outcome for telemetry.
         let outcome = "UNKNOWN";
         let endPrompt = null;
 
+        // ── 8a) State-machine outcome (scoring / telemetry, unchanged) ────────
         if (session.currentState === "OUTCOME" || session.currentState === "SOLUTION_FRAMING") {
-          // Use banded outcome resolver if outcomeSeed is available
           if (session.outcomeSeed && session.kickoff.attendeeProfile) {
-            // Build recent transcript for soft demo eligibility
-            const recentTranscript = session.transcript
+            const recentTranscriptText = session.transcript
               .slice(-10)
               .map((m) => m.text)
               .join(" ");
@@ -481,14 +576,13 @@ export async function POST(
               selfServiceDetected,
               deferredInterestDetected,
               attendeeResponseText,
-              recentTranscript,
+              recentTranscriptText,
               session.kickoff.attendeeProfile,
               session.outcomeSeed
             );
 
             outcome = result.outcome;
 
-            // Store decision trace for transparency
             session.decisionTrace = {
               personaBandKey: result.personaBandKey,
               personaWeightsUsed: result.personaWeightsUsed,
@@ -496,10 +590,9 @@ export async function POST(
               sampledOutcome: outcome !== "UNKNOWN" ? outcome : undefined,
               demoEligibilityScore: result.demoEligibilityScore,
               jitteredWeights: result.jitteredWeights,
-              reason: result.reason
+              reason: result.reason,
             };
 
-            // Add telemetry for banded outcomes
             if (result.demoEligibilityScore !== undefined) {
               span.setAttribute("demo_eligibility_score", result.demoEligibilityScore);
             }
@@ -511,7 +604,6 @@ export async function POST(
               span.setAttribute("outcome_reason", result.reason);
             }
           } else {
-            // Fallback to original determineOutcome
             outcome = determineOutcome(
               session.currentState,
               mqlResult,
@@ -523,53 +615,88 @@ export async function POST(
 
           span.setAttribute("outcome_detected", outcome);
           span.setAttribute("outcome_eligible", outcome !== "UNKNOWN");
+        }
 
-          // COMMITMENT GATE: Only show CTA if attendee explicitly committed
-          // Outcome eligibility (above) is used for scoring/telemetry only
-          let committedOutcome = detectCommittedOutcome(attendeeResponseText);
+        // ── 8b) CTA gate — state-agnostic, transcript-driven ─────────────────
+        // Prefer an explicit signal in the last attendee/trainee text first.
+        // If not found there, scan the full recent transcript window.
+        let committedOutcome: string | null = null;
 
-          // EVALUATION QUESTION GATE (Fix 2): Block CTA on mid-funnel questions
-          const isEvaluation = isEvaluationQuestion(attendeeResponseText);
-          if (isEvaluation) {
-            span.setAttribute("evaluation_question_detected", true);
-            committedOutcome = null; // Force block
-          }
+        // 1. Check last attendee response for a commitment phrase
+        const singleMsgCommit = detectCommittedOutcome(attendeeResponseText);
 
-          if (committedOutcome) {
-            span.setAttribute("outcome_committed", committedOutcome);
-            span.setAttribute("commitment_detected", true);
-          }
+        // 2. Scan recent transcript for explicit outcome signals (catches early states)
+        const transcriptSignal = detectOutcomeFromTranscript(session.transcript);
+        const transcriptCommit = outcomeSignalToCommittedOutcome(transcriptSignal);
 
-          // Show CTA ONLY if commitment detected AND not evaluation question
-          if (committedOutcome && shouldShowCompletionCTA(committedOutcome)) {
-            const action = getOutcomeAction(committedOutcome);
+        // 3. Pick the strongest: single-message commit wins; else use transcript scan
+        committedOutcome = singleMsgCommit ?? transcriptCommit;
 
-            // Store pending outcome in session for UI restoration
-            session.pendingOutcome = committedOutcome;
-            session.pendingEndAction = {
-              actionType: action.actionType,
-              actionLabel: action.actionLabel,
-            };
+        // Block CTA on mid-funnel evaluation questions regardless of source
+        const isEvaluation = isEvaluationQuestion(attendeeResponseText);
+        if (isEvaluation) {
+          span.setAttribute("evaluation_question_detected", true);
+          committedOutcome = null;
+        }
 
-            endPrompt = {
-              outcome: committedOutcome,
-              actionLabel: action.actionLabel,
-              actionType: action.actionType,
-              tooltip: action.tooltip,
-            };
+        // 4. Momentum + keyword gate as a secondary path (if no explicit outcome)
+        if (!committedOutcome && shouldShowCTA({
+          outcomeType: transcriptSignal,
+          momentumScore: session.momentum?.score,
+          transcript: session.transcript,
+        })) {
+          // shouldShowCTA already returned true without an outcomeType match,
+          // meaning momentum >= 55 + keyword present — use transcript signal or
+          // fall back to single-message detect on the latest attendee text.
+          committedOutcome = transcriptCommit ?? singleMsgCommit;
+        }
 
-            span.setAttribute("completion_cta_ready", true);
-            span.setAttribute("completion_action", action.actionType);
-          } else if (outcome !== "UNKNOWN") {
-            // Outcome eligible but not committed yet
-            span.setAttribute("completion_cta_ready", false);
-            const blockReason = isEvaluation ? "evaluation_question" : "no_commitment";
-            span.setAttribute("cta_blocked_reason", blockReason);
+        if (committedOutcome) {
+          span.setAttribute("outcome_committed", committedOutcome);
+          span.setAttribute("commitment_detected", true);
+        }
 
-            // Add to decision trace
-            if (session.decisionTrace) {
-              session.decisionTrace.reason = blockReason;
-            }
+        // 5. Persist detected outcome to session (for review visibility)
+        if (transcriptSignal !== "NONE" && !session.detectedOutcome) {
+          const lastSignalMsg = [...session.transcript]
+            .reverse()
+            .find(
+              (m) =>
+                m.type !== "system" &&
+                detectOutcomeFromTranscript([m]) !== "NONE"
+            );
+          session.detectedOutcome = {
+            type: transcriptSignal,
+            detectedAt: new Date().toISOString(),
+            detectedFrom: (lastSignalMsg?.type ?? "attendee") as "attendee" | "trainee",
+          };
+        }
+
+        // 6. Build endPrompt
+        if (committedOutcome && shouldShowCompletionCTA(committedOutcome)) {
+          const action = getOutcomeAction(committedOutcome);
+
+          session.pendingOutcome = committedOutcome;
+          session.pendingEndAction = {
+            actionType: action.actionType,
+            actionLabel: action.actionLabel,
+          };
+
+          endPrompt = {
+            outcome: committedOutcome,
+            actionLabel: action.actionLabel,
+            actionType: action.actionType,
+            tooltip: action.tooltip,
+          };
+
+          span.setAttribute("completion_cta_ready", true);
+          span.setAttribute("completion_action", action.actionType);
+        } else if (outcome !== "UNKNOWN") {
+          span.setAttribute("completion_cta_ready", false);
+          const blockReason = isEvaluation ? "evaluation_question" : "no_commitment";
+          span.setAttribute("cta_blocked_reason", blockReason);
+          if (session.decisionTrace) {
+            session.decisionTrace.reason = blockReason;
           }
         }
 
@@ -584,9 +711,12 @@ export async function POST(
           currentState: session.currentState,
           violations: session.violations,
           chatMeta, // Provider metadata (optional, for debugging)
+          momentum: session.momentum,
           detectedOutcome: outcome !== "UNKNOWN" ? outcome : undefined,
           endPrompt, // Completion CTA if outcome reached
           shouldSuggestEnd: endPrompt !== null,
+          // Training-wheels: refreshed earned-attribute reveal for this turn (null when off).
+          revealed: computeRevealed(session),
         });
       } catch (error) {
         console.error("Message error:", error);

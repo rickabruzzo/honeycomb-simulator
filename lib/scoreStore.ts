@@ -1,16 +1,24 @@
 import { kv } from "@vercel/kv";
 import { ScoreRecord } from "./scoring";
 
-const inMemoryScores = new Map<string, ScoreRecord>();
-const inMemoryScoreIndex: string[] = [];
+import { useKv } from "./kvConfig";
+import { getMemStore } from "./memoryStore";
+
 const MAX_SCORE_INDEX_SIZE = 5000;
+
+// Sessions/invites/scores share the globalThis-backed store in dev so routes running in
+// separate Turbopack module instances see the same data. A module-local Map here meant a
+// score saved by /end was invisible to /share ("Score not found"). Production uses KV.
+function scoreMap(): Map<string, ScoreRecord> {
+  return getMemStore().scores as Map<string, ScoreRecord>;
+}
+function scoreIndex(): string[] {
+  return getMemStore().scoreIndex;
+}
 
 /**
  * KV is configured when Vercel/Upstash env vars are present.
  */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
 
 export async function saveScore(record: ScoreRecord): Promise<void> {
   if (useKv()) {
@@ -25,15 +33,16 @@ export async function saveScore(record: ScoreRecord): Promise<void> {
     return;
   }
 
-  // In-memory fallback
-  inMemoryScores.set(record.token, record);
+  // In-memory fallback (globalThis-backed; shared across Turbopack module instances)
+  const scores = scoreMap();
+  const index = scoreIndex();
+  scores.set(record.token, record);
 
-  // Update in-memory index (newest first)
-  const filtered = inMemoryScoreIndex.filter((token) => token !== record.token);
-  inMemoryScoreIndex.length = 0;
-  inMemoryScoreIndex.push(record.token, ...filtered);
-  if (inMemoryScoreIndex.length > MAX_SCORE_INDEX_SIZE) {
-    inMemoryScoreIndex.length = MAX_SCORE_INDEX_SIZE;
+  const filtered = index.filter((token) => token !== record.token);
+  index.length = 0;
+  index.push(record.token, ...filtered);
+  if (index.length > MAX_SCORE_INDEX_SIZE) {
+    index.length = MAX_SCORE_INDEX_SIZE;
   }
 }
 
@@ -42,7 +51,7 @@ export async function getScore(token: string): Promise<ScoreRecord | null> {
     const result = await kv.get<ScoreRecord>(`score:${token}`);
     return result ?? null;
   }
-  return inMemoryScores.get(token) ?? null;
+  return scoreMap().get(token) ?? null;
 }
 
 /**
@@ -60,7 +69,7 @@ export async function listScores(options?: {
   if (useKv()) {
     tokens = (await kv.get<string[]>("scores:index")) ?? [];
   } else {
-    tokens = [...inMemoryScoreIndex];
+    tokens = [...scoreIndex()];
   }
 
   // Fetch score records

@@ -17,17 +17,9 @@ export async function POST(request: NextRequest) {
         if (body.personaId) {
           span.setAttribute("persona_id", body.personaId);
         }
-        if (body.conferenceId) {
-          span.setAttribute("conference_id", body.conferenceId);
-        }
-        span.setAttribute("difficulty", body.difficulty);
-
         const result = await createSessionWithEnrichment({
           personaId: body.personaId,
-          conferenceId: body.conferenceId,
-          conferenceContext: body.conferenceContext,
           attendeeProfile: body.attendeeProfile,
-          difficulty: body.difficulty,
         });
 
         if (result.error) {

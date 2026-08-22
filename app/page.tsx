@@ -1,9 +1,10 @@
 "use client";
 
 import React, { Suspense, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { BrandButton } from "../components/ui/BrandButton";
-import type { Conference, Persona } from "../lib/scenarioTypes";
+import type { Persona } from "../lib/scenarioTypes";
 import type { Trainee } from "../lib/traineeStore";
 import { formatTraineeFull } from "../lib/traineeStore";
 
@@ -11,13 +12,11 @@ function HoneycombSimulator() {
   const searchParams = useSearchParams();
 
   // Selection state
-  const [conferences, setConferences] = useState<Conference[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [trainees, setTrainees] = useState<Trainee[]>([]);
-  const [selectedConferenceId, setSelectedConferenceId] = useState<string>("");
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>("");
   const [selectedTraineeId, setSelectedTraineeId] = useState<string>("");
-  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
+  const [trainingWheels, setTrainingWheels] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataRefreshing, setDataRefreshing] = useState(false);
 
@@ -29,12 +28,12 @@ function HoneycombSimulator() {
   const [copied, setCopied] = useState(false);
 
   // Enrichment status
-  const [enrichmentProvider, setEnrichmentProvider] = useState<"openai" | "mock" | null>(null);
+  const [enrichmentProvider, setEnrichmentProvider] = useState<"openai" | "anthropic" | "mock" | null>(null);
   const [enrichmentStatus, setEnrichmentStatus] = useState<"fresh" | "cached" | "none">("none");
 
   const didLoadBootstrap = useRef(false);
 
-  // Load conferences, personas, and trainees with caching
+  // Load personas and trainees with caching
   useEffect(() => {
     const CACHE_KEY = "hc_bootstrap_v2";
     const CACHE_TIMESTAMP_KEY = "hc_bootstrap_v2_ts";
@@ -61,7 +60,6 @@ function HoneycombSimulator() {
             const data = JSON.parse(cached);
 
             // Use cached data immediately
-            setConferences(data.conferences || []);
             setPersonas(data.personas || []);
             setTrainees(data.trainees || []);
             setDataLoading(false);
@@ -89,7 +87,6 @@ function HoneycombSimulator() {
         if (res.ok) {
           const data = await res.json();
 
-          setConferences(data.conferences || []);
           setPersonas(data.personas || []);
           setTrainees(data.trainees || []);
 
@@ -134,45 +131,16 @@ function HoneycombSimulator() {
 
   // Handle query params for auto-selection (only if items exist and are not archived)
   useEffect(() => {
-    const conferenceId = searchParams?.get("conferenceId");
     const personaId = searchParams?.get("personaId");
 
-    if (conferenceId && conferences.some((c) => c.id === conferenceId)) {
-      setSelectedConferenceId(conferenceId);
-    }
     if (personaId && personas.some((p) => p.id === personaId)) {
       setSelectedPersonaId(personaId);
     }
-  }, [searchParams, conferences, personas]);
-
-  const buildConferenceContext = (): string => {
-    const conf = conferences.find((c) => c.id === selectedConferenceId);
-    if (!conf) return "";
-
-    return `Conference: ${conf.name}
-Themes: ${conf.themes.join(", ")}
-Seniority mix: ${conf.seniorityMix}
-Observability maturity: ${conf.observabilityMaturity}`.trim();
-  };
-
-  const buildAttendeeProfile = (): string => {
-    const persona = personas.find((p) => p.id === selectedPersonaId);
-    if (!persona) return "";
-
-    return `Persona: ${persona.personaType}
-Modifiers: ${persona.modifiers.join("; ")}
-Emotional posture: ${persona.emotionalPosture}
-Tooling bias: ${persona.toolingBias}
-OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
-  };
-
+  }, [searchParams, personas]);
 
   const handleCreateInvite = async () => {
-    const conferenceContext = buildConferenceContext();
-    const attendeeProfile = buildAttendeeProfile();
-
-    if (!conferenceContext.trim() || !attendeeProfile.trim()) {
-      setInviteError("Please select both conference and persona");
+    if (!selectedPersonaId) {
+      setInviteError("Please select a persona");
       return;
     }
 
@@ -195,13 +163,10 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          conferenceContext,
-          attendeeProfile,
-          difficulty,
-          conferenceId: selectedConferenceId,
           personaId: selectedPersonaId,
           traineeId: selectedTraineeId,
           traineeName: formatTraineeFull(selectedTrainee),
+          trainingWheels,
         }),
       });
 
@@ -236,11 +201,21 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
     <div className="max-w-5xl mx-auto space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Scenario Builder</h1>
-          <p className="text-white/70 text-sm">
-            Create invite links for trainees to practice discovery conversations
-          </p>
+        <div className="flex items-center gap-3">
+          <Image
+            src="/brand/2021-HC-Logomark-White-RGB.svg"
+            alt="Honeycomb"
+            width={38}
+            height={36}
+            className="shrink-0"
+            priority
+          />
+          <div>
+            <h1 className="text-2xl font-semibold">Scenario Builder</h1>
+            <p className="text-white/70 text-sm">
+              Create invite links for trainees to practice discovery conversations
+            </p>
+          </div>
         </div>
 
         {enrichmentProvider && (
@@ -263,12 +238,37 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
           <BrandButton
             onClick={handleCreateInvite}
             disabled={isCreatingInvite}
-            variant="indigo"
+            variant="cobalt"
             className="text-sm"
           >
             {isCreatingInvite ? "Creating..." : "Create Link"}
           </BrandButton>
         </div>
+
+        {/* Training wheels toggle */}
+        <label className="flex items-center gap-3 cursor-pointer select-none pt-1">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={trainingWheels}
+            onClick={() => setTrainingWheels((v) => !v)}
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+              trainingWheels ? "bg-[#0278cd]" : "bg-white/15"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                trainingWheels ? "translate-x-4" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+          <span className="text-sm text-gray-200">
+            Training wheels
+            <span className="text-gray-500">
+              {" "}— reveal the attendee&apos;s details to the trainee as they earn them
+            </span>
+          </span>
+        </label>
 
         {inviteError ? (
           <div className="mt-2 text-sm text-red-300">{inviteError}</div>
@@ -315,72 +315,50 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
         ) : null}
       </div>
 
-      {/* Setup Panel - Selection Only */}
-      <div className="rounded-lg border border-white/15 bg-white/7 p-4 space-y-4 shadow-sm">
-        {/* Conference Selection */}
-        <div>
-          <label className="block text-sm text-gray-300 mb-2 font-medium">
-            Conference
+      {/* Setup Panel - Two Column Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Persona Selection */}
+        <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
+          <label className="block text-sm text-gray-300 mb-3 font-medium">
+            Persona *
             {dataRefreshing && <span className="ml-2 text-xs text-gray-500">(Refreshing...)</span>}
           </label>
-          <select
-            value={selectedConferenceId}
-            onChange={(e) => setSelectedConferenceId(e.target.value)}
-            disabled={dataLoading}
-            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <option value="">{dataLoading ? "Loading conferences..." : "Select a conference..."}</option>
-            {conferences.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-
-          {selectedConferenceId && (
-            <div className="text-xs text-gray-400 space-y-1 pl-2 mt-2">
-              {(() => {
-                const conf = conferences.find((c) => c.id === selectedConferenceId);
-                if (!conf) return null;
+          {dataLoading ? (
+            <div className="text-sm text-gray-500">Loading personas...</div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {personas.map((p) => {
+                const active = selectedPersonaId === p.id;
                 return (
-                  <>
-                    <div>Themes: {conf.themes.join(", ")}</div>
-                    <div>Seniority: {conf.seniorityMix}</div>
-                    <div>Maturity: {conf.observabilityMaturity}</div>
-                  </>
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setSelectedPersonaId(p.id)}
+                    className={`px-3 py-2 rounded-full text-sm font-medium transition border ${
+                      active
+                        ? "bg-[#0278cd] border-[#0298ec] text-white"
+                        : "bg-white/5 border-white/15 text-gray-200 hover:bg-white/10"
+                    }`}
+                  >
+                    {p.name}
+                  </button>
                 );
-              })()}
+              })}
             </div>
           )}
-        </div>
-
-        {/* Persona Selection */}
-        <div>
-          <label className="block text-sm text-gray-300 mb-2 font-medium">Persona</label>
-          <select
-            value={selectedPersonaId}
-            onChange={(e) => setSelectedPersonaId(e.target.value)}
-            disabled={dataLoading}
-            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <option value="">{dataLoading ? "Loading personas..." : "Select a persona..."}</option>
-            {personas.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
 
           {selectedPersonaId && (
-            <div className="text-xs text-gray-400 space-y-1 pl-2 mt-2">
+            <div className="text-xs text-gray-400 space-y-1 pl-2 mt-3">
               {(() => {
                 const persona = personas.find((p) => p.id === selectedPersonaId);
                 if (!persona) return null;
                 return (
                   <>
-                    <div>Type: {persona.personaType}</div>
-                    <div>Posture: {persona.emotionalPosture}</div>
-                    <div>OTel: {persona.otelFamiliarity}</div>
+                    <div><strong>Type:</strong> {persona.personaType}</div>
+                    <div><strong>Modifiers:</strong> {persona.modifiers.join(", ")}</div>
+                    <div><strong>Posture:</strong> {persona.emotionalPosture}</div>
+                    <div><strong>Tooling:</strong> {persona.toolingBias}</div>
+                    <div><strong>OTel:</strong> {persona.otelFamiliarity}</div>
                   </>
                 );
               })()}
@@ -389,8 +367,8 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
         </div>
 
         {/* Trainee Selection */}
-        <div>
-          <label className="block text-sm text-gray-300 mb-2 font-medium">
+        <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
+          <label className="block text-sm text-gray-300 mb-3 font-medium">
             Trainee *
           </label>
           <select
@@ -408,33 +386,20 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`.trim();
           </select>
 
           {selectedTraineeId && (
-            <div className="text-xs text-gray-400 space-y-1 pl-2 mt-2">
-              Required for creating invite links
+            <div className="text-xs text-gray-400 space-y-1 pl-2 mt-3">
+              <div>The trainee will practice a discovery conversation with this persona.</div>
+              <div className="mt-2 text-gray-500">They will not see the persona details above.</div>
             </div>
           )}
-        </div>
-
-        {/* Difficulty */}
-        <div>
-          <label className="block text-sm text-gray-300 mb-2">Difficulty</label>
-          <select
-            value={difficulty}
-            onChange={(e) => setDifficulty(e.target.value as "easy" | "medium" | "hard")}
-            className="w-full bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-white/10 focus:border-white/30"
-          >
-            <option value="easy">Easy - Friendly</option>
-            <option value="medium">Medium - Realistic</option>
-            <option value="hard">Hard - Skeptical</option>
-          </select>
         </div>
       </div>
 
       {/* Info Panel */}
       <div className="rounded-lg border border-white/15 bg-white/7 p-6 shadow-sm text-center">
         <p className="text-gray-300 text-sm">
-          Select a conference, persona, trainee, and difficulty, then create a link.
+          Select a persona and trainee, then create a link.
           <br />
-          The trainee will practice the conversation without seeing the hidden profile.
+          The trainee will practice the conversation without seeing the persona profile.
         </p>
       </div>
     </div>

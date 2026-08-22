@@ -5,7 +5,6 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const range = searchParams.get("range") || "7d"; // Default to 7d
-    const conferenceId = searchParams.get("conferenceId") || undefined;
     const personaId = searchParams.get("personaId") || undefined;
     const traineeId = searchParams.get("traineeId") || undefined;
     const jobTitle = searchParams.get("jobTitle") || undefined;
@@ -40,13 +39,6 @@ export async function GET(request: NextRequest) {
         const entryTime = new Date(entry.createdAt);
         return entryTime >= cutoffTime;
       });
-    }
-
-    // Apply conference filter
-    if (conferenceId) {
-      entries = entries.filter(
-        (entry) => entry.conferenceId === conferenceId
-      );
     }
 
     // Apply persona filter

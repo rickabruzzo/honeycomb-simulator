@@ -4,12 +4,15 @@ import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MessageSquare, Clock, User, Home, Edit3, Save, X, Download } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
+import { getMomentumBand } from "@/lib/attendee/momentumBands";
 
 interface TranscriptMessage {
   id: string;
   type: "system" | "trainee" | "attendee";
   text: string;
   timestamp: string;
+  momentumScore?: number;
+  momentumDelta?: number;
 }
 
 interface TrainerFeedback {
@@ -19,15 +22,23 @@ interface TrainerFeedback {
   updatedBy?: string;
 }
 
+interface MomentumSnapshot {
+  score: number;
+  turn: number;
+  lastUpdatedAt: string;
+}
+
+interface DetectedOutcome {
+  type: "BADGE_SCAN" | "DEMO" | "FLYER";
+  detectedAt: string;
+  detectedFrom: "attendee" | "trainee";
+}
+
 interface ReviewData {
   token: string;
   sessionId: string;
   kickoff: {
-    conferenceContext?: string;
-    difficulty?: string;
     personaId?: string;
-    conferenceId?: string;
-    conferenceName?: string;
     personaDisplayName?: string;
     traineeId?: string;
     traineeNameShort?: string;
@@ -38,6 +49,9 @@ interface ReviewData {
   active: boolean;
   startTime: string;
   trainerFeedback?: TrainerFeedback;
+  momentum?: MomentumSnapshot | null;
+  detectedOutcome?: DetectedOutcome | null;
+  promptBundleVersion?: string | null;
 }
 
 function formatTimestamp(isoString: string): string {
@@ -48,6 +62,73 @@ function formatTimestamp(isoString: string): string {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function MomentumSparkline({ scores }: { scores: number[] }) {
+  const max = Math.max(...scores, 1);
+  const w = 4;
+  const gap = 2;
+  const h = 20;
+  const totalWidth = scores.length * (w + gap) - gap;
+
+  return (
+    <svg
+      width={totalWidth}
+      height={h}
+      aria-label="Momentum trend"
+      className="inline-block align-middle"
+    >
+      {scores.map((s, i) => {
+        const barH = Math.max(2, Math.round((s / max) * h));
+        const x = i * (w + gap);
+        const y = h - barH;
+        const color =
+          i > 0 && s < scores[i - 1]
+            ? "#f87171" // red-400
+            : "#34d399"; // emerald-400
+        return <rect key={i} x={x} y={y} width={w} height={barH} fill={color} rx={1} />;
+      })}
+    </svg>
+  );
+}
+
+function MomentumBadge({
+  score,
+  delta,
+  showBand = false,
+}: {
+  score: number;
+  delta?: number;
+  showBand?: boolean;
+}) {
+  const deltaStr =
+    delta === undefined
+      ? ""
+      : delta > 0
+        ? ` +${delta}`
+        : delta < 0
+          ? ` ${delta}`
+          : " ±0";
+  const deltaColor =
+    delta === undefined || delta === 0
+      ? "text-gray-500"
+      : delta > 0
+        ? "text-emerald-400"
+        : "text-red-400";
+
+  const band = showBand ? getMomentumBand(score) : null;
+
+  return (
+    <span className="text-xs text-gray-500 tabular-nums whitespace-nowrap">
+      ⚡ {score}
+      {delta !== undefined && (
+        <span className={deltaColor}>{deltaStr}</span>
+      )}
+      {band !== null && (
+        <span className="ml-1 text-gray-600">{band}</span>
+      )}
+    </span>
+  );
 }
 
 function MessageBubble({ message }: { message: TranscriptMessage }) {
@@ -68,6 +149,8 @@ function MessageBubble({ message }: { message: TranscriptMessage }) {
       ? "text-gray-400"
       : "text-purple-300";
 
+  const hasMomentum = message.momentumScore !== undefined;
+
   return (
     <div className={`rounded-lg border p-4 ${bgColor}`}>
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -75,9 +158,17 @@ function MessageBubble({ message }: { message: TranscriptMessage }) {
           <User size={14} className={labelColor} />
           <span className={`text-xs font-semibold ${labelColor}`}>{label}</span>
         </div>
-        <span className="text-xs text-gray-500">
-          {formatTimestamp(message.timestamp)}
-        </span>
+        <div className="flex items-center gap-3">
+          {hasMomentum && (
+            <MomentumBadge
+              score={message.momentumScore!}
+              delta={message.momentumDelta}
+            />
+          )}
+          <span className="text-xs text-gray-500">
+            {formatTimestamp(message.timestamp)}
+          </span>
+        </div>
       </div>
       <p className="text-sm text-gray-300 whitespace-pre-wrap">{message.text}</p>
     </div>
@@ -178,14 +269,16 @@ export default function ReviewPage() {
     // Build export data
     const exportData = {
       sessionId: reviewData.sessionId,
-      conference: reviewData.kickoff.conferenceName || reviewData.kickoff.conferenceContext || "Unknown",
       persona: reviewData.kickoff.personaDisplayName || reviewData.kickoff.personaId || "Unknown",
       trainee: reviewData.kickoff.traineeNameShort || reviewData.kickoff.traineeId || "Unknown",
-      difficulty: reviewData.kickoff.difficulty || "Unknown",
       startTime: reviewData.startTime,
       currentState: reviewData.currentState,
       active: reviewData.active,
-      outcome: reviewData.active ? "In Progress" : reviewData.currentState,
+      // Was reporting currentState, so a finished session exported outcome: "OUTCOME" -
+      // the state name, not the result. detectedOutcome carries the actual result.
+      outcome: reviewData.active
+        ? "In Progress"
+        : reviewData.detectedOutcome?.type ?? reviewData.currentState,
       violations: reviewData.violations,
       trainerFeedback: reviewData.trainerFeedback?.guidance || null,
       transcript: reviewData.transcript.map((m) => ({
@@ -193,7 +286,9 @@ export default function ReviewPage() {
         role: m.type === "trainee" ? "Trainee" : m.type === "attendee" ? "Attendee" : "System",
         message: m.text,
       })),
-      promptBundleVersion: "v1.1.0", // TODO: Get from session metadata when available
+      // Was hardcoded to "v1.1.0", which made every export misreport the prompt version -
+      // it read as though a session had run on an old bundle when it had not.
+      promptBundleVersion: reviewData.promptBundleVersion ?? "not recorded",
       exportedAt: new Date().toISOString(),
     };
 
@@ -284,17 +379,6 @@ export default function ReviewPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
-              Conference
-            </p>
-            <p className="text-sm text-gray-300">
-              {reviewData.kickoff.conferenceName ||
-                reviewData.kickoff.conferenceContext ||
-                reviewData.kickoff.conferenceId ||
-                "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
               Persona
             </p>
             <p className="text-sm text-gray-300">
@@ -311,14 +395,6 @@ export default function ReviewPage() {
               {reviewData.kickoff.traineeNameShort ||
                 reviewData.kickoff.traineeId ||
                 "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
-              Difficulty
-            </p>
-            <p className="text-sm text-gray-300 capitalize">
-              {reviewData.kickoff.difficulty || "—"}
             </p>
           </div>
           <div>
@@ -346,6 +422,67 @@ export default function ReviewPage() {
               )}
             </p>
           </div>
+          {reviewData.detectedOutcome != null && (() => {
+            const outcomeLabels: Record<DetectedOutcome["type"], string> = {
+              BADGE_SCAN: "Badge scan / follow-up",
+              DEMO: "Demo request",
+              FLYER: "Docs / free tier",
+            };
+            const outcomeColors: Record<DetectedOutcome["type"], string> = {
+              BADGE_SCAN: "bg-emerald-500/15 text-emerald-200 border-emerald-400/20",
+              DEMO: "bg-sky-500/15 text-sky-200 border-sky-400/20",
+              FLYER: "bg-amber-500/15 text-amber-200 border-amber-400/20",
+            };
+            const o = reviewData.detectedOutcome!;
+            return (
+              <div className="md:col-span-2">
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">
+                  Outcome Signal
+                </p>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-medium border ${outcomeColors[o.type]}`}
+                  >
+                    {outcomeLabels[o.type]}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    from {o.detectedFrom} · {formatTimestamp(o.detectedAt)}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+          {reviewData.momentum != null && (() => {
+            const scores = reviewData.transcript
+              .filter((m) => m.momentumScore !== undefined)
+              .map((m) => m.momentumScore!);
+            const minScore = scores.length > 0 ? Math.min(...scores) : undefined;
+            const maxScore = scores.length > 0 ? Math.max(...scores) : undefined;
+            return (
+              <div className="md:col-span-2">
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">
+                  Momentum
+                </p>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-300 font-mono">
+                    ⚡ {reviewData.momentum.score}
+                    <span className="text-gray-500 text-xs ml-1">/ 100</span>
+                    <span className="text-gray-500 text-xs ml-2 font-sans">
+                      ({getMomentumBand(reviewData.momentum.score)})
+                    </span>
+                  </span>
+                  {minScore !== undefined && maxScore !== undefined && (
+                    <span className="text-xs text-gray-500">
+                      Range: {minScore}–{maxScore}
+                    </span>
+                  )}
+                  {scores.length > 1 && (
+                    <MomentumSparkline scores={scores} />
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

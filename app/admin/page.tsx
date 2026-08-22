@@ -3,18 +3,19 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import type { AdminInviteRow } from "../../lib/adminInvites";
-import type { Conference, Persona } from "../../lib/scenarioTypes";
+import type { Persona } from "../../lib/scenarioTypes";
 import type { Trainee } from "../../lib/traineeStore";
 import { ExternalLink, Copy, Eye } from "lucide-react";
 
 function StatusBadge({ status }: { status: AdminInviteRow["status"] }) {
+  // Brand status pills: neutral / Pacific in-progress / Lime completed.
   const styles = {
     NOT_STARTED:
-      "bg-white/10 text-white/70 border border-white/10 px-2 py-1 rounded text-xs font-medium",
+      "bg-white/[0.06] text-white/70 border border-white/15 px-2.5 py-1 rounded-full text-xs font-medium",
     IN_PROGRESS:
-      "bg-sky-500/15 text-sky-200 border border-sky-400/20 px-2 py-1 rounded text-xs font-medium",
+      "bg-[#0298ec]/15 text-[#7cc6f2] border border-[#0298ec]/35 px-2.5 py-1 rounded-full text-xs font-medium",
     COMPLETED:
-      "bg-emerald-500/15 text-emerald-200 border border-emerald-400/20 px-2 py-1 rounded text-xs font-medium",
+      "bg-[#64ba00]/15 text-[#9ede5a] border border-[#64ba00]/35 px-2.5 py-1 rounded-full text-xs font-medium",
   };
 
   const labels = {
@@ -155,17 +156,14 @@ function CopyTokenButton({ token }: { token: string }) {
 
 export default function AdminPage() {
   const [invites, setInvites] = useState<AdminInviteRow[]>([]);
-  const [conferences, setConferences] = useState<Conference[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Filter state
-  const [filterConferenceId, setFilterConferenceId] = useState<string>("");
   const [filterPersonaId, setFilterPersonaId] = useState<string>("");
   const [filterTraineeId, setFilterTraineeId] = useState<string>("");
-  const [filterDifficulty, setFilterDifficulty] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterTimeRange, setFilterTimeRange] = useState<string>("7d");
 
@@ -173,9 +171,8 @@ export default function AdminPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [invitesRes, conferencesRes, personasRes, traineesRes] = await Promise.all([
+      const [invitesRes, personasRes, traineesRes] = await Promise.all([
         fetch("/api/admin/invites", { cache: 'no-store' }),
-        fetch("/api/conferences", { cache: 'no-store' }),
         fetch("/api/personas", { cache: 'no-store' }),
         fetch("/api/trainees", { cache: 'no-store' }),
       ]);
@@ -186,11 +183,6 @@ export default function AdminPage() {
       } else {
         console.error("Failed to load invites:", invitesRes.status, invitesRes.statusText);
         setLoadError("Failed to load invites");
-      }
-
-      if (conferencesRes.ok) {
-        const confData = await conferencesRes.json();
-        setConferences(confData.conferences || []);
       }
 
       if (personasRes.ok) {
@@ -232,11 +224,6 @@ export default function AdminPage() {
       );
     }
 
-    // Conference filter
-    if (filterConferenceId) {
-      filtered = filtered.filter((inv) => inv.conferenceId === filterConferenceId);
-    }
-
     // Persona filter
     if (filterPersonaId) {
       filtered = filtered.filter((inv) => inv.personaId === filterPersonaId);
@@ -245,11 +232,6 @@ export default function AdminPage() {
     // Trainee filter
     if (filterTraineeId) {
       filtered = filtered.filter((inv) => inv.traineeId === filterTraineeId);
-    }
-
-    // Difficulty filter
-    if (filterDifficulty) {
-      filtered = filtered.filter((inv) => inv.difficulty === filterDifficulty);
     }
 
     // Status filter
@@ -263,7 +245,7 @@ export default function AdminPage() {
     );
 
     return filtered.slice(0, 200);
-  }, [invites, filterConferenceId, filterPersonaId, filterTraineeId, filterDifficulty, filterStatus, filterTimeRange]);
+  }, [invites, filterPersonaId, filterTraineeId, filterStatus, filterTimeRange]);
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-4">
@@ -271,29 +253,13 @@ export default function AdminPage() {
       <div>
         <h1 className="text-2xl font-semibold">Scenario Tracker</h1>
         <p className="text-white/70 text-sm">
-          Track training sessions, filter by conference/persona, and view scores
+          Track training sessions, filter by persona/trainee, and view scores
         </p>
       </div>
 
       {/* Filter Bar */}
       <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Conference</label>
-            <select
-              value={filterConferenceId}
-              onChange={(e) => setFilterConferenceId(e.target.value)}
-              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-            >
-              <option value="">All conferences</option>
-              {conferences.map((conf) => (
-                <option key={conf.id} value={conf.id}>
-                  {conf.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
             <label className="block text-xs text-gray-400 mb-1">Persona</label>
             <select
@@ -323,20 +289,6 @@ export default function AdminPage() {
                   {trainee.firstName} {trainee.lastName}
                 </option>
               ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Difficulty</label>
-            <select
-              value={filterDifficulty}
-              onChange={(e) => setFilterDifficulty(e.target.value)}
-              className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-            >
-              <option value="">All</option>
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
             </select>
           </div>
 
@@ -410,13 +362,7 @@ export default function AdminPage() {
                     Trainee
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                    Conference
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Persona
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                    Difficulty
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Status
@@ -445,15 +391,9 @@ export default function AdminPage() {
                       {invite.traineeShortName || "—"}
                     </td>
                     <td className="px-3 py-3 text-sm text-gray-300">
-                      {invite.conferenceName || "—"}
-                    </td>
-                    <td className="px-3 py-3 text-sm text-gray-300">
                       <div className="max-w-[180px] truncate" title={invite.personaDisplayName || undefined}>
                         {invite.personaDisplayName || "—"}
                       </div>
-                    </td>
-                    <td className="px-3 py-3 text-sm text-gray-400 capitalize">
-                      {invite.difficulty || "—"}
                     </td>
                     <td className="px-3 py-3">
                       <StatusBadge status={invite.status} />

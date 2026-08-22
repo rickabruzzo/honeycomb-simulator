@@ -1,18 +1,19 @@
 import { kv } from "@vercel/kv";
 
+import { useKv } from "./kvConfig";
 export interface InviteRecord {
   token: string;
   sessionId: string;
   createdAt: string;
-  conferenceId?: string; // Added for admin tracker
-  personaId?: string; // Added for admin tracker
-  traineeId?: string; // Trainee who will use this invite
-  traineeName?: string; // Full trainee name for display
+  personaId?: string;
+  traineeId?: string;
+  traineeName?: string;
   revoked?: boolean;
   expiresAt?: string;
   createdBy?: string;
-  // Snapshot fields for session initialization (Phase H1)
-  conferenceName?: string;
+  /** Training-wheels (guided) mode: attendee attributes progressively reveal to the trainee. */
+  trainingWheels?: boolean;
+  // Snapshot fields for session initialization
   personaDisplayName?: string;
   traineeNameShort?: string;
 }
@@ -23,9 +24,6 @@ const inMemorySessionInvites = new Map<string, { token: string }>();
 /**
  * KV is configured when Vercel/Upstash env vars are present.
  */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
 
 export async function saveInvite(invite: InviteRecord): Promise<void> {
   if (useKv()) {

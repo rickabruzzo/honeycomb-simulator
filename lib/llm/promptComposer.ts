@@ -21,6 +21,9 @@ import {
   getBannedKeywords,
 } from "../simulatorConfig";
 import { getActivePromptBundle } from "./promptBundleStore";
+import { renderLengthDirective } from "../attendee/lengthBudget";
+import { getRevealBudget } from "../attendee/revealBudget";
+import type { MomentumBand } from "../attendee/momentumBands";
 
 /**
  * Compose the full system prompt for an attendee response.
@@ -63,8 +66,53 @@ export async function composeAttendeeSystemPrompt(
   sections.push(scenarioContext);
 
   // 6. Enrichment guidance (if available)
-  if (context.enrichment?.promptAddendum) {
-    sections.push(`\nENRICHMENT GUIDANCE:\n${context.enrichment.promptAddendum}`);
+  // Enrichment previously contributed only promptAddendum; everything else it generates was
+  // stored and discarded. ventingTriggers, resistIfPitched, revealWhenEarned, and avoidTerms
+  // are per-persona behavioral data that map directly onto the mechanics this simulator is
+  // built around, so they now reach the prompt too.
+  if (context.enrichment) {
+    const e = context.enrichment;
+    const enrichmentLines: string[] = [];
+
+    if (e.promptAddendum) enrichmentLines.push(e.promptAddendum);
+
+    const venting = e.attendeeStyleGuide?.ventingTriggers ?? [];
+    if (venting.length) {
+      enrichmentLines.push(
+        `What gets you talking: ${venting.join("; ")}. When one of these shows up and the ` +
+          `staffer has actually listened, let yourself go further than you normally would.`
+      );
+    }
+
+    const resist = e.personaBehavior?.resistIfPitched ?? [];
+    if (resist.length) {
+      enrichmentLines.push(
+        `What makes you close up: ${resist.join("; ")}. Go shorter and cooler - do not say why.`
+      );
+    }
+
+    const reveal = e.personaBehavior?.revealWhenEarned ?? [];
+    if (reveal.length) {
+      enrichmentLines.push(
+        `Hold these back until the staffer earns them: ${reveal.join("; ")}.`
+      );
+    }
+
+    const avoid = e.vocabHints?.avoidTerms ?? [];
+    if (avoid.length) {
+      enrichmentLines.push(
+        `Words you would not use: ${avoid.join(", ")}. Say it your own way instead.`
+      );
+    }
+
+    const mirror = e.vocabHints?.mirrorTerms ?? [];
+    if (mirror.length) {
+      enrichmentLines.push(`Language that sounds like you: ${mirror.join(", ")}.`);
+    }
+
+    if (enrichmentLines.length) {
+      sections.push(`\nENRICHMENT GUIDANCE:\n${enrichmentLines.join("\n\n")}`);
+    }
   }
 
   // 7. Trainer guidance (if provided)
@@ -74,48 +122,41 @@ export async function composeAttendeeSystemPrompt(
 
   // 7a. Turn limit enforcement
   if (context.turnLimitExceeded) {
-    sections.push(`\n⚠️ TURN LIMIT REACHED
-Conversation has reached the maximum turn count for this difficulty level.
-You MUST converge toward an OUTCOME now. No reopening discovery. No new exploratory questions.
-Move toward a clean close with an appropriate next step (demo, self-service, or polite exit).`);
+    sections.push(`\nTIME PRESSURE
+You have been at this booth a while and need to move on soon. Keep replies short and start
+looking for a natural end. That end may be a next step, or it may simply be a polite exit -
+whichever honestly fits what you have actually heard.`);
   }
 
   // 7b. Self-service cue detection
   if (context.selfServiceCuesDetected) {
-    sections.push(`\n💡 SELF-SERVICE CUES DETECTED
-The trainee has expressed self-service preferences (free tier, docs, async learning, low urgency).
-This is a SUCCESS signal, not a failure. Offering self-service is an appropriate outcome.
-Do not push for a demo. Move toward SELF_SERVICE_READY outcome with appropriate resources.`);
+    sections.push(`\nSELF-SERVICE PATH OFFERED
+The staffer has pointed you toward something you could explore on your own. If that genuinely
+suits how you like to evaluate tools, accepting it is a perfectly good ending. If it does not,
+you are not obliged to take it.`);
   }
 
   // 7c. MQL cue detection - CONVERGENCE ENFORCEMENT
   if (context.mqlCuesDetected) {
-    sections.push(`\n🎯 MQL CUES DETECTED (HOT LEAD) — CONVERGE NOW
-The trainee has expressed MQL interest (badge scan, sales follow-up, stakeholder conversation).
-This is a SUCCESS outcome. MQL_READY is equivalent to or BETTER than DEMO_READY.
+    sections.push(`\nFOLLOW-UP PATH OFFERED
+The staffer has offered a follow-up path - scanning your badge, a colleague reaching out, or
+an introduction. If that genuinely fits what you need, you may accept it plainly and wrap up.
+Only accept a next step you would actually accept given what you have heard.
 
-IMMEDIATE ACTIONS:
-1. Acknowledge their request positively
-2. Confirm the specific next step (badge scan / sales follow-up / manager intro)
-3. Close the conversation cleanly within 1-2 turns
-4. Do NOT reopen discovery, do NOT push for demo, do NOT over-educate
-
-Example: "Perfect! Let me scan your badge and our team will follow up about [specific topic]. Thanks for stopping by!"`);
+Watch the direction: THEY scan YOUR badge and THEY follow up with YOU. Never offer to scan
+your own badge, to follow up with them, or to schedule anything yourself.`);
   }
 
   // 7d. Stakeholder-specific guidance
   if (context.stakeholderType === "executive") {
-    sections.push(`\n👔 EXECUTIVE STAKEHOLDER DETECTED
-This attendee is an executive (CTO, VP, Director, Technical Buyer).
-Executives rarely want technical demos. They care about budget, cost savings, ROI, and strategic alignment.
-Do NOT push technical depth. Focus on business value and leadership follow-up.
-Preferred outcome: MQL_READY with sales/leadership conversation.`);
+    sections.push(`\nWHAT YOU WEIGH
+You are senior enough that your attention goes to cost, delivery risk, customer impact, and
+whether your teams could realistically adopt something. You may still want to see the tool -
+do not rule that out - but consequence matters more to you than hands-on detail.`);
   } else if (context.stakeholderType === "ic_without_authority") {
-    sections.push(`\n🔧 IC WITHOUT AUTHORITY DETECTED
-This attendee is an Individual Contributor who may lack decision-making power.
-They may love the product but need help advocating internally.
-Offer to connect with their manager, team lead, or decision maker.
-Badge scan + manager follow-up is a SUCCESS outcome (MQL_READY).`);
+    sections.push(`\nWHAT YOU WEIGH
+You do the hands-on work but you do not control the budget. If something looks genuinely
+useful, your instinct is to work out how you would make the case internally.`);
   }
 
   // 8. Recent conversation history
@@ -126,6 +167,15 @@ Badge scan + manager follow-up is a SUCCESS outcome (MQL_READY).`);
       .join("\n");
     sections.push(`\nRECENT CONVERSATION (most recent last):\n${historyText}`);
   }
+
+  // 8b. Reveal budget: how open the attendee is on this turn, derived from BOTH the phase
+  //      (what is on the table) and the earned-trust band (what the trainee has earned). This
+  //      is what makes listening pay off - a steamrolled attendee stays short even in pain
+  //      discovery, and only a listened-to one unlocks the war story.
+  const band = (context.momentumBand ?? "GUARDED") as MomentumBand;
+  const reveal = getRevealBudget(context.sessionState, band);
+  sections.push(`\n${reveal.opennessDirective}`);
+  sections.push(`\n${renderLengthDirective(reveal.lengthBudget)}`);
 
   // 9. Final instruction
   sections.push("\nNow respond as the attendee.");
@@ -154,17 +204,41 @@ function buildScenarioContext(context: PromptRuntimeContext): string {
 
   sections.push(`SCENARIO CONTEXT:`);
 
-  sections.push(`Conference: ${context.conference.name}`);
-  sections.push(`Conference themes: ${context.conference.themes}`);
-
-  sections.push(`\nDIFFICULTY: ${context.difficulty}`);
-
   sections.push(`\nYOUR HIDDEN PROFILE (do not reveal directly):`);
   sections.push(`Title: ${context.persona.title}`);
   sections.push(`Modifiers: ${context.persona.modifiers}`);
   sections.push(`Emotional posture: ${context.persona.emotionalPosture}`);
   sections.push(`Tooling bias: ${context.persona.toolingBias}`);
   sections.push(`OpenTelemetry familiarity: ${context.persona.otelFamiliarity}`);
+
+  if (context.persona.behaviorBrief) {
+    sections.push(`\nHOW YOU COME ACROSS\n${context.persona.behaviorBrief}`);
+  }
+
+  if (context.persona.isBuyer) {
+    sections.push(
+      `\nYOUR VANTAGE POINT
+You are senior enough that you are not the one doing the hands-on work. You hear about
+problems through your teams, your own metrics, and what customers escalate. Talk about
+consequence - delivery, cost, risk, people burning out - rather than narrating commands you
+personally ran.`
+    );
+  }
+
+  if (context.persona.painPoints?.length) {
+    // Rendered as private inventory in the attendee's own words, most central first.
+    // Explicitly NOT a checklist: reciting these is the scripted behavior the simulator is
+    // meant to train against, and volunteering them unprompted breaks the earn-it rule.
+    sections.push(
+      `\nWHAT ACTUALLY BOTHERS YOU (private - yours, in your words)
+${context.persona.painPoints.map((pain) => `- ${pain}`).join("\n")}
+
+These are the things you would complain about if someone got you talking. Do not list them,
+do not work through them in order, and do not raise one unprompted. When a question genuinely
+lands on one, answer from it - with the specifics of your own situation, not this phrasing.
+Anything not on this list is not your problem; do not borrow someone else's complaints.`
+    );
+  }
 
   return sections.join("\n");
 }
@@ -231,10 +305,6 @@ function parseLegacyAttendeeProfile(
   }
 
   return {
-    conference: {
-      name: "Unknown Conference",
-      themes: "General tech topics",
-    },
     persona: {
       title: parsed["Persona"] || "Unknown",
       modifiers: parsed["Modifiers"] || "None",
@@ -242,7 +312,6 @@ function parseLegacyAttendeeProfile(
       toolingBias: parsed["Tooling bias"] || "None specified",
       otelFamiliarity: parsed["OpenTelemetry familiarity"] || "Unknown",
     },
-    difficulty,
     enrichment: enrichment || null,
     sessionState: currentState,
     trainerGuidance: null,

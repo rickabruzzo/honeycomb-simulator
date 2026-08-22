@@ -42,13 +42,9 @@ export async function GET(req: Request, ctx: any) {
 
   // Redact attendeeProfile from kickoff
   const redactedKickoff = {
-    conferenceContext: session.kickoff.conferenceContext,
-    difficulty: session.kickoff.difficulty,
     personaId: session.kickoff.personaId,
     enrichment: session.kickoff.enrichment,
     // Snapshot fields
-    conferenceId: session.kickoff.conferenceId,
-    conferenceName: session.kickoff.conferenceName,
     personaDisplayName: session.kickoff.personaDisplayName,
     traineeId: session.kickoff.traineeId,
     traineeNameShort: session.kickoff.traineeNameShort,
@@ -68,5 +64,8 @@ export async function GET(req: Request, ctx: any) {
     active: session.active,
     startTime: session.startTime,
     trainerFeedback: session.trainerFeedback || undefined,
+    momentum: session.momentum ?? null,
+    detectedOutcome: session.detectedOutcome ?? null,
+    promptBundleVersion: session.promptBundleVersion ?? null,
   });
 }

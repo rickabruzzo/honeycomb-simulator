@@ -363,79 +363,16 @@ export class MockEnrichmentProvider implements EnrichmentProvider {
 }
 
 /**
- * OpenAI enrichment provider
- * Uses OpenAI API to generate enrichment data for personas
+ * Shared enrichment contract for the LLM-backed providers. Both OpenAI and Anthropic ask for
+ * the exact same JSON shape and transform it into the same internal EnrichmentResult, so the
+ * prompt, the system instruction, and the validation live here once rather than drifting per
+ * provider.
  */
-export class OpenAIEnrichmentProvider implements EnrichmentProvider {
-  private apiKey: string;
-  private model: string;
+const ENRICHMENT_SYSTEM_PROMPT =
+  "You are an expert at analyzing conference personas and generating behavioral enrichment data. Always respond with valid JSON only, no additional text.";
 
-  constructor(apiKey?: string) {
-    if (!apiKey) {
-      throw new Error(
-        "OpenAI API key is required for OpenAIEnrichmentProvider. Set OPENAI_API_KEY environment variable."
-      );
-    }
-    this.apiKey = apiKey;
-    this.model = process.env.OPENAI_ENRICHMENT_MODEL || "gpt-4o-mini";
-  }
-
-  async enrich(input: EnrichmentInput): Promise<EnrichmentResult> {
-    const OpenAI = (await import("openai")).default;
-    const client = new OpenAI({ apiKey: this.apiKey });
-
-    const prompt = this.buildPrompt(input);
-
-    try {
-      const completion = await client.chat.completions.create({
-        model: this.model,
-        temperature: 0.2,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an expert at analyzing conference personas and generating behavioral enrichment data. Always respond with valid JSON only, no additional text.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        response_format: { type: "json_object" },
-      });
-
-      const content = completion.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error("No content in OpenAI response");
-      }
-
-      // Parse and validate JSON
-      const parsed = JSON.parse(content);
-      const validated = this.validateAndTransform(parsed, input);
-
-      return {
-        version: "1.0",
-        generatedAt: new Date().toISOString(),
-        conferenceId: input.conferenceId,
-        personaId: input.personaId,
-        traineeId: input.traineeId,
-        provider: "openai",
-        ...validated,
-      };
-    } catch (error) {
-      // Log error without exposing API key
-      console.error("OpenAI enrichment failed:", {
-        error: error instanceof Error ? error.message : "Unknown error",
-        model: this.model,
-        conferenceId: input.conferenceId,
-        personaId: input.personaId,
-      });
-      throw error;
-    }
-  }
-
-  private buildPrompt(input: EnrichmentInput): string {
-    return `
+function buildEnrichmentPrompt(input: EnrichmentInput): string {
+  return `
 Analyze the following conference attendee profile and generate behavioral enrichment data.
 
 Conference Context:
@@ -469,82 +406,259 @@ Generate a JSON object with the following structure:
 
 Return ONLY the JSON object, no additional text.
 `.trim();
+}
+
+/**
+ * Strip a Markdown code fence the model may have wrapped the JSON in. Mirrors the judge's
+ * defensive parse — the Anthropic path has no native JSON mode, so a fenced block is the most
+ * common malformation.
+ */
+export function parseEnrichmentJson(content: string): any {
+  const cleaned = content
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  return JSON.parse(cleaned);
+}
+
+export function validateAndTransformEnrichment(
+  parsed: any
+): Omit<
+  EnrichmentResult,
+  "version" | "generatedAt" | "conferenceId" | "personaId" | "traineeId" | "provider"
+> {
+  // Validate structure
+  if (!parsed.attendeeStyleGuide || typeof parsed.attendeeStyleGuide !== "object") {
+    throw new Error("Missing or invalid attendeeStyleGuide");
+  }
+  if (!parsed.domainContext || typeof parsed.domainContext !== "object") {
+    throw new Error("Missing or invalid domainContext");
+  }
+  if (!parsed.personaBehavior || typeof parsed.personaBehavior !== "object") {
+    throw new Error("Missing or invalid personaBehavior");
+  }
+  if (!parsed.vocabHints || typeof parsed.vocabHints !== "object") {
+    throw new Error("Missing or invalid vocabHints");
+  }
+  if (typeof parsed.promptAddendum !== "string") {
+    throw new Error("Missing or invalid promptAddendum");
   }
 
-  private validateAndTransform(
-    parsed: any,
-    input: EnrichmentInput
-  ): Omit<EnrichmentResult, "version" | "generatedAt" | "conferenceId" | "personaId" | "traineeId" | "provider"> {
-    // Validate structure
-    if (!parsed.attendeeStyleGuide || typeof parsed.attendeeStyleGuide !== "object") {
-      throw new Error("Missing or invalid attendeeStyleGuide");
-    }
-    if (!parsed.domainContext || typeof parsed.domainContext !== "object") {
-      throw new Error("Missing or invalid domainContext");
-    }
-    if (!parsed.personaBehavior || typeof parsed.personaBehavior !== "object") {
-      throw new Error("Missing or invalid personaBehavior");
-    }
-    if (!parsed.vocabHints || typeof parsed.vocabHints !== "object") {
-      throw new Error("Missing or invalid vocabHints");
-    }
-    if (typeof parsed.promptAddendum !== "string") {
-      throw new Error("Missing or invalid promptAddendum");
-    }
+  // Validate and normalize brevity
+  let brevity: "short" | "medium" = "medium";
+  if (parsed.attendeeStyleGuide.brevity === "short" || parsed.attendeeStyleGuide.brevity === "medium") {
+    brevity = parsed.attendeeStyleGuide.brevity;
+  }
 
-    // Validate and normalize brevity
-    let brevity: "short" | "medium" = "medium";
-    if (parsed.attendeeStyleGuide.brevity === "short" || parsed.attendeeStyleGuide.brevity === "medium") {
-      brevity = parsed.attendeeStyleGuide.brevity;
-    }
+  // Validate and normalize skepticism
+  let skepticism: "low" | "medium" | "high" = "medium";
+  if (
+    parsed.attendeeStyleGuide.skepticism === "low" ||
+    parsed.attendeeStyleGuide.skepticism === "medium" ||
+    parsed.attendeeStyleGuide.skepticism === "high"
+  ) {
+    skepticism = parsed.attendeeStyleGuide.skepticism;
+  }
 
-    // Validate and normalize skepticism
-    let skepticism: "low" | "medium" | "high" = "medium";
-    if (
-      parsed.attendeeStyleGuide.skepticism === "low" ||
-      parsed.attendeeStyleGuide.skepticism === "medium" ||
-      parsed.attendeeStyleGuide.skepticism === "high"
-    ) {
-      skepticism = parsed.attendeeStyleGuide.skepticism;
-    }
+  // Transform LLM output to our internal structure
+  return {
+    attendeeStyleGuide: {
+      tone: String(parsed.attendeeStyleGuide.tone || "professional, measured"),
+      brevity,
+      skepticism,
+      ventingTriggers: Array.isArray(parsed.personaBehavior.ventingTriggers)
+        ? parsed.personaBehavior.ventingTriggers.map(String)
+        : [],
+    },
+    domainContext: {
+      themes: Array.isArray(parsed.domainContext.keyConcerns)
+        ? parsed.domainContext.keyConcerns.map(String)
+        : [],
+      typicalTopics: Array.isArray(parsed.domainContext.commonTools)
+        ? parsed.domainContext.commonTools.map(String)
+        : [],
+    },
+    personaBehavior: {
+      revealWhenEarned: Array.isArray(parsed.personaBehavior.revealConditions)
+        ? parsed.personaBehavior.revealConditions.map(String)
+        : [],
+      resistIfPitched: ["direct sales pitches", "feature lists without context"], // Default resistance
+      objections: Array.isArray(parsed.personaBehavior.objections)
+        ? parsed.personaBehavior.objections.map(String)
+        : [],
+    },
+    vocabHints: {
+      mirrorTerms: Array.isArray(parsed.vocabHints.prefer)
+        ? parsed.vocabHints.prefer.map(String)
+        : [],
+      avoidTerms: Array.isArray(parsed.vocabHints.avoid)
+        ? parsed.vocabHints.avoid.map(String)
+        : [],
+    },
+    promptAddendum: String(parsed.promptAddendum),
+  };
+}
 
-    // Transform OpenAI output to our internal structure
-    return {
-      attendeeStyleGuide: {
-        tone: String(parsed.attendeeStyleGuide.tone || "professional, measured"),
-        brevity,
-        skepticism,
-        ventingTriggers: Array.isArray(parsed.personaBehavior.ventingTriggers)
-          ? parsed.personaBehavior.ventingTriggers.map(String)
-          : [],
-      },
-      domainContext: {
-        themes: Array.isArray(parsed.domainContext.keyConcerns)
-          ? parsed.domainContext.keyConcerns.map(String)
-          : [],
-        typicalTopics: Array.isArray(parsed.domainContext.commonTools)
-          ? parsed.domainContext.commonTools.map(String)
-          : [],
-      },
-      personaBehavior: {
-        revealWhenEarned: Array.isArray(parsed.personaBehavior.revealConditions)
-          ? parsed.personaBehavior.revealConditions.map(String)
-          : [],
-        resistIfPitched: ["direct sales pitches", "feature lists without context"], // Default resistance
-        objections: Array.isArray(parsed.personaBehavior.objections)
-          ? parsed.personaBehavior.objections.map(String)
-          : [],
-      },
-      vocabHints: {
-        mirrorTerms: Array.isArray(parsed.vocabHints.prefer)
-          ? parsed.vocabHints.prefer.map(String)
-          : [],
-        avoidTerms: Array.isArray(parsed.vocabHints.avoid)
-          ? parsed.vocabHints.avoid.map(String)
-          : [],
-      },
-      promptAddendum: String(parsed.promptAddendum),
-    };
+/**
+ * OpenAI enrichment provider
+ * Uses OpenAI API to generate enrichment data for personas
+ */
+export class OpenAIEnrichmentProvider implements EnrichmentProvider {
+  private apiKey: string;
+  private model: string;
+
+  constructor(apiKey?: string) {
+    if (!apiKey) {
+      throw new Error(
+        "OpenAI API key is required for OpenAIEnrichmentProvider. Set OPENAI_API_KEY environment variable."
+      );
+    }
+    this.apiKey = apiKey;
+    this.model = process.env.OPENAI_ENRICHMENT_MODEL || "gpt-4o-mini";
+  }
+
+  async enrich(input: EnrichmentInput): Promise<EnrichmentResult> {
+    const OpenAI = (await import("openai")).default;
+    const client = new OpenAI({ apiKey: this.apiKey });
+
+    const prompt = buildEnrichmentPrompt(input);
+
+    try {
+      const completion = await client.chat.completions.create({
+        model: this.model,
+        temperature: 0.2,
+        messages: [
+          {
+            role: "system",
+            content: ENRICHMENT_SYSTEM_PROMPT,
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const content = completion.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No content in OpenAI response");
+      }
+
+      // Parse and validate JSON
+      const parsed = parseEnrichmentJson(content);
+      const validated = validateAndTransformEnrichment(parsed);
+
+      return {
+        version: "1.0",
+        generatedAt: new Date().toISOString(),
+        conferenceId: input.conferenceId,
+        personaId: input.personaId,
+        traineeId: input.traineeId,
+        provider: "openai",
+        ...validated,
+      };
+    } catch (error) {
+      // Log error without exposing API key
+      console.error("OpenAI enrichment failed:", {
+        error: error instanceof Error ? error.message : "Unknown error",
+        model: this.model,
+        conferenceId: input.conferenceId,
+        personaId: input.personaId,
+      });
+      throw error;
+    }
+  }
+}
+
+/**
+ * Anthropic enrichment provider
+ *
+ * Mirrors the OpenAI path (same prompt, same JSON contract, same transform) but talks to the
+ * Anthropic API. Two Claude-5 conventions matter, both shared with the attendee chat provider
+ * in anthropicProvider.ts:
+ *   - No `temperature` — Claude 5 rejects sampling params with a 400.
+ *   - There is no native JSON mode, so the JSON-only instruction lives in the system prompt and
+ *     the response is fence-stripped before parsing (parseEnrichmentJson).
+ * Thinking tokens count toward max_tokens, so it is set with headroom above the JSON payload.
+ */
+export class AnthropicEnrichmentProvider implements EnrichmentProvider {
+  private apiKey: string;
+  private model: string;
+  private maxTokens: number;
+  private effort: string;
+
+  constructor(apiKey?: string) {
+    const key = apiKey || process.env.ANTHROPIC_API_KEY;
+    if (!key) {
+      throw new Error(
+        "ANTHROPIC_API_KEY is required for AnthropicEnrichmentProvider. Set it in .env.local."
+      );
+    }
+    this.apiKey = key;
+    this.model = process.env.ANTHROPIC_ENRICHMENT_MODEL || "claude-sonnet-5";
+    this.maxTokens = Number(process.env.ENRICHMENT_MAX_TOKENS ?? 4000);
+    this.effort = process.env.ENRICHMENT_EFFORT || "low";
+  }
+
+  async enrich(input: EnrichmentInput): Promise<EnrichmentResult> {
+    const Anthropic = (await import("@anthropic-ai/sdk")).default;
+    const client = new Anthropic({ apiKey: this.apiKey });
+
+    const prompt = buildEnrichmentPrompt(input);
+
+    try {
+      const response = await client.messages.create({
+        model: this.model,
+        max_tokens: this.maxTokens,
+        system: ENRICHMENT_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: prompt }],
+        // NO temperature - Claude 5 models reject sampling params with a 400.
+        thinking: { type: "adaptive" },
+        output_config: { effort: this.effort },
+      } as Parameters<typeof client.messages.create>[0] & Record<string, unknown>);
+
+      const message = response as {
+        content: Array<{ type: string; text?: string }>;
+        stop_reason?: string;
+      };
+
+      const content = message.content
+        .filter((b) => b.type === "text")
+        .map((b) => b.text ?? "")
+        .join("")
+        .trim();
+
+      if (!content) {
+        throw new Error(
+          `No text content in Anthropic response (stop_reason: ${message.stop_reason ?? "unknown"})`
+        );
+      }
+
+      // Parse and validate JSON
+      const parsed = parseEnrichmentJson(content);
+      const validated = validateAndTransformEnrichment(parsed);
+
+      return {
+        version: "1.0",
+        generatedAt: new Date().toISOString(),
+        conferenceId: input.conferenceId,
+        personaId: input.personaId,
+        traineeId: input.traineeId,
+        provider: "anthropic",
+        ...validated,
+      };
+    } catch (error) {
+      // Log error without exposing API key
+      console.error("Anthropic enrichment failed:", {
+        error: error instanceof Error ? error.message : "Unknown error",
+        model: this.model,
+        conferenceId: input.conferenceId,
+        personaId: input.personaId,
+      });
+      throw error;
+    }
   }
 }
 
@@ -563,6 +677,17 @@ export function getEnrichmentProvider(): EnrichmentProvider {
       return new MockEnrichmentProvider();
     }
     return new OpenAIEnrichmentProvider(apiKey);
+  }
+
+  if (providerType === "anthropic") {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      console.warn(
+        "ENRICHMENT_PROVIDER=anthropic but ANTHROPIC_API_KEY not found. Falling back to mock."
+      );
+      return new MockEnrichmentProvider();
+    }
+    return new AnthropicEnrichmentProvider(apiKey);
   }
 
   return new MockEnrichmentProvider();

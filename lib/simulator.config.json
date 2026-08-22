@@ -166,20 +166,18 @@
     }
   },
   "keyword_restrictions": {
-    "banned_product_keywords": [
-      "high-cardinality",
-      "bubbleup",
-      "wide events",
-      "refinery",
-      "query builder",
-      "service map",
-      "slo triggers"
-    ],
+    "banned_product_keywords": [],
+    "banned_product_keywords_note": "Honeycomb product/feature terms are managed by lib/guardrails/allowedProductTerms.ts and are never violations",
     "behavior_if_used_by_attendee": {
       "acknowledge_neutrally": true,
       "do_not_expand": true,
       "prefer_plain_language": true
-    }
+    },
+    "allowed_technical_terms": [
+      "high-cardinality",
+      "cardinality"
+    ],
+    "allowed_technical_terms_note": "These terms are standard industry terminology and should NOT trigger guardrail violations"
   },
   "otel_behavior": {
     "never_assume_familiarity": true,

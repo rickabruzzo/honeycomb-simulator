@@ -7,7 +7,6 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const range = (searchParams.get("range") as "7d" | "30d" | "all") || "7d";
-    const conferenceId = searchParams.get("conferenceId") || undefined;
     const personaId = searchParams.get("personaId") || undefined;
     const traineeId = searchParams.get("traineeId") || undefined;
 
@@ -16,12 +15,6 @@ export async function GET(request: NextRequest) {
 
     // Apply filters
     let filtered: ScoreRecord[] = allScores;
-
-    if (conferenceId) {
-      filtered = filtered.filter(
-        (score) => score.conferenceId === conferenceId
-      );
-    }
 
     if (personaId) {
       filtered = filtered.filter((score) => score.personaId === personaId);

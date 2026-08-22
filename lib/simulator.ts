@@ -1,6 +1,7 @@
 // lib/simulator.ts
 import config from "./simulator.config.json";
 import type { EnrichmentResult } from "./llm/enrichmentTypes";
+import { isAllowedProductTerm } from "./guardrails/allowedProductTerms";
 
 export const SIMULATOR_CONFIG = config as any;
 
@@ -121,8 +122,10 @@ export function analyzeTraineeMessage(text: string, currentState: string) {
   const issues: string[] = [];
 
   // 1) Check banned keywords (trainee used Honeycomb-specific/internal terms)
+  // Terms in ALLOWED_PRODUCT_TERMS are never violations.
   const banned = SIMULATOR_CONFIG.keyword_restrictions?.banned_product_keywords ?? [];
   for (const keyword of banned) {
+    if (isAllowedProductTerm(String(keyword))) continue; // allowlist override
     if (lower.includes(String(keyword).toLowerCase())) {
       issues.push(`Used banned keyword: "${keyword}"`);
     }
@@ -130,10 +133,11 @@ export function analyzeTraineeMessage(text: string, currentState: string) {
 
   // 2) Early pitch detection - ONLY flag unsolicited feature dumps, not booth-appropriate framing
   // Allow: "What Honeycomb is", "We help with observability", "We're an observability platform"
-  // Flag: Multiple features listed, pricing push, demo push, competitor bashing
+  // Allow: Standard industry terminology like "high-cardinality" or "cardinality"
+  // Allow: Honeycomb product names (BubbleUp, service map, etc.) — covered by allowlist
+  // Flag: Competitor bashing, pricing push, demo push
   const isQuestion = text.includes("?");
   const featureDumpSignals = [
-    /\b(bubbleup|high.cardinality|wide events|service map)\b/i,
     /unlike (datadog|splunk|newrelic)/i,
     /better than/i,
   ];
@@ -225,21 +229,14 @@ export function shouldEnterOutcomeState(params: {
 }
 
 /**
- * Check if conversation has exceeded turn limit for the given difficulty.
+ * Check if conversation has exceeded turn limit.
  * Turns are counted as trainee messages only (not system or attendee).
  *
  * @param turnCount - Number of trainee messages sent
- * @param difficulty - easy, medium, or hard
  * @returns true if limit exceeded
  */
-export function hasExceededTurnLimit(turnCount: number, difficulty: string): boolean {
-  const limits = SIMULATOR_CONFIG.conversation_rules?.turn_limits || {
-    easy: 10,
-    medium: 12,
-    hard: 14,
-  };
-
-  const limit = limits[difficulty as keyof typeof limits] || limits.medium;
+export function hasExceededTurnLimit(turnCount: number): boolean {
+  const limit = 12; // Standard turn limit
   return turnCount >= limit;
 }
 
@@ -917,7 +914,6 @@ export function isWinOutcome(outcome: string): boolean {
 export function buildAttendeePrompt(
   currentState: string,
   attendeeProfile: string,
-  difficulty: string,
   conversationHistory: Array<{ role: string; content: string }>,
   enrichment?: EnrichmentResult | null
 ): string {
@@ -964,8 +960,6 @@ PRODUCT KEYWORD RESTRICTION (IMPORTANT):
 CURRENT STATE: ${currentState}
 State description: ${stateDescription}
 ${behaviorText}
-
-DIFFICULTY: ${difficulty}
 
 YOUR HIDDEN PROFILE (do not reveal directly):
 ${attendeeProfile}${enrichmentSection}

@@ -25,8 +25,6 @@ function getInMemoryStore() {
   };
 }
 
-// Seed-once guard to prevent repeated seeding
-
 /**
  * Generate a readable ID from name with random suffix
  */
@@ -38,6 +36,80 @@ function generateTraineeId(firstName: string, lastName: string): string {
     .substring(0, 30);
   const suffix = Math.random().toString(36).substring(2, 6);
   return `${slug}-${suffix}`;
+}
+
+/**
+ * Normalize a trainee ID by stripping random suffixes.
+ * "rick-abruzzo-5zzj" -> "rick-abruzzo"
+ * If traineeName is provided and inputId doesn't normalize well, slugify the name.
+ */
+export function normalizeTraineeId(inputId: string, traineeName?: string): string {
+  // Strip trailing random suffix: 3-6 lowercase alphanumeric chars after last hyphen
+  const stripped = inputId.replace(/-[a-z0-9]{3,6}$/, "");
+  if (stripped && stripped !== inputId) {
+    return stripped;
+  }
+  // If no suffix was stripped but we have a name, slugify it
+  if (traineeName) {
+    return slugifyName(traineeName);
+  }
+  return inputId;
+}
+
+/**
+ * Slugify a full name: "Rick Abruzzo" -> "rick-abruzzo"
+ */
+export function slugifyName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .substring(0, 30);
+}
+
+/**
+ * Resolve a trainee by trying:
+ * 1. Exact match on traineeId
+ * 2. Match existing trainees whose ID starts with normalized base
+ * 3. Auto-register from traineeName if provided
+ * Returns null only if traineeId is unknown AND traineeName is missing.
+ */
+export async function resolveTrainee(
+  traineeId: string,
+  traineeName?: string
+): Promise<Trainee | null> {
+  // 1. Exact match
+  const exact = await getTrainee(traineeId);
+  if (exact) return exact;
+
+  // 2. Try normalized ID match against all trainees
+  const normalizedId = normalizeTraineeId(traineeId, traineeName);
+  const allTrainees = await listTrainees(false);
+  const fuzzy = allTrainees.find(
+    (t) => t.id === normalizedId || t.id.startsWith(normalizedId + "-")
+  );
+  if (fuzzy) return fuzzy;
+
+  // 3. If we have a name, try slugified name match
+  if (traineeName) {
+    const slug = slugifyName(traineeName);
+    if (slug !== normalizedId) {
+      const bySlug = allTrainees.find(
+        (t) => t.id === slug || t.id.startsWith(slug + "-")
+      );
+      if (bySlug) return bySlug;
+    }
+
+    // 4. Auto-register: parse name and create trainee with canonical slug ID
+    const parts = traineeName.trim().split(/\s+/);
+    const firstName = parts[0] || traineeName;
+    const lastName = parts.slice(1).join(" ") || "";
+    return upsertTrainee({ id: slug, firstName, lastName });
+  }
+
+  return null;
 }
 
 /**

@@ -2,12 +2,10 @@ import { kv } from "@vercel/kv";
 import type { EnrichmentResult } from "./enrichmentTypes";
 import { getMemStore } from "../memoryStore";
 
+import { useKv } from "../kvConfig";
 /**
  * KV is configured when Vercel/Upstash env vars are present.
  */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
 
 /**
  * Helper to get in-memory store (now uses global shared store)

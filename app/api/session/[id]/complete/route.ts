@@ -97,7 +97,7 @@ export async function POST(
             span.setAttribute("has_token", true);
 
             // Generate score
-            const scoreRecord = scoreSession(session, token);
+            const scoreRecord = await scoreSession(session, token);
             await saveScore(scoreRecord);
 
             shareUrl = `/share/${token}`;
@@ -113,12 +113,9 @@ export async function POST(
               score: scoreRecord.score,
               grade: scoreRecord.grade,
               createdAt: scoreRecord.completedAt,
-              conferenceId: scoreRecord.conferenceId || null,
-              conferenceName: scoreRecord.conferenceName || null,
               personaId: scoreRecord.personaId || null,
               personaDisplayName: scoreRecord.personaDisplayName || null,
               jobTitle: null,
-              difficulty: (scoreRecord.difficulty as "easy" | "medium" | "hard") || null,
               traineeId: scoreRecord.traineeId || null,
               traineeNameShort: scoreRecord.traineeNameShort || null,
             });

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Award, TrendingUp, AlertCircle, Home, Trophy, Eye } from "lucide-react";
+import { TrendingUp, AlertCircle, Home, Trophy, Eye } from "lucide-react";
 import { BrandButton } from "../../../components/ui/BrandButton";
 import Link from "next/link";
 
@@ -10,20 +10,22 @@ interface ScoreRecord {
   token: string;
   sessionId: string;
   personaId?: string;
-  difficulty?: string;
-  conferenceContext?: string;
   score: number;
   grade: "A" | "B" | "C" | "D" | "F";
   breakdown: {
-    listening: number;
     discovery: number;
+    listening: number;
     empathy: number;
-    otel_assumptions: number;
+    qualification: number;
     guardrails: number;
+    handoff: number;
   };
   highlights: string[];
   mistakes: string[];
   violations: string[];
+  evidence?: { dimension: string; quote: string; comment: string }[];
+  scoringMethod?: "judge" | "heuristic";
+  trainingWheels?: boolean;
   createdAt: string;
   completedAt: string;
   inviteToken?: string | null;
@@ -98,21 +100,12 @@ export default function ShareScorePage() {
     );
   }
 
-  const gradeColor = {
-    A: "text-green-400",
-    B: "text-blue-400",
-    C: "text-yellow-400",
-    D: "text-orange-400",
-    F: "text-red-400",
-  }[scoreRecord.grade];
-
-  const gradeBackground = {
-    A: "bg-green-900/30 border-green-700",
-    B: "bg-blue-900/30 border-blue-700",
-    C: "bg-yellow-900/30 border-yellow-700",
-    D: "bg-orange-900/30 border-orange-700",
-    F: "bg-red-900/30 border-red-700",
-  }[scoreRecord.grade];
+  // Brand grade colors (Honeycomb palette): A lime, B pacific, C honey, D tango, F red.
+  const gradeHex =
+    { A: "#64BA00", B: "#0298EC", C: "#FFB000", D: "#F96E10", F: "#E65B53" }[
+      scoreRecord.grade
+    ] ?? "#0298EC";
+  const HEX_CLIP = "polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)";
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -120,26 +113,56 @@ export default function ShareScorePage() {
         <div className="text-center">
           <h1 className="text-3xl font-bold mb-2">Session Scorecard</h1>
           <p className="text-gray-400 text-sm">
-            {scoreRecord.conferenceContext || "Practice Session"}
+            Practice Session
           </p>
-          {scoreRecord.difficulty && (
-            <p className="text-gray-500 text-xs mt-1">
-              Difficulty: {scoreRecord.difficulty}
-            </p>
+          {scoreRecord.trainingWheels && (
+            <div className="mt-3 flex justify-center">
+              <span
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide rounded-full px-3 py-1"
+                style={{ color: "#ffb000", background: "rgba(255,176,0,0.12)", border: "1px solid rgba(255,176,0,0.35)" }}
+              >
+                Assisted · training wheels
+              </span>
+            </div>
           )}
         </div>
 
-        {/* Score Card */}
+        {/* Grade hero — hexagon badge (Honeycomb motif) */}
         <div
-          className={`rounded-lg border-2 p-8 text-center ${gradeBackground}`}
+          className="rounded-2xl border p-8 flex items-center justify-center"
+          style={{ borderColor: `${gradeHex}55`, background: `${gradeHex}14` }}
         >
-          <div className="flex items-center justify-center gap-4 mb-4">
-            <Award size={48} className={gradeColor} />
-            <div>
-              <div className={`text-6xl font-bold ${gradeColor}`}>
+          <div
+            style={{
+              width: 108,
+              height: 120,
+              clipPath: HEX_CLIP,
+              background: gradeHex,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 88,
+                height: 98,
+                clipPath: HEX_CLIP,
+                background: "#25303e",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+              }}
+            >
+              <div
+                className="font-display font-bold leading-none"
+                style={{ fontSize: 44, color: gradeHex }}
+              >
                 {scoreRecord.grade}
               </div>
-              <div className="text-2xl text-gray-300 mt-2">
+              <div className="text-xs text-white/60">
                 {scoreRecord.score}/100
               </div>
             </div>
@@ -148,15 +171,36 @@ export default function ShareScorePage() {
 
         {/* Breakdown */}
         <div className="rounded-lg border border-white/15 bg-white/7 p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <TrendingUp size={20} /> Score Breakdown
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <TrendingUp size={20} /> Score Breakdown
+            </h2>
+            {scoreRecord.scoringMethod && (
+              <span className="text-[11px] text-gray-500 uppercase tracking-wide">
+                {scoreRecord.scoringMethod === "judge"
+                  ? "AI-evaluated"
+                  : "Auto-scored"}
+              </span>
+            )}
+          </div>
           <div className="space-y-3">
             {Object.entries(scoreRecord.breakdown).map(([key, value]) => {
-              const label = key
-                .replace(/_/g, " ")
-                .replace(/\b\w/g, (c) => c.toUpperCase());
+              // Display names that don't fall out of the key nicely; every other key
+              // (including old five-key records) keeps the Title-Case derivation.
+              const LABELS: Record<string, string> = {
+                qualification: "Qualification & Fit",
+                handoff: "Next-Step / Handoff",
+              };
+              const label =
+                LABELS[key] ??
+                key
+                  .replace(/_/g, " ")
+                  .replace(/\b\w/g, (c) => c.toUpperCase());
               const percentage = (value / 20) * 100;
+              // Brand tint by strength: strong=lime, mid=honey, weak=tango.
+              const barColor =
+                percentage >= 80 ? "#64ba00" : percentage >= 55 ? "#ffb000" : "#f96e10";
+              const ev = scoreRecord.evidence?.find((e) => e.dimension === key);
               return (
                 <div key={key}>
                   <div className="flex items-center justify-between text-sm mb-1">
@@ -165,12 +209,24 @@ export default function ShareScorePage() {
                       {value}/20
                     </span>
                   </div>
-                  <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div className="w-full rounded-full h-2" style={{ background: "rgba(255,255,255,0.10)" }}>
                     <div
-                      className="bg-indigo-500 h-2 rounded-full transition-all"
-                      style={{ width: `${percentage}%` }}
+                      className="h-2 rounded-full transition-all"
+                      style={{ width: `${percentage}%`, background: barColor }}
                     />
                   </div>
+                  {ev && (ev.comment || ev.quote) && (
+                    <div className="mt-2 mb-1 pl-3 border-l-2 border-white/15">
+                      {ev.comment && (
+                        <p className="text-xs text-gray-400">{ev.comment}</p>
+                      )}
+                      {ev.quote && (
+                        <p className="text-xs text-gray-300 italic mt-0.5">
+                          &ldquo;{ev.quote}&rdquo;
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

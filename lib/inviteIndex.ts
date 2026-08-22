@@ -1,5 +1,6 @@
 import { kv } from "@vercel/kv";
 
+import { useKv } from "./kvConfig";
 const INVITE_INDEX_KEY = "invites:index";
 
 // In-memory fallback for local development
@@ -8,9 +9,6 @@ let inMemoryIndex: Array<{ token: string; createdAt: string }> = [];
 /**
  * KV is configured when Vercel/Upstash env vars are present.
  */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
 
 /**
  * Add an invite token to the index for admin listing

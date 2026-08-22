@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/storage";
+import { computeRevealed } from "@/lib/attendee/trainingWheels";
 
 /**
  * Trainee-safe session endpoint that redacts kickoff.attendeeProfile
@@ -21,8 +22,6 @@ export async function GET(req: Request, ctx: any) {
 
   // Redact attendeeProfile from kickoff
   const redactedKickoff = {
-    conferenceContext: session.kickoff.conferenceContext,
-    difficulty: session.kickoff.difficulty,
     personaId: session.kickoff.personaId,
     // attendeeProfile is intentionally omitted
   };
@@ -35,5 +34,8 @@ export async function GET(req: Request, ctx: any) {
     active: session.active,
     kickoff: redactedKickoff,
     startTime: session.startTime,
+    // Training-wheels: attributes the trainee has earned visibility into (null when off).
+    trainingWheels: Boolean(session.trainingWheels),
+    revealed: computeRevealed(session),
   });
 }

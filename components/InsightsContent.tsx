@@ -185,6 +185,43 @@ export function InsightsContent() {
         </div>
       ) : (
         <>
+          {/* Team coaching — the shareable takeaway, words first */}
+          {insights.teamCoaching?.weakest && (
+            <div
+              className="rounded-lg border p-5 shadow-sm"
+              style={{ borderColor: "rgba(2,152,236,0.3)", background: "rgba(2,152,236,0.06)" }}
+            >
+              <h2 className="text-base font-semibold mb-1" style={{ color: "#0298ec" }}>
+                Team coaching
+              </h2>
+              <p className="text-sm text-gray-200 leading-relaxed">
+                The team&apos;s biggest opportunity right now is{" "}
+                <strong className="text-white">{insights.teamCoaching.weakest.label}</strong>
+                {insights.teamCoaching.strongest &&
+                  insights.teamCoaching.strongest.dimension !== insights.teamCoaching.weakest.dimension && (
+                    <>
+                      {" "}— while <strong className="text-white">{insights.teamCoaching.strongest.label}</strong> is a shared strength
+                    </>
+                  )}
+                . {insights.teamCoaching.tip}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-300">
+                <span>
+                  <span className="text-gray-500">Pass rate (C+):</span>{" "}
+                  <strong style={{ color: "#64ba00" }}>{insights.teamCoaching.passRate}%</strong>
+                </span>
+                <span className="flex items-center gap-3">
+                  <span className="text-gray-500">Grades:</span>
+                  {(["A", "B", "C", "D", "F"] as const).map((g) => (
+                    <span key={g} className="text-xs text-gray-400">
+                      {g} <span className="text-gray-200">{insights.teamCoaching.gradeDistribution[g]}</span>
+                    </span>
+                  ))}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
@@ -255,6 +292,9 @@ export function InsightsContent() {
                       <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                         Improvement
                       </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                        Work on next
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
@@ -286,9 +326,9 @@ export function InsightsContent() {
                             trainee.improvement === null
                               ? "text-gray-400"
                               : trainee.improvement > 0
-                                ? "text-green-400"
+                                ? "text-[#64ba00]"
                                 : trainee.improvement < 0
-                                  ? "text-red-400"
+                                  ? "text-[#e65b53]"
                                   : "text-gray-400"
                           }`}
                         >
@@ -297,6 +337,20 @@ export function InsightsContent() {
                             : trainee.improvement > 0
                               ? `+${trainee.improvement}`
                               : trainee.improvement}
+                        </td>
+                        <td className="px-3 py-3 align-top" style={{ minWidth: 220, maxWidth: 300 }}>
+                          {trainee.growthArea ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-sm font-medium" style={{ color: "#f96e10" }}>
+                                {trainee.growthArea.label}
+                              </span>
+                              {trainee.nextStep && (
+                                <span className="text-xs text-gray-400 leading-snug">{trainee.nextStep}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-gray-500">—</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -345,11 +399,11 @@ export function InsightsContent() {
                   <tbody className="divide-y divide-white/5">
                     {insights.scenarioSummaries.map((scenario, idx) => (
                       <tr
-                        key={`${scenario.conferenceId}-${scenario.personaId}-${idx}`}
+                        key={`${scenario.personaId}-${idx}`}
                         className="hover:bg-white/5 transition"
                       >
                         <td className="px-3 py-3 text-sm text-gray-300">
-                          {scenario.conferenceName}
+                          {scenario.personaDisplayName}
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-300">
                           <div

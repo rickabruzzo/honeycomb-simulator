@@ -1,20 +1,20 @@
 import { kv } from "@vercel/kv";
 
+import { useKv } from "./kvConfig";
 export type LeaderboardEntry = {
   token: string;
   score: number;
   grade: string;
   createdAt: string;
   // Segmentation metadata
-  conferenceId: string | null;
-  conferenceName: string | null;
   personaId: string | null;
   personaDisplayName: string | null;
   jobTitle: string | null;
-  difficulty: "easy" | "medium" | "hard" | null;
-  // Trainee snapshot (Phase H1)
+  // Trainee snapshot
   traineeId?: string | null;
   traineeNameShort?: string | null;
+  /** True when the session was run in training-wheels (assisted) mode. */
+  trainingWheels?: boolean;
 };
 
 const inMemoryLeaderboard: LeaderboardEntry[] = [];
@@ -23,9 +23,6 @@ const MAX_LEADERBOARD_SIZE = 2000;
 /**
  * KV is configured when Vercel/Upstash env vars are present.
  */
-function useKv(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-}
 
 /**
  * Add or update an entry in the leaderboard index
