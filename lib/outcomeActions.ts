@@ -8,7 +8,7 @@
 export type OutcomeActionType =
   | "SCAN_BADGE"
   | "HANDOFF_DEMOER"
-  | "HAND_FLYER"
+  | "HAND_POSTCARD"
   | "HAND_SWAG";
 
 export interface OutcomeAction {
@@ -44,10 +44,12 @@ export function getOutcomeAction(outcome: string): OutcomeAction {
 
     case "SELF_SERVICE_READY":
       return {
-        actionType: "HAND_FLYER",
-        actionLabel: "Hand them a flyer",
-        systemMessage: "You hand them a flyer with free tier info and documentation links.",
-        tooltip: "Give them self-service resources to explore on their own",
+        actionType: "HAND_POSTCARD",
+        actionLabel: "Hand them a postcard",
+        systemMessage:
+          "You hand them a postcard pointing to white papers, docs, and the free tier to explore on their own.",
+        tooltip:
+          "Best for a self-directed, skeptical IC without budget/authority who trusts content over sales",
       };
 
     case "DEFERRED_INTEREST":

@@ -189,7 +189,7 @@ export default function ShareScorePage() {
                 key
                   .replace(/_/g, " ")
                   .replace(/\b\w/g, (c) => c.toUpperCase());
-              const percentage = (value / 20) * 100;
+              const percentage = Math.min(100, (value / 10) * 100);
               // Brand tint by strength: strong=lime, mid=honey, weak=tango.
               const barColor =
                 percentage >= 80 ? "#64ba00" : percentage >= 55 ? "#ffb000" : "#f96e10";
@@ -199,7 +199,7 @@ export default function ShareScorePage() {
                   <div className="flex items-center justify-between text-sm mb-1">
                     <span className="text-gray-300">{label}</span>
                     <span className="text-gray-400">
-                      {value}/20
+                      {value}/10
                     </span>
                   </div>
                   <div className="w-full rounded-full h-2" style={{ background: "rgba(255,255,255,0.10)" }}>

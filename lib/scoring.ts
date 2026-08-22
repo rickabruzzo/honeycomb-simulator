@@ -81,7 +81,20 @@ export async function scoreSession(
   token: string
 ): Promise<ScoreRecord> {
   const now = new Date().toISOString();
-  const base = heuristicScore(session, token); // also our fallback
+  const rawBase = heuristicScore(session, token); // also our fallback
+  // The heuristic scorer works on a 0-20 breakdown; the judge (and the /10 UI) use 0-10.
+  // Scale the fallback breakdown so a heuristic result renders on the same scale as a judged one.
+  const base: ScoreRecord = {
+    ...rawBase,
+    breakdown: {
+      discovery: Math.round(rawBase.breakdown.discovery / 2),
+      listening: Math.round(rawBase.breakdown.listening / 2),
+      empathy: Math.round(rawBase.breakdown.empathy / 2),
+      qualification: Math.round(rawBase.breakdown.qualification / 2),
+      guardrails: Math.round(rawBase.breakdown.guardrails / 2),
+      handoff: Math.round(rawBase.breakdown.handoff / 2),
+    },
+  };
 
   if (!hasTraineeContent(session)) return base;
 
@@ -95,16 +108,17 @@ export async function scoreSession(
     // asking). A strong dimension is >= 4; if none reached that, the best genuine positives
     // (>= 3, "generally followed up") are surfaced as relative strengths rather than inventing
     // praise. A truly weak session simply shows no "What You Did Well" items.
+    // Thresholds on the judge's 0-10 scale: strong >= 8, relative strengths >= 6, mistakes <= 4.
     const ranked = SCORING_DIMENSIONS.map((d) => ({ d, s: judge[d].score }));
-    const strong = ranked.filter((r) => r.s >= 4);
+    const strong = ranked.filter((r) => r.s >= 8);
     const relativeStrengths = strong.length
       ? strong
-      : ranked.filter((r) => r.s >= 3).sort((a, b) => b.s - a.s).slice(0, 2);
+      : ranked.filter((r) => r.s >= 6).sort((a, b) => b.s - a.s).slice(0, 2);
     const highlights = relativeStrengths
       .map((r) => `${label(r.d)}: ${judge[r.d].rationale}`)
       .slice(0, 6);
     const mistakes = ranked
-      .filter((r) => r.s <= 2)
+      .filter((r) => r.s <= 4)
       .sort((a, b) => a.s - b.s)
       .map((r) => `${label(r.d)}: ${judge[r.d].rationale}`)
       .slice(0, 6);

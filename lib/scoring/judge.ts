@@ -14,7 +14,7 @@ import {
 } from "./rubric";
 
 export interface JudgeDimension {
-  score: number; // integer 0-5
+  score: number; // integer 0-10
   rationale: string;
   evidence: string; // verbatim trainee quote, or ""
 }
@@ -29,7 +29,7 @@ function coerceDimension(raw: unknown): JudgeDimension {
   }
   const r = raw as Record<string, unknown>;
   const score = r.score;
-  if (typeof score !== "number" || !Number.isInteger(score) || score < 0 || score > 5) {
+  if (typeof score !== "number" || !Number.isInteger(score) || score < 0 || score > 10) {
     throw new Error(`invalid score: ${String(score)}`);
   }
   return {

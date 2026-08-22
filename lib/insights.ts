@@ -41,7 +41,7 @@ const DIM_TIP: Record<Dim, string> = {
 export interface DimensionStat {
   dimension: Dim;
   label: string;
-  avg: number; // 0-20
+  avg: number; // 0-10
 }
 
 export interface TraineeSummary {
