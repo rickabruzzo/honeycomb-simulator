@@ -34,6 +34,9 @@ export async function GET(req: Request, ctx: any) {
     active: session.active,
     kickoff: redactedKickoff,
     startTime: session.startTime,
+    // Attendee receptiveness (score only) so the trainee view can show the momentum band.
+    // This is live feedback, not the hidden persona identity.
+    momentum: session.momentum ?? null,
     // Training-wheels: attributes the trainee has earned visibility into (null when off).
     trainingWheels: Boolean(session.trainingWheels),
     revealed: computeRevealed(session),

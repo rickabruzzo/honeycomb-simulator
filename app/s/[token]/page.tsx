@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { Send, Square } from "lucide-react";
+import { Send } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { BrandButton } from "../../../components/ui/BrandButton";
 import type { RevealedAttributes } from "../../../lib/attendee/trainingWheels";
@@ -15,13 +15,25 @@ interface Message {
 
 const INVITE_TOKEN_STORAGE_KEY = "honeycomb_invite_token";
 
-function formatTime(timestamp: string) {
-  return new Date(timestamp).toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+// Pointy-top hexagon (matches the brand logomark / scorecard grade badge).
+const HEX_CLIP = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
+
+type MomentumBand = "GUARDED" | "CURIOUS" | "ENGAGED" | "COMMITTED";
+
+function bandForScore(score: number): MomentumBand {
+  if (score >= 51) return "COMMITTED";
+  if (score >= 31) return "ENGAGED";
+  if (score >= 16) return "CURIOUS";
+  return "GUARDED";
 }
+
+// Band chip colours drawn from the brand palette.
+const BAND_STYLE: Record<MomentumBand, string> = {
+  GUARDED: "border-[#e65b53]/50 text-[#e65b53]",
+  CURIOUS: "border-[#ffb000]/60 text-[#ffb000]",
+  ENGAGED: "border-[#0298ec]/60 text-[#0298ec]",
+  COMMITTED: "border-[#64ba00]/60 text-[#64ba00]",
+};
 
 export default function TraineePracticePage() {
   const params = useParams();
@@ -34,10 +46,10 @@ export default function TraineePracticePage() {
   const [currentState, setCurrentState] = useState("ICEBREAKER");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [conferenceContext, setConferenceContext] = useState("");
   const [violations, setViolations] = useState<string[]>([]);
   const [trainingWheels, setTrainingWheels] = useState(false);
   const [revealed, setRevealed] = useState<RevealedAttributes | null>(null);
+  const [momentumScore, setMomentumScore] = useState(0);
   const [endPrompt, setEndPrompt] = useState<{
     outcome: string;
     actionLabel: string;
@@ -46,34 +58,6 @@ export default function TraineePracticePage() {
   } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const active = Boolean(sessionId);
-
-  // Parse conference context into structured fields
-  const parseConferenceContext = (ctx: string) => {
-    if (!ctx) return null;
-
-    const lines = ctx.split("\n");
-    const parsed: Record<string, string> = {};
-
-    for (const line of lines) {
-      const colonIndex = line.indexOf(":");
-      if (colonIndex > 0) {
-        const key = line.substring(0, colonIndex).trim();
-        const value = line.substring(colonIndex + 1).trim();
-        parsed[key] = value;
-      }
-    }
-
-    return {
-      conference: parsed["Conference"] || "",
-      themes: parsed["Themes"] || "",
-      seniorityMix: parsed["Seniority Mix"] || "",
-      observabilityMaturity: parsed["Observability Maturity"] || "",
-    };
-  };
-
-  const conferenceData = parseConferenceContext(conferenceContext);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -131,10 +115,7 @@ export default function TraineePracticePage() {
         setViolations(sessionData.violations || []);
         setTrainingWheels(Boolean(sessionData.trainingWheels));
         setRevealed(sessionData.revealed ?? null);
-
-        if (sessionData.kickoff?.conferenceContext) {
-          setConferenceContext(sessionData.kickoff.conferenceContext);
-        }
+        setMomentumScore(sessionData.momentum?.score ?? 0);
 
         setError(null);
       } catch (e) {
@@ -185,6 +166,7 @@ export default function TraineePracticePage() {
       setCurrentState(data.currentState || currentState);
       setViolations(data.violations || []);
       if (data.revealed !== undefined) setRevealed(data.revealed);
+      if (data.momentum?.score !== undefined) setMomentumScore(data.momentum.score);
 
       // Handle completion CTA
       if (data.endPrompt) {
@@ -299,62 +281,45 @@ export default function TraineePracticePage() {
     );
   }
 
+  // Attendee identity shown to the trainee. In normal mode the persona stays hidden (that's the
+  // point of the exercise); with training wheels on it fills in as the trainee earns each detail.
+  const roleRevealed = Boolean(trainingWheels && revealed?.role);
+  const attendeeName = roleRevealed ? (revealed!.role as string) : "Conference Attendee";
+  const attendeeSubtitle = roleRevealed
+    ? revealed?.posture || "at the Honeycomb booth"
+    : trainingWheels
+      ? "Uncover who they are as you talk"
+      : "At the Honeycomb booth";
+  const avatarInitial = roleRevealed ? attendeeName.charAt(0).toUpperCase() : "?";
+  const band = bandForScore(momentumScore);
+  const traineeTurns = messages.filter((m) => m.type === "trainee").length;
+
   return (
-    <div className="max-w-5xl mx-auto flex flex-col h-screen">
-        {/* Sticky Header */}
-        <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-white/15 pb-4 mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex-1">
-              <h1 className="text-2xl font-semibold mb-2">
-                Practice Session
-              </h1>
-              {conferenceData ? (
-                <div className="text-sm text-white/70 space-y-0.5">
-                  {conferenceData.conference && (
-                    <div>Conference: <span className="font-semibold text-white/90">{conferenceData.conference}</span></div>
-                  )}
-                  {conferenceData.themes && (
-                    <div>Themes: <span className="font-semibold text-white/90">{conferenceData.themes}</span></div>
-                  )}
-                  {conferenceData.seniorityMix && (
-                    <div>Seniority mix: <span className="font-semibold text-white/90">{conferenceData.seniorityMix}</span></div>
-                  )}
-                  {conferenceData.observabilityMaturity && (
-                    <div>Observability maturity: <span className="font-semibold text-white/90">{conferenceData.observabilityMaturity}</span></div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-white/70 text-sm">Loading...</p>
-              )}
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="text-sm text-gray-300">
-                State: <span className="font-semibold">{currentState}</span>
-              </div>
-              <div
-                className={`px-3 py-1 rounded-full text-sm ${
-                  active
-                    ? "bg-emerald-500/15 text-emerald-200 border border-emerald-400/20"
-                    : "bg-white/10 text-white/70 border border-white/10"
-                }`}
-              >
-                {active ? "● Active" : "● Inactive"}
-              </div>
-            </div>
-          </div>
-
-          {/* Controls */}
+    <div className="max-w-3xl mx-auto flex flex-col h-screen">
+        {/* Attendee identity header */}
+        <div className="sticky top-0 z-10 bg-[var(--hc-page,#1e2734)]/95 backdrop-blur-sm border-b border-white/10 pb-4 mb-4">
           <div className="flex items-center gap-3">
-            {!endPrompt && (
-              <BrandButton
-                onClick={handleEndSession}
-                disabled={!sessionId || loading}
-                variant="red"
+            <div
+              className="flex items-center justify-center shrink-0"
+              style={{ width: 44, height: 44, background: "#0278cd", clipPath: HEX_CLIP }}
+            >
+              <span className="text-white font-semibold text-lg leading-none">{avatarInitial}</span>
+            </div>
+            <div className="min-w-0">
+              <div className="font-display font-semibold text-white text-lg leading-tight truncate">
+                {attendeeName}
+              </div>
+              <div className="text-sm text-white/60 truncate">{attendeeSubtitle}</div>
+            </div>
+            <div className="ml-auto flex items-center gap-3 shrink-0">
+              <span
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${BAND_STYLE[band]}`}
+                title="How receptive the attendee is right now"
               >
-                <Square size={16} /> End Session
-              </BrandButton>
-            )}
+                {band}
+              </span>
+              <span className="text-sm text-white/50">Turn {traineeTurns}</span>
+            </div>
           </div>
         </div>
 
@@ -414,25 +379,36 @@ export default function TraineePracticePage() {
           ) : (
             <div className="space-y-3">
               {messages.map((m) => {
+                if (m.type === "system") {
+                  return (
+                    <div key={m.id} className="flex justify-center py-1">
+                      <span className="text-[11px] uppercase tracking-wide text-white/30">
+                        {m.text}
+                      </span>
+                    </div>
+                  );
+                }
                 const isTrainee = m.type === "trainee";
-                const isAttendee = m.type === "attendee";
-                const bubble = isTrainee
-                  ? "bg-[#0278cd] text-white ml-auto"
-                  : isAttendee
-                    ? "bg-white/[0.06] border border-white/10"
-                    : "bg-[#51368d]/25 border border-[#51368d]/40";
-
-                const label = isTrainee ? "You" : isAttendee ? "Attendee" : "System";
-
                 return (
                   <div
                     key={m.id}
-                    className={`max-w-[75%] rounded-lg px-4 py-3 ${bubble}`}
+                    className={`flex items-end gap-2 ${isTrainee ? "justify-end" : "justify-start"}`}
                   >
-                    <div className="text-xs text-gray-200/80 mb-1">{label}</div>
-                    <div className="whitespace-pre-wrap">{m.text}</div>
-                    <div className="text-xs text-gray-200/60 mt-1">
-                      {formatTime(m.timestamp)}
+                    {!isTrainee && (
+                      <div
+                        className="shrink-0 mb-1"
+                        style={{ width: 22, height: 22, background: "#0278cd", clipPath: HEX_CLIP }}
+                        aria-hidden
+                      />
+                    )}
+                    <div
+                      className={`max-w-[78%] rounded-2xl px-4 py-2.5 whitespace-pre-wrap ${
+                        isTrainee
+                          ? "bg-[#0278cd] text-white rounded-br-sm"
+                          : "bg-white/[0.06] border border-white/10 text-gray-100 rounded-bl-sm"
+                      }`}
+                    >
+                      {m.text}
                     </div>
                   </div>
                 );
@@ -465,13 +441,13 @@ export default function TraineePracticePage() {
 
         {/* Fixed Input at Bottom - Hide when CTA is showing */}
         {!endPrompt && (
-          <div className="sticky bottom-0 bg-gray-900/95 backdrop-blur-sm border-t border-white/15 pt-4 mt-4">
+          <div className="sticky bottom-0 bg-[var(--hc-page,#1e2734)]/95 backdrop-blur-sm border-t border-white/10 pt-4 mt-4">
             <div className="flex items-center gap-3">
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={sessionId ? "Your response..." : "Loading..."}
+                placeholder={sessionId ? "Type your response..." : "Loading..."}
                 disabled={!sessionId || loading}
                 className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-4 py-3 outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10 disabled:opacity-60"
               />
@@ -483,7 +459,16 @@ export default function TraineePracticePage() {
                 <Send size={16} /> Send
               </BrandButton>
             </div>
-            {loading && <div className="text-xs text-gray-400 mt-2">Working…</div>}
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-xs text-gray-400">{loading ? "Working…" : ""}</span>
+              <button
+                onClick={handleEndSession}
+                disabled={!sessionId || loading}
+                className="text-sm rounded-md border border-[#e65b53]/50 text-[#e65b53] px-3 py-1.5 hover:bg-[#e65b53]/10 transition disabled:opacity-50"
+              >
+                End session &amp; score
+              </button>
+            </div>
           </div>
         )}
       </div>
