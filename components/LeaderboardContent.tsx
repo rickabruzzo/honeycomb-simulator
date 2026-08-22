@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Trophy, ExternalLink, Play } from "lucide-react";
+import { Trophy, ExternalLink } from "lucide-react";
 import type { LeaderboardEntry } from "@/lib/leaderboardStore";
 import type { Persona } from "@/lib/scenarioTypes";
 import type { Trainee } from "@/lib/traineeStore";
@@ -184,17 +184,12 @@ export function LeaderboardContent() {
           <p className="text-gray-400">Loading leaderboard...</p>
         </div>
       ) : entries.length === 0 ? (
-        <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center space-y-4">
+        <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
           <p className="text-gray-400">
             {stats && stats.totalStored === 0
-              ? "No scores yet. Be the first to complete a practice session!"
+              ? "No scores yet — completed practice sessions will show up here."
               : "No scores match the selected filters."}
           </p>
-          <Link href="/">
-            <BrandButton variant="lime" className="inline-flex items-center gap-2">
-              <Play size={16} /> Practice Now
-            </BrandButton>
-          </Link>
         </div>
       ) : (
         <div className="rounded-lg border border-white/15 bg-white/7 shadow-sm overflow-hidden">
