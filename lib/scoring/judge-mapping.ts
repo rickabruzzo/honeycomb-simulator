@@ -16,16 +16,16 @@ export interface MappedScore {
     guardrails: number;
     handoff: number;
   };
-  score: number; // 0-100, normalized from the six 0-20 dimensions
+  score: number; // 0-100, normalized from the six 0-10 dimensions
   evidence: { dimension: string; quote: string; comment: string }[];
 }
 
-function to20(score05: number): number {
-  return Math.round((score05 / 5) * 20);
+function clamp10(score: number): number {
+  return Math.min(10, Math.max(0, Math.round(score)));
 }
 
 /**
- * Map judged 0-5 dimensions to the 0-20 breakdown and a normalized 0-100 score.
+ * Map judged 0-10 dimensions to the 0-10 breakdown and a normalized 0-100 score.
  *
  * Outcome quality is scored ONLY through the Handoff dimension — there is no separate outcome
  * nudge or floor, so `detectedOutcome` no longer affects the score (kept in the signature for
@@ -36,12 +36,12 @@ export function judgeResultToScore(
   _detectedOutcome: string | null
 ): MappedScore {
   const breakdown = {
-    discovery: to20(judge.discovery.score),
-    listening: to20(judge.listening.score),
-    empathy: to20(judge.empathy.score),
-    qualification: to20(judge.qualification.score),
-    guardrails: to20(judge.guardrails.score),
-    handoff: to20(judge.handoff.score),
+    discovery: clamp10(judge.discovery.score),
+    listening: clamp10(judge.listening.score),
+    empathy: clamp10(judge.empathy.score),
+    qualification: clamp10(judge.qualification.score),
+    guardrails: clamp10(judge.guardrails.score),
+    handoff: clamp10(judge.handoff.score),
   };
 
   const sum =
@@ -52,8 +52,8 @@ export function judgeResultToScore(
     breakdown.guardrails +
     breakdown.handoff;
 
-  // Normalize the six 0-20 dimensions (max 120) onto a 0-100 scale.
-  const score = Math.min(100, Math.max(0, Math.round((sum / 120) * 100)));
+  // Normalize the six 0-10 dimensions (max 60) onto a 0-100 scale.
+  const score = Math.min(100, Math.max(0, Math.round((sum / 60) * 100)));
 
   const evidence = SCORING_DIMENSIONS.map((dim) => ({
     dimension: dim,

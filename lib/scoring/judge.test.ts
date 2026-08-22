@@ -36,7 +36,7 @@ describe("parseJudgeResult", () => {
   });
 
   it("throws when a score is out of range", () => {
-    const bad = { ...good, listening: { ...good.listening, score: 9 } };
+    const bad = { ...good, listening: { ...good.listening, score: 11 } };
     expect(() => parseJudgeResult(JSON.stringify(bad))).toThrow();
   });
 
@@ -56,30 +56,30 @@ describe("parseJudgeResult", () => {
 import { judgeResultToScore, deriveGrade } from "./judge-mapping";
 
 const base = (over: Record<string, { score: number; rationale?: string; evidence?: string }> = {}) => ({
-  discovery:     { score: 3, rationale: "", evidence: "x" },
-  listening:     { score: 3, rationale: "", evidence: "x" },
-  empathy:       { score: 3, rationale: "", evidence: "x" },
-  qualification: { score: 3, rationale: "", evidence: "x" },
-  guardrails:    { score: 3, rationale: "", evidence: "x" },
-  handoff:       { score: 3, rationale: "", evidence: "x" },
+  discovery:     { score: 5, rationale: "", evidence: "x" },
+  listening:     { score: 5, rationale: "", evidence: "x" },
+  empathy:       { score: 5, rationale: "", evidence: "x" },
+  qualification: { score: 5, rationale: "", evidence: "x" },
+  guardrails:    { score: 5, rationale: "", evidence: "x" },
+  handoff:       { score: 5, rationale: "", evidence: "x" },
   summary: "",
   ...over,
 });
 
 describe("judgeResultToScore", () => {
-  it("maps 0-5 to 0-20 per dimension", () => {
+  it("carries the judged 0-10 score straight through per dimension", () => {
     const { breakdown } = judgeResultToScore(
-      base({ listening: { score: 4, rationale: "", evidence: "x" } }) as never,
+      base({ listening: { score: 8, rationale: "", evidence: "x" } }) as never,
       null
     );
-    expect(breakdown.listening).toBe(16); // 4/5*20
-    expect(breakdown.discovery).toBe(12); // 3/5*20
+    expect(breakdown.listening).toBe(8);
+    expect(breakdown.discovery).toBe(5);
   });
 
-  it("normalizes the six 0-20 values over 120", () => {
-    // all 3s -> 12 each -> 72 -> 72/120*100 = 60
+  it("normalizes the six 0-10 values over 60", () => {
+    // all 5s -> 30 -> 30/60*100 = 50
     const { score } = judgeResultToScore(base() as never, null);
-    expect(score).toBe(60);
+    expect(score).toBe(50);
   });
 
   it("populates evidence from each of the six dimensions in order", () => {
@@ -96,11 +96,11 @@ describe("deriveGrade — no outcome nudge, no floor", () => {
     // Correct disqualification: strong discovery/listening and a clean-exit handoff.
     const goodExit = judgeResultToScore(
       base({
-        discovery: { score: 5, rationale: "", evidence: "x" },
-        listening: { score: 5, rationale: "", evidence: "x" },
-        empathy: { score: 4, rationale: "", evidence: "x" },
-        qualification: { score: 5, rationale: "", evidence: "x" },
-        handoff: { score: 5, rationale: "", evidence: "x" },
+        discovery: { score: 10, rationale: "", evidence: "x" },
+        listening: { score: 10, rationale: "", evidence: "x" },
+        empathy: { score: 8, rationale: "", evidence: "x" },
+        qualification: { score: 10, rationale: "", evidence: "x" },
+        handoff: { score: 10, rationale: "", evidence: "x" },
       }) as never,
       "POLITE_EXIT"
     );
@@ -123,8 +123,8 @@ describe("deriveGrade — no outcome nudge, no floor", () => {
     const asMql = judgeResultToScore(base() as never, "BADGE_SCAN").score;
     const asExit = judgeResultToScore(base() as never, "POLITE_EXIT").score;
     const asNone = judgeResultToScore(base() as never, null).score;
-    expect(asMql).toBe(60);
-    expect(asExit).toBe(60);
-    expect(asNone).toBe(60);
+    expect(asMql).toBe(50);
+    expect(asExit).toBe(50);
+    expect(asNone).toBe(50);
   });
 });
