@@ -53,7 +53,9 @@ export async function POST(
           );
         }
 
-        const { actionType } = await request.json();
+        const body = await request.json().catch(() => ({} as Record<string, unknown>));
+        const actionType = body?.actionType as string | undefined;
+        const bodyToken = typeof body?.token === "string" ? (body.token as string) : null;
 
         if (!actionType) {
           span.setAttribute("status", 400);
@@ -91,7 +93,11 @@ export async function POST(
         let score: number | null = null;
 
         try {
-          const token = await getInviteForSession(id);
+          // Prefer the reverse session->invite mapping, but fall back to the token the
+          // client holds from the invite link. Without this fallback a missing/lagging
+          // reverse mapping meant no score was saved and the trainee got
+          // "score link unavailable" with nothing landing on the leaderboard.
+          const token = (await getInviteForSession(id)) || bodyToken;
 
           if (token) {
             span.setAttribute("has_token", true);

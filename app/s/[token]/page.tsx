@@ -188,7 +188,8 @@ export default function TraineePracticePage() {
       const response = await fetch(`/api/session/${sessionId}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actionType: endPrompt.actionType }),
+        // Pass the invite token so scoring can resolve even if the reverse mapping is missing.
+        body: JSON.stringify({ actionType: endPrompt.actionType, token }),
       });
 
       if (!response.ok) {
@@ -203,11 +204,12 @@ export default function TraineePracticePage() {
       setSessionId(null);
       setEndPrompt(null);
 
-      // Redirect to score page
-      if (data.shareUrl) {
-        router.push(data.shareUrl);
+      // Redirect to score page. Fall back to the token-derived share URL so a missing
+      // server shareUrl never dead-ends the trainee on the scorecard.
+      const shareUrl = data.shareUrl || (token ? `/share/${token}` : null);
+      if (shareUrl) {
+        router.push(shareUrl);
       } else {
-        // Fallback: show toast if no shareUrl
         alert("Session ended, but score link unavailable. Check server logs.");
       }
     } catch (error) {
