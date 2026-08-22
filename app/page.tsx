@@ -27,6 +27,12 @@ function HoneycombSimulator() {
   const [inviteError, setInviteError] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
+  // Inline new-trainee creation, so a link can be made without leaving the builder
+  const [newTraineeFirst, setNewTraineeFirst] = useState<string>("");
+  const [newTraineeLast, setNewTraineeLast] = useState<string>("");
+  const [isCreatingTrainee, setIsCreatingTrainee] = useState(false);
+  const [traineeCreateError, setTraineeCreateError] = useState<string>("");
+
   // Enrichment status
   const [enrichmentProvider, setEnrichmentProvider] = useState<"openai" | "anthropic" | "mock" | null>(null);
   const [enrichmentStatus, setEnrichmentStatus] = useState<"fresh" | "cached" | "none">("none");
@@ -193,6 +199,46 @@ function HoneycombSimulator() {
       setInviteError(error.message || "Failed to create invite");
     } finally {
       setIsCreatingInvite(false);
+    }
+  };
+
+  const handleCreateTrainee = async () => {
+    const firstName = newTraineeFirst.trim();
+    const lastName = newTraineeLast.trim();
+    if (!firstName || !lastName) {
+      setTraineeCreateError("First and last name are required");
+      return;
+    }
+
+    setIsCreatingTrainee(true);
+    setTraineeCreateError("");
+
+    try {
+      const response = await fetch("/api/trainees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firstName, lastName }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to create trainee");
+      }
+
+      const data = await response.json();
+      const created: Trainee | undefined = data.trainee;
+      if (created) {
+        // Add to the list and select the new trainee for this link
+        setTrainees((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
+        setSelectedTraineeId(created.id);
+      }
+      setNewTraineeFirst("");
+      setNewTraineeLast("");
+    } catch (error: any) {
+      console.error("Failed to create trainee:", error);
+      setTraineeCreateError(error.message || "Failed to create trainee");
+    } finally {
+      setIsCreatingTrainee(false);
     }
   };
 
@@ -391,6 +437,43 @@ function HoneycombSimulator() {
               <div className="mt-2 text-gray-500">They will not see the persona details above.</div>
             </div>
           )}
+
+          {/* Inline: create a new trainee without leaving the builder */}
+          <div className="mt-4 border-t border-white/10 pt-3">
+            <div className="text-xs text-gray-400 mb-2 font-medium">Add a new trainee</div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                value={newTraineeFirst}
+                onChange={(e) => setNewTraineeFirst(e.target.value)}
+                placeholder="First name"
+                className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 text-sm outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10"
+              />
+              <input
+                value={newTraineeLast}
+                onChange={(e) => setNewTraineeLast(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateTrainee();
+                }}
+                placeholder="Last name"
+                className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 text-sm outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10"
+              />
+              <BrandButton
+                onClick={handleCreateTrainee}
+                disabled={isCreatingTrainee}
+                variant="lime"
+                className="text-sm justify-center"
+              >
+                {isCreatingTrainee ? "Adding..." : "Add"}
+              </BrandButton>
+            </div>
+            {traineeCreateError ? (
+              <div className="mt-2 text-sm text-red-300">{traineeCreateError}</div>
+            ) : (
+              <div className="mt-2 text-xs text-gray-500">
+                Creates the trainee and selects them for this link.
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
