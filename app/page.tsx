@@ -242,6 +242,29 @@ function HoneycombSimulator() {
     }
   };
 
+  const handleDeleteTrainee = async () => {
+    if (!selectedTraineeId) return;
+    const trainee = trainees.find((t) => t.id === selectedTraineeId);
+    const name = trainee ? formatTraineeFull(trainee) : "this trainee";
+    if (!window.confirm(`Remove ${name}? They'll be archived and hidden from the list.`)) {
+      return;
+    }
+
+    const idToRemove = selectedTraineeId;
+    try {
+      const response = await fetch(`/api/trainees/${idToRemove}`, { method: "DELETE" });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to remove trainee");
+      }
+      setTrainees((prev) => prev.filter((t) => t.id !== idToRemove));
+      setSelectedTraineeId("");
+    } catch (error: any) {
+      console.error("Failed to remove trainee:", error);
+      setTraineeCreateError(error.message || "Failed to remove trainee");
+    }
+  };
+
 
   return (
     <div className="max-w-5xl mx-auto space-y-4">
@@ -433,7 +456,16 @@ function HoneycombSimulator() {
 
           {selectedTraineeId && (
             <div className="text-xs text-gray-400 space-y-1 pl-2 mt-3">
-              <div>The trainee will practice a discovery conversation with this persona.</div>
+              <div className="flex items-center justify-between">
+                <span>The trainee will practice a discovery conversation with this persona.</span>
+                <button
+                  type="button"
+                  onClick={handleDeleteTrainee}
+                  className="ml-3 shrink-0 rounded border border-[#e65b53]/40 text-[#e65b53] px-2 py-1 text-xs hover:bg-[#e65b53]/10 transition"
+                >
+                  Remove
+                </button>
+              </div>
               <div className="mt-2 text-gray-500">They will not see the persona details above.</div>
             </div>
           )}
