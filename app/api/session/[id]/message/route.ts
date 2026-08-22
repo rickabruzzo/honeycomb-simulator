@@ -21,9 +21,7 @@ import { randomUUID } from "crypto";
 import { getChatProvider, MockChatProvider } from "@/lib/llm/chatProvider";
 import type { ChatInput } from "@/lib/llm/chatTypes";
 import { withSpan, withChildSpan } from "@/lib/telemetry";
-import { getEnrichment, saveEnrichment } from "@/lib/llm/enrichmentStore";
-import { getEnrichmentProvider } from "@/lib/llm/provider";
-import type { EnrichmentInput } from "@/lib/llm/enrichmentTypes";
+import { getEnrichment } from "@/lib/llm/enrichmentStore";
 import { composeAttendeeSystemPrompt } from "@/lib/llm/promptComposer";
 import { getRevealBudget } from "@/lib/attendee/revealBudget";
 import { getMomentumBand } from "@/lib/attendee/momentumBands";
@@ -122,54 +120,27 @@ export async function POST(
         }
         span.setAttribute("current_state", session.currentState);
 
-        // On-demand enrichment: if missing, try to load from cache or generate
+        // Enrichment is generated ONCE at invite-create (and can be produced out of band by
+        // /api/enrichment/ensure). Here we only READ the persona cache — we never generate
+        // inline. The previous inline generation blocked every reply for up to 8s and, on
+        // timeout, persisted nothing, so it re-ran on every single message. When enrichment
+        // isn't ready we simply fall back to the base persona, which drives a full, in-character
+        // attendee on its own (behaviorBrief + painAnchors).
         if (!session.kickoff.enrichment && session.kickoff.personaId) {
           try {
             const cacheKey = `persona:${session.kickoff.personaId}`;
-            let enrichment = await getEnrichment(
+            const enrichment = await getEnrichment(
               cacheKey,
               session.kickoff.personaId
             );
-
-            // If not in cache, generate on-demand (this CAN block message, but invite was fast)
-            if (!enrichment && session.kickoff.attendeeProfile) {
-              console.log("[message] Generating enrichment on-demand for session:", id);
-
-              const provider = getEnrichmentProvider();
-              const enrichmentInput: EnrichmentInput = {
-                conferenceId: cacheKey,
-                personaId: session.kickoff.personaId,
-                conferenceContext: "Tech conference booth",
-                attendeeProfile: session.kickoff.attendeeProfile,
-              };
-
-              // Generate with 8s timeout
-              const timeoutPromise = new Promise<null>((_, reject) =>
-                setTimeout(() => reject(new Error("Enrichment timeout")), 8000)
-              );
-
-              try {
-                enrichment = await Promise.race([
-                  provider.enrich(enrichmentInput),
-                  timeoutPromise,
-                ]);
-
-                if (enrichment) {
-                  await saveEnrichment(enrichment);
-                  session.kickoff.enrichment = enrichment;
-                  span.setAttribute("enrichment_generated_on_demand", true);
-                }
-              } catch (err) {
-                console.error("[message] On-demand enrichment failed:", err);
-                span.setAttribute("enrichment_generation_failed", true);
-              }
-            } else if (enrichment) {
-              // Found in cache - add to session
+            if (enrichment) {
               session.kickoff.enrichment = enrichment;
               span.setAttribute("enrichment_loaded_from_cache", true);
+            } else {
+              span.setAttribute("enrichment_cache_miss", true);
             }
           } catch (error) {
-            console.error("[message] Failed to load enrichment:", error);
+            console.error("[message] Failed to load enrichment from cache:", error);
           }
         }
 
