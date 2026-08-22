@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { TrendingUp, AlertCircle, Home, Trophy, Eye } from "lucide-react";
+import { TrendingUp, AlertCircle, Trophy, Eye } from "lucide-react";
 import { BrandButton } from "../../../components/ui/BrandButton";
 import Link from "next/link";
 
@@ -84,16 +84,9 @@ export default function ShareScorePage() {
             <div className="rounded-lg border border-white/15 bg-white/7 p-8 shadow-sm text-center">
               <div className="text-5xl mb-4">📊</div>
               <h1 className="text-2xl font-semibold mb-3">No score yet</h1>
-              <p className="text-white/70 mb-6">
-                Complete a practice session first to see your scorecard.
+              <p className="text-white/70">
+                This scorecard will be ready once the practice session is complete.
               </p>
-              <BrandButton
-                onClick={() => router.push("/")}
-                variant="lime"
-                className="w-full justify-center"
-              >
-                <Home size={16} /> Practice Now
-              </BrandButton>
             </div>
           </div>
         </div>
@@ -302,13 +295,6 @@ export default function ShareScorePage() {
             className="px-6 py-3"
           >
             <Trophy size={16} /> View Leaderboard
-          </BrandButton>
-          <BrandButton
-            onClick={() => router.push("/")}
-            variant="lime"
-            className="px-6 py-3"
-          >
-            <Home size={16} /> Practice Again
           </BrandButton>
         </div>
 
