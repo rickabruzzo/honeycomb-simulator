@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
 import { createSessionWithEnrichment } from "@/lib/createSession";
 import { saveSession } from "@/lib/storage";
@@ -7,6 +7,7 @@ import { addInviteToIndex } from "@/lib/inviteIndex";
 import { resolveTrainee, ensureTraineesSeeded } from "@/lib/traineeStore";
 import { ensurePersonasSeeded } from "@/lib/personaStore";
 import { getEnrichment } from "@/lib/llm/enrichmentStore";
+import { ensureEnrichment } from "@/lib/llm/ensureEnrichment";
 import { withSpan, withChildSpan } from "@/lib/telemetry";
 import { useKv } from "@/lib/kvConfig";
 import { batchWrite, withTiming } from "@/lib/batchOperations";
@@ -164,27 +165,29 @@ export async function POST(request: NextRequest) {
         span.setAttribute("invite_create.kv_write_duration_ms", writeDuration);
         span.setAttribute("invite_create.kv_pipeline_calls", kvPipelineCalls);
 
-        // Trigger background enrichment if not cached
+        // Generate enrichment in the background if it wasn't already cached. Runs via after()
+        // so Vercel keeps the function alive until it finishes — the previous un-awaited
+        // self-fetch was frequently frozen before the request left the box, so enrichment
+        // never got cached. Generating in-process here also drops the extra HTTP round-trip.
         if (enrichmentStatus === "pending" && body.personaId) {
-          // Fire-and-forget request to ensure endpoint
-          const enrichmentUrl = new URL(
-            "/api/enrichment/ensure",
-            request.url
-          ).toString();
-
-          // Don't await - let it run in background
-          fetch(enrichmentUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              conferenceId: `persona:${body.personaId}`, // Synthetic key
-              personaId: body.personaId,
-              conferenceContext: "Tech conference booth",
-              attendeeProfile: session.kickoff.attendeeProfile,
-            }),
-          }).catch((err) => {
-            // Log but don't fail
-            console.error("[invite/create] Background enrichment trigger failed:", err);
+          const personaId = body.personaId;
+          const attendeeProfile = session.kickoff.attendeeProfile;
+          after(async () => {
+            try {
+              const res = await ensureEnrichment({
+                conferenceId: `persona:${personaId}`, // synthetic cache key
+                personaId,
+                conferenceContext: "Tech conference booth",
+                attendeeProfile,
+              });
+              if (res.status === "pending") {
+                console.warn(
+                  `[invite/create] background enrichment did not complete: ${res.error ?? "unknown"}`
+                );
+              }
+            } catch (err) {
+              console.error("[invite/create] background enrichment failed:", err);
+            }
           });
 
           span.setAttribute("invite_create.enrichment_triggered", true);

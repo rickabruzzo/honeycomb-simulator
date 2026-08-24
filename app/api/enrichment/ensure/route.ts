@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getEnrichment, saveEnrichment } from "@/lib/llm/enrichmentStore";
-import { getEnrichmentProvider } from "@/lib/llm/provider";
-import type { EnrichmentInput } from "@/lib/llm/enrichmentTypes";
-import { withSpan, withChildSpan } from "@/lib/telemetry";
+import { ensureEnrichment } from "@/lib/llm/ensureEnrichment";
+import { withSpan } from "@/lib/telemetry";
 
 /**
  * POST /api/enrichment/ensure
@@ -41,113 +39,27 @@ export async function POST(request: NextRequest) {
         span.setAttribute("conference_id", conferenceId);
         span.setAttribute("persona_id", personaId);
 
-        // Check cache first
-        const cached = await withChildSpan(
-          "hc.dep.kv.enrichment_cache_check",
-          async (childSpan) => {
-            childSpan.setAttribute("dep_type", "kv");
-            childSpan.setAttribute("operation", "get");
-            const result = await getEnrichment(conferenceId, personaId);
-            childSpan.setAttribute("cache_hit", !!result);
-            return result;
-          }
-        );
-
-        if (cached) {
-          span.setAttribute("enrichment_status", "cached");
-          span.setAttribute("cache_hit", true);
-          span.setAttribute("status", 200);
-
-          return NextResponse.json({
-            status: "cached",
-            provider: cached.provider,
-          });
-        }
-
-        // Generate enrichment with timeout
-        if (!conferenceContext || !attendeeProfile) {
-          span.setAttribute("status", 400);
-          span.setAttribute("error", "Missing context for generation");
-          return NextResponse.json(
-            { error: "conferenceContext and attendeeProfile required for generation" },
-            { status: 400 }
-          );
-        }
-
-        const provider = getEnrichmentProvider();
-        const providerType: string = process.env.ENRICHMENT_PROVIDER || "mock";
-
-        const enrichmentInput: EnrichmentInput = {
+        // All cache-check / generate / timeout / save logic lives in ensureEnrichment so this
+        // endpoint and the invite-create background task can never drift apart.
+        const result = await ensureEnrichment({
           conferenceId,
           personaId,
           conferenceContext,
           attendeeProfile,
-        };
-
-        // Generate with 8s timeout
-        const timeoutPromise = new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error("Enrichment timeout")), 8000)
-        );
-
-        let enrichment;
-        try {
-          enrichment = await withChildSpan(
-            "hc.dep.enrichment.generate",
-            async (childSpan) => {
-              childSpan.setAttribute("dep_type", "enrichment");
-              childSpan.setAttribute("provider", providerType);
-
-              const result = await Promise.race([
-                provider.enrich(enrichmentInput),
-                timeoutPromise,
-              ]);
-
-              if (result) {
-                childSpan.setAttribute("success", true);
-              }
-
-              return result;
-            }
-          );
-        } catch (error) {
-          // Timeout or error - log but don't fail
-          console.error("[enrichment/ensure] Generation failed:", error);
-          span.setAttribute("enrichment_error", error instanceof Error ? error.message : "Unknown");
-          span.setAttribute("status", 202);
-
-          return NextResponse.json({
-            status: "pending",
-            error: "Generation failed or timed out",
-          }, { status: 202 });
-        }
-
-        if (!enrichment) {
-          span.setAttribute("status", 202);
-          return NextResponse.json({
-            status: "pending",
-            error: "No enrichment generated",
-          }, { status: 202 });
-        }
-
-        // Save to cache
-        await withChildSpan(
-          "hc.dep.kv.enrichment_save",
-          async (childSpan) => {
-            childSpan.setAttribute("dep_type", "kv");
-            childSpan.setAttribute("operation", "set");
-            await saveEnrichment(enrichment);
-          }
-        );
-
-        span.setAttribute("enrichment_status", "fresh");
-        span.setAttribute("provider", enrichment.provider || "unknown");
-        span.setAttribute("cache_hit", false);
-        span.setAttribute("status", 200);
-
-        return NextResponse.json({
-          status: "fresh",
-          provider: enrichment.provider,
         });
+
+        span.setAttribute("enrichment_status", result.status);
+        span.setAttribute("cache_hit", result.status === "cached");
+        if (result.provider) span.setAttribute("provider", result.provider);
+        if (result.error) span.setAttribute("enrichment_error", result.error);
+
+        if (result.status === "pending") {
+          span.setAttribute("status", 202);
+          return NextResponse.json(result, { status: 202 });
+        }
+
+        span.setAttribute("status", 200);
+        return NextResponse.json(result);
       } catch (error) {
         console.error("[enrichment/ensure] Error:", error);
         span.setAttribute("status", 500);

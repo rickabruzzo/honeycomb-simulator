@@ -1,8 +1,6 @@
 import { randomUUID } from "crypto";
 import { SessionState } from "./storage";
-import { getEnrichment, saveEnrichment } from "./llm/enrichmentStore";
-import { getEnrichmentProvider } from "./llm/provider";
-import type { EnrichmentInput } from "./llm/enrichmentTypes";
+import { ensureEnrichment } from "./llm/ensureEnrichment";
 import { getPersona, ensurePersonasSeeded, listPersonas } from "./personaStore";
 import { buildPersonaTitle } from "./formatUtils";
 import { getTrainee, formatTraineeShort, ensureTraineesSeeded } from "./traineeStore";
@@ -253,34 +251,23 @@ OpenTelemetry familiarity: ${persona.otelFamiliarity}`;
     result.session.persona = fullPersona;
   }
 
-  // Try to add enrichment if we have personaId
+  // Add enrichment if we have a personaId. Skipped on the hot invite-create path
+  // (skipEnrichmentGeneration=true), which instead generates in the background via after().
+  // ensureEnrichment is cache-first and time-bounded, and never throws, so it can't block or
+  // fail session creation.
   if (input.personaId && !input.skipEnrichmentGeneration) {
     try {
-      // For now, enrichment is persona-only (no conference)
-      // Check cache first with a synthetic key
-      const cacheKey = `persona:${input.personaId}`;
-      let enrichment = await getEnrichment(cacheKey, input.personaId);
-
-      // Only generate if not cached
-      if (!enrichment && attendeeProfile) {
-        const provider = getEnrichmentProvider();
-        const enrichmentInput: EnrichmentInput = {
-          conferenceId: cacheKey, // Use synthetic key for compatibility
-          personaId: input.personaId,
-          conferenceContext: "Tech conference booth",
-          attendeeProfile: attendeeProfile,
-        };
-
-        enrichment = await provider.enrich(enrichmentInput);
-        await saveEnrichment(enrichment);
-      }
-
-      // Add enrichment to session (may be null if skipping)
-      if (enrichment) {
-        result.session.kickoff.enrichment = enrichment;
+      const res = await ensureEnrichment({
+        conferenceId: `persona:${input.personaId}`, // synthetic cache key
+        personaId: input.personaId,
+        conferenceContext: "Tech conference booth",
+        attendeeProfile: attendeeProfile ?? "",
+      });
+      if (res.enrichment) {
+        result.session.kickoff.enrichment = res.enrichment;
       }
     } catch (error) {
-      // Log error but don't fail session creation
+      // Never fail session creation on enrichment.
       console.error("Failed to load enrichment:", error);
     }
   }
