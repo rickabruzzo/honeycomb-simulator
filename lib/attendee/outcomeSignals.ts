@@ -37,6 +37,39 @@ export function outcomeSignalToCommittedOutcome(
 export function detectOutcomeFromText(text: string): OutcomeSignalType {
   const t = text.toLowerCase().trim().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ");
 
+  // ── Authority / budget signal → BADGE_SCAN (highest priority) ────────────
+  // "No one talks numbers unless they're in charge of numbers." When the attendee raises
+  // budget, per-seat/team pricing, procurement, a team rollout, or their own decision
+  // authority, that IS the buying-authority signal — the read is sales-qualified (MQL),
+  // even without an explicit "scan my badge." Keep these anchored to ownership/rollout
+  // language so a curious IC asking a bare "is there a free tier?" stays a postcard.
+  if (
+    // budget ownership / approval
+    /\b(our|my|the|your) (team s |teams )?budget\b/.test(t) ||
+    /\bbudget (for|to|owner|holder|approv)/.test(t) ||
+    /\b(get|need|secure|approve|approved|run) (the )?(budget|approval|sign off|signoff|buy in|purchase)\b/.test(t) ||
+    // procurement / contract / renewal
+    /\bprocurement\b/.test(t) ||
+    /\b(annual|enterprise) (contract|plan|pricing|agreement|deal|license)\b/.test(t) ||
+    /\bcurrent (spend|contract|tooling budget)\b/.test(t) ||
+    /\brenewal\b/.test(t) ||
+    // per-seat / per-team pricing (talking numbers for a group = authority)
+    /\b(pricing|price|cost|how much|rates?) (for|per|across) (a |an |our |my |the )?(team|seat|user|org|month|year|enterprise|company)/.test(t) ||
+    /\bper (seat|user) (pricing|price|cost)\b/.test(t) ||
+    /\b(seats|licenses|users) (for|do we|would we|per|across)\b/.test(t) ||
+    // explicit decision authority
+    /\bi ?(m| am)?( the)? (decision maker|buyer|budget (owner|holder))\b/.test(t) ||
+    /\bi (decide|choose|pick|own|approve|sign off on|am responsible for)\b/.test(t) ||
+    /\b(my|our) (call|decision|budget|spend)\b/.test(t) ||
+    /\bi (manage|lead|run|own|head up|oversee) (a |an |the |my |our )?(team|org|group|platform|department|engineers|engineering)\b/.test(t) ||
+    // team rollout / evaluating for a group
+    /\broll (this|it) out\b/.test(t) ||
+    /\bteam ?wide\b/.test(t) ||
+    /\b(standardiz|pilot|evaluat|bring|take) \w* ?(this|it)? ?(for|to|across|back to|with) (my|our|the) (team|org|company|group|engineering)\b/.test(t) ||
+    /\bset up (a |the )?(demo|call|time|meeting) for (my|our|the) (team|org|group|company)\b/.test(t) ||
+    /\bacross (the|our) (org|team|company|engineering|department)\b/.test(t)
+  ) return "BADGE_SCAN";
+
   // ── Badge scan / sales follow-up (highest priority) ──────────────────────
   if (
     /\bscan (my|your|the) badge\b/.test(t) ||

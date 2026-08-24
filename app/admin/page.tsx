@@ -6,6 +6,7 @@ import type { AdminInviteRow } from "../../lib/adminInvites";
 import type { Persona } from "../../lib/scenarioTypes";
 import type { Trainee } from "../../lib/traineeStore";
 import { ExternalLink, Copy, Eye } from "lucide-react";
+import { siteUrl } from "../../lib/siteUrl";
 
 function StatusBadge({ status }: { status: AdminInviteRow["status"] }) {
   // Brand status pills: neutral / Pacific in-progress / Lime completed.
@@ -89,7 +90,7 @@ function CopyUrlButton({ url }: { url: string }) {
 
   const handleCopy = async () => {
     try {
-      const fullUrl = `${window.location.origin}${url}`;
+      const fullUrl = siteUrl(url);
       await navigator.clipboard.writeText(fullUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);

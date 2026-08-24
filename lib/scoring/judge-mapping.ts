@@ -17,7 +17,15 @@ export interface MappedScore {
     handoff: number;
   };
   score: number; // 0-100, normalized from the six 0-10 dimensions
-  evidence: { dimension: string; quote: string; comment: string }[];
+  evidence: {
+    dimension: string;
+    /** The attendee's verbatim line the feedback is grounded in, or "". */
+    attendeeQuote: string;
+    /** The trainee's verbatim line being credited or critiqued, or "". */
+    quote: string;
+    /** The concrete coaching line for this dimension. */
+    comment: string;
+  }[];
 }
 
 function clamp10(score: number): number {
@@ -57,8 +65,9 @@ export function judgeResultToScore(
 
   const evidence = SCORING_DIMENSIONS.map((dim) => ({
     dimension: dim,
-    quote: judge[dim].evidence,
-    comment: judge[dim].rationale,
+    attendeeQuote: judge[dim].attendeeLine,
+    quote: judge[dim].traineeLine,
+    comment: judge[dim].coaching,
   }));
 
   return { breakdown, score, evidence };

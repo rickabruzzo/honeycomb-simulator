@@ -48,6 +48,43 @@ expect(
   "BADGE_SCAN"
 );
 
+// ── Authority / budget → BADGE_SCAN ("numbers = in charge of numbers") ──────
+expect(
+  '"what does it cost per seat" → BADGE_SCAN',
+  detectOutcomeFromText("Roughly what does it cost per seat?"),
+  "BADGE_SCAN"
+);
+
+expect(
+  '"get budget approved" → BADGE_SCAN',
+  detectOutcomeFromText("I'd need to get budget approved first."),
+  "BADGE_SCAN"
+);
+
+expect(
+  '"roll this out to my team" → BADGE_SCAN',
+  detectOutcomeFromText("I want to roll this out to my whole team."),
+  "BADGE_SCAN"
+);
+
+expect(
+  '"I manage the platform team" → BADGE_SCAN',
+  detectOutcomeFromText("I manage the platform team here."),
+  "BADGE_SCAN"
+);
+
+expect(
+  '"pricing for our org" → BADGE_SCAN',
+  detectOutcomeFromText("What's the pricing for our org?"),
+  "BADGE_SCAN"
+);
+
+expect(
+  '"is there a free tier" is NOT authority (must not become BADGE_SCAN)',
+  detectOutcomeFromText("Is there a free tier I can try?"),
+  "NONE"
+);
+
 expect(
   '"Can you show me a quick demo?" → DEMO',
   detectOutcomeFromText("Can you show me a quick demo?"),
