@@ -17,45 +17,36 @@ export type LeaderboardEntry = {
   trainingWheels?: boolean;
 };
 
+// Dedicated leaderboard key. Previously this shared "scores:index" with the score store, which
+// writes bare token strings there — the two shapes collided and the board reported phantom
+// "N total" counts. The leaderboard now owns "leaderboard:index" (a clean LeaderboardEntry[]).
+const LEADERBOARD_KEY = "leaderboard:index";
 const inMemoryLeaderboard: LeaderboardEntry[] = [];
 const MAX_LEADERBOARD_SIZE = 2000;
 
-/**
- * KV is configured when Vercel/Upstash env vars are present.
- */
+/** Keep only well-formed entry objects (guards against any legacy mixed data). */
+function onlyEntries(list: unknown): LeaderboardEntry[] {
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (e): e is LeaderboardEntry =>
+      Boolean(e) && typeof e === "object" && typeof (e as LeaderboardEntry).token === "string"
+  );
+}
 
 /**
  * Add or update an entry in the leaderboard index
  * De-duplicates by token (replaces existing entry if token already exists)
  */
-export async function addToLeaderboardIndex(
-  entry: LeaderboardEntry
-): Promise<void> {
+export async function addToLeaderboardIndex(entry: LeaderboardEntry): Promise<void> {
   if (useKv()) {
-    // Fetch existing index
-    const existing = (await kv.get<LeaderboardEntry[]>("scores:index")) ?? [];
-
-    // Remove any existing entry with same token
+    const existing = onlyEntries(await kv.get<unknown>(LEADERBOARD_KEY));
     const filtered = existing.filter((e) => e.token !== entry.token);
-
-    // Add new entry at the beginning (newest first)
-    const updated = [entry, ...filtered];
-
-    // Cap at MAX_LEADERBOARD_SIZE
-    const capped = updated.slice(0, MAX_LEADERBOARD_SIZE);
-
-    // Save back to KV
-    await kv.set("scores:index", capped);
+    const capped = [entry, ...filtered].slice(0, MAX_LEADERBOARD_SIZE);
+    await kv.set(LEADERBOARD_KEY, capped);
   } else {
-    // In-memory fallback
-    // Remove any existing entry with same token
     const filtered = inMemoryLeaderboard.filter((e) => e.token !== entry.token);
-
-    // Add new entry at the beginning
     inMemoryLeaderboard.length = 0;
     inMemoryLeaderboard.push(entry, ...filtered);
-
-    // Cap at MAX_LEADERBOARD_SIZE
     if (inMemoryLeaderboard.length > MAX_LEADERBOARD_SIZE) {
       inMemoryLeaderboard.length = MAX_LEADERBOARD_SIZE;
     }
@@ -68,8 +59,39 @@ export async function addToLeaderboardIndex(
  */
 export async function listLeaderboardIndex(): Promise<LeaderboardEntry[]> {
   if (useKv()) {
-    const result = await kv.get<LeaderboardEntry[]>("scores:index");
-    return result ?? [];
+    return onlyEntries(await kv.get<unknown>(LEADERBOARD_KEY));
   }
   return [...inMemoryLeaderboard];
+}
+
+/**
+ * Remove a single entry from the leaderboard by its token. Returns true if an entry was removed.
+ */
+export async function removeFromLeaderboardIndex(token: string): Promise<boolean> {
+  if (useKv()) {
+    const existing = onlyEntries(await kv.get<unknown>(LEADERBOARD_KEY));
+    const filtered = existing.filter((e) => e.token !== token);
+    if (filtered.length === existing.length) return false;
+    await kv.set(LEADERBOARD_KEY, filtered);
+    return true;
+  }
+  const before = inMemoryLeaderboard.length;
+  const kept = inMemoryLeaderboard.filter((e) => e.token !== token);
+  inMemoryLeaderboard.length = 0;
+  inMemoryLeaderboard.push(...kept);
+  return kept.length !== before;
+}
+
+/**
+ * Clear the entire leaderboard index. Returns how many entries were removed.
+ */
+export async function clearLeaderboard(): Promise<number> {
+  if (useKv()) {
+    const existing = onlyEntries(await kv.get<unknown>(LEADERBOARD_KEY));
+    await kv.set(LEADERBOARD_KEY, []);
+    return existing.length;
+  }
+  const n = inMemoryLeaderboard.length;
+  inMemoryLeaderboard.length = 0;
+  return n;
 }

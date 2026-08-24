@@ -45,7 +45,7 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      <LeaderboardContent />
+      <LeaderboardContent admin />
     </div>
   );
 }

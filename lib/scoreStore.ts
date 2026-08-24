@@ -46,6 +46,36 @@ export async function saveScore(record: ScoreRecord): Promise<void> {
   }
 }
 
+/** Delete a single score record and drop it from the score index. */
+export async function deleteScore(token: string): Promise<void> {
+  if (useKv()) {
+    await kv.del(`score:${token}`);
+    const index = (await kv.get<string[]>("scores:index")) ?? [];
+    await kv.set("scores:index", index.filter((t) => t !== token));
+    return;
+  }
+  scoreMap().delete(token);
+  const index = scoreIndex();
+  const kept = index.filter((t) => t !== token);
+  index.length = 0;
+  index.push(...kept);
+}
+
+/** Delete every score record and empty the score index. Returns how many were removed. */
+export async function clearAllScores(): Promise<number> {
+  if (useKv()) {
+    const tokens = (await kv.get<string[]>("scores:index")) ?? [];
+    for (const t of tokens) await kv.del(`score:${t}`);
+    await kv.set("scores:index", []);
+    return tokens.length;
+  }
+  const scores = scoreMap();
+  const n = scores.size;
+  scores.clear();
+  scoreIndex().length = 0;
+  return n;
+}
+
 export async function getScore(token: string): Promise<ScoreRecord | null> {
   if (useKv()) {
     const result = await kv.get<ScoreRecord>(`score:${token}`);
