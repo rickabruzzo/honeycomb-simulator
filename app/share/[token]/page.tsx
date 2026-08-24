@@ -182,11 +182,15 @@ export default function ShareScorePage() {
           </div>
           <div className="space-y-3">
             {Object.entries(scoreRecord.breakdown).map(([key, value]) => {
-              // Display names that don't fall out of the key nicely; every other key
-              // (including old five-key records) keeps the Title-Case derivation.
+              // Greeter-role display names (mirror DIMENSION_LABELS in lib/scoring/rubric.ts).
+              // Any key not listed keeps the Title-Case derivation, so older records still render.
               const LABELS: Record<string, string> = {
-                qualification: "Qualification & Fit",
-                handoff: "Next-Step / Handoff",
+                discovery: "Discovery & Curiosity",
+                listening: "Active Listening",
+                empathy: "Rapport & Empathy",
+                qualification: "Read & Fit",
+                guardrails: "Staying in Lane",
+                handoff: "Next Step / Handoff",
               };
               const label =
                 LABELS[key] ??

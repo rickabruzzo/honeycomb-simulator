@@ -1,7 +1,7 @@
 import { SessionState } from "./storage";
 import { judgeSession } from "./scoring/judge";
 import { judgeResultToScore, deriveGrade } from "./scoring/judge-mapping";
-import { SCORING_DIMENSIONS, hasTraineeContent } from "./scoring/rubric";
+import { SCORING_DIMENSIONS, hasTraineeContent, DIMENSION_LABELS } from "./scoring/rubric";
 import { getTraineeMessages, getAttendeeMessages } from "./scoringInput";
 import {
   detectOutcomeFromTranscript,
@@ -153,10 +153,15 @@ export async function scoreSession(
 }
 
 function label(d: string): string {
-  return d
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
+  // Prefer the reframed greeter-role display names; fall back to a title-cased key for any
+  // dimension not in the map (keeps older/unknown keys rendering sensibly).
+  return (
+    DIMENSION_LABELS[d as keyof typeof DIMENSION_LABELS] ??
+    d
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ")
+  );
 }
 
 /**
