@@ -22,7 +22,12 @@ interface ScoreRecord {
   highlights: string[];
   mistakes: string[];
   violations: string[];
-  evidence?: { dimension: string; quote: string; comment: string }[];
+  evidence?: {
+    dimension: string;
+    attendeeQuote?: string;
+    quote: string;
+    comment: string;
+  }[];
   scoringMethod?: "judge" | "heuristic";
   trainingWheels?: boolean;
   createdAt: string;
@@ -207,14 +212,21 @@ export default function ShareScorePage() {
                       style={{ width: `${percentage}%`, background: barColor }}
                     />
                   </div>
-                  {ev && (ev.comment || ev.quote) && (
-                    <div className="mt-2 mb-1 pl-3 border-l-2 border-white/15">
+                  {ev && (ev.comment || ev.quote || ev.attendeeQuote) && (
+                    <div className="mt-2 mb-1 pl-3 border-l-2 border-white/15 space-y-1">
                       {ev.comment && (
                         <p className="text-xs text-gray-400">{ev.comment}</p>
                       )}
+                      {ev.attendeeQuote && (
+                        <p className="text-xs text-gray-300 mt-0.5">
+                          <span className="text-gray-500">Attendee:</span>{" "}
+                          <span className="italic">&ldquo;{ev.attendeeQuote}&rdquo;</span>
+                        </p>
+                      )}
                       {ev.quote && (
-                        <p className="text-xs text-gray-300 italic mt-0.5">
-                          &ldquo;{ev.quote}&rdquo;
+                        <p className="text-xs text-gray-300">
+                          <span className="text-gray-500">You:</span>{" "}
+                          <span className="italic">&ldquo;{ev.quote}&rdquo;</span>
                         </p>
                       )}
                     </div>

@@ -51,8 +51,16 @@ export interface ScoreRecord {
   highlights: string[];
   mistakes: string[];
   violations: string[];
-  /** Per-dimension evidence quotes from the LLM judge (empty when heuristic-scored). */
-  evidence: { dimension: string; quote: string; comment: string }[];
+  /** Per-dimension coaching from the LLM judge (empty when heuristic-scored). */
+  evidence: {
+    dimension: string;
+    /** The attendee's verbatim line the coaching is grounded in, or "". */
+    attendeeQuote?: string;
+    /** The trainee's verbatim line, or "". */
+    quote: string;
+    /** The concrete coaching line for this dimension. */
+    comment: string;
+  }[];
   /** Which path produced this score. */
   scoringMethod: "judge" | "heuristic";
   /** True when the session was run in training-wheels (assisted/guided) mode. */
@@ -115,12 +123,12 @@ export async function scoreSession(
       ? strong
       : ranked.filter((r) => r.s >= 6).sort((a, b) => b.s - a.s).slice(0, 2);
     const highlights = relativeStrengths
-      .map((r) => `${label(r.d)}: ${judge[r.d].rationale}`)
+      .map((r) => `${label(r.d)}: ${judge[r.d].coaching}`)
       .slice(0, 6);
     const mistakes = ranked
       .filter((r) => r.s <= 4)
       .sort((a, b) => a.s - b.s)
-      .map((r) => `${label(r.d)}: ${judge[r.d].rationale}`)
+      .map((r) => `${label(r.d)}: ${judge[r.d].coaching}`)
       .slice(0, 6);
 
     return {

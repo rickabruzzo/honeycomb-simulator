@@ -15,8 +15,12 @@ import {
 
 export interface JudgeDimension {
   score: number; // integer 0-10
-  rationale: string;
-  evidence: string; // verbatim trainee quote, or ""
+  /** The attendee's verbatim line the feedback is grounded in, or "". */
+  attendeeLine: string;
+  /** The trainee's verbatim line being credited or critiqued, or "". */
+  traineeLine: string;
+  /** One concrete coaching line: what worked, or the better move, tied to the attendee's words. */
+  coaching: string;
 }
 
 export type JudgeResult = Record<ScoringDimension, JudgeDimension> & {
@@ -32,10 +36,14 @@ function coerceDimension(raw: unknown): JudgeDimension {
   if (typeof score !== "number" || !Number.isInteger(score) || score < 0 || score > 10) {
     throw new Error(`invalid score: ${String(score)}`);
   }
+  // Accept the v3 field names, falling back to the older rationale/evidence keys so a stray
+  // old-shape payload still parses instead of crashing the judge.
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
   return {
     score,
-    rationale: typeof r.rationale === "string" ? r.rationale : "",
-    evidence: typeof r.evidence === "string" ? r.evidence : "",
+    attendeeLine: str(r.attendeeLine),
+    traineeLine: str(r.traineeLine ?? r.evidence),
+    coaching: str(r.coaching ?? r.rationale),
   };
 }
 
