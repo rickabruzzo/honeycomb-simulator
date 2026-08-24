@@ -4,14 +4,13 @@ import React, { useState, useEffect } from "react";
 import { BarChart3, Share2 } from "lucide-react";
 import { InsightsContent } from "@/components/InsightsContent";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { siteUrl } from "@/lib/siteUrl";
 
 export default function InsightsPage() {
   const [shareUrl, setShareUrl] = useState("");
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setShareUrl(`${window.location.origin}/insights/share`);
-    }
+    setShareUrl(siteUrl("/insights/share"));
   }, []);
 
   return (

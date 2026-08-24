@@ -4,14 +4,13 @@ import React, { useState, useEffect } from "react";
 import { Trophy } from "lucide-react";
 import { LeaderboardContent } from "@/components/LeaderboardContent";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { siteUrl } from "@/lib/siteUrl";
 
 export default function SharedLeaderboardPage() {
   const [shareUrl, setShareUrl] = useState("");
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setShareUrl(window.location.href);
-    }
+    setShareUrl(siteUrl("/leaderboard/share"));
   }, []);
 
   return (

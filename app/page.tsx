@@ -7,6 +7,7 @@ import { BrandButton } from "../components/ui/BrandButton";
 import type { Persona } from "../lib/scenarioTypes";
 import type { Trainee } from "../lib/traineeStore";
 import { formatTraineeFull } from "../lib/traineeStore";
+import { siteUrl } from "../lib/siteUrl";
 
 function HoneycombSimulator() {
   const searchParams = useSearchParams();
@@ -182,7 +183,7 @@ function HoneycombSimulator() {
       }
 
       const data = await response.json();
-      const fullUrl = `${window.location.origin}/s/${data.token}`;
+      const fullUrl = siteUrl(`/s/${data.token}`);
       setInviteUrl(fullUrl);
       setInviteToken(data.token);
 
