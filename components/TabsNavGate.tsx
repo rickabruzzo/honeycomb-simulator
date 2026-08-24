@@ -5,8 +5,14 @@ import { TabsNav } from "@/components/TabsNav"; // adjust path to your actual Ta
 
 export function TabsNavGate() {
   const pathname = usePathname();
-  // Hide tabs on trainee sessions and shared leaderboard/insights
-  if (pathname?.startsWith("/s/") || pathname === "/leaderboard/share" || pathname === "/insights/share") {
+  // Hide the admin tabs on everything a trainee or a share-link viewer can land on:
+  // the practice session, the scorecard, and the shared leaderboard/insights views.
+  if (
+    pathname?.startsWith("/s/") ||
+    pathname?.startsWith("/share/") ||
+    pathname === "/leaderboard/share" ||
+    pathname === "/insights/share"
+  ) {
     return null;
   }
   return <TabsNav />;

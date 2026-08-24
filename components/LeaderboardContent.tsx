@@ -2,12 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Trophy, ExternalLink } from "lucide-react";
+import { Trophy, ExternalLink, Trash2 } from "lucide-react";
 import type { LeaderboardEntry } from "@/lib/leaderboardStore";
 import type { Persona } from "@/lib/scenarioTypes";
 import type { Trainee } from "@/lib/traineeStore";
 import { formatTraineeShort } from "@/lib/traineeStore";
-import { BrandButton } from "@/components/ui/BrandButton";
 
 type RangeOption = "24h" | "7d" | "30d" | "all";
 
@@ -42,11 +41,13 @@ function GradeBadge({ grade }: { grade: string }) {
   );
 }
 
-export function LeaderboardContent() {
+export function LeaderboardContent({ admin = false }: { admin?: boolean }) {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState<{
     totalMatched: number;
     totalStored: number;
@@ -114,7 +115,43 @@ export function LeaderboardContent() {
       }
     }
     loadLeaderboard();
-  }, [range, personaFilter, traineeFilter]);
+  }, [range, personaFilter, traineeFilter, refreshKey]);
+
+  const handleDeleteEntry = async (token: string, who: string) => {
+    if (busy) return;
+    if (!window.confirm(`Remove ${who}'s entry from the leaderboard? This deletes their scorecard too.`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/leaderboard/entry/${token}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      console.error("Failed to delete entry:", e);
+      window.alert("Could not delete that entry.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (busy) return;
+    if (!window.confirm("Reset the entire leaderboard? This clears every score for everyone and can't be undone.")) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/leaderboard/reset`, { method: "POST" });
+      if (!res.ok) throw new Error("reset failed");
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      console.error("Failed to reset leaderboard:", e);
+      window.alert("Could not reset the leaderboard.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <>
@@ -168,14 +205,27 @@ export function LeaderboardContent() {
           </div>
         </div>
 
-        {stats && (
-          <p className="text-xs text-gray-400 mt-3">
-            Showing top {entries.length} of {stats.totalMatched} matching entries
-            {stats.totalStored > stats.totalMatched && (
-              <span> (filtered from {stats.totalStored} total)</span>
-            )}
-          </p>
-        )}
+        <div className="flex items-center justify-between mt-3 gap-3">
+          {stats ? (
+            <p className="text-xs text-gray-400">
+              Showing top {entries.length} of {stats.totalMatched} matching entries
+              {stats.totalStored > stats.totalMatched && (
+                <span> (filtered from {stats.totalStored} total)</span>
+              )}
+            </p>
+          ) : (
+            <span />
+          )}
+          {admin && entries.length > 0 && (
+            <button
+              onClick={handleReset}
+              disabled={busy}
+              className="shrink-0 text-xs rounded-md border border-[#e65b53]/50 text-[#e65b53] px-3 py-1.5 hover:bg-[#e65b53]/10 transition disabled:opacity-50"
+            >
+              Reset leaderboard
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Leaderboard Table */}
@@ -218,6 +268,11 @@ export function LeaderboardContent() {
                   <th className="px-3 py-3 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Scorecard
                   </th>
+                  {admin && (
+                    <th className="px-3 py-3 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                      Manage
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -271,6 +326,18 @@ export function LeaderboardContent() {
                           <ExternalLink size={12} /> View
                         </Link>
                       </td>
+                      {admin && (
+                        <td className="px-3 py-3 text-right">
+                          <button
+                            onClick={() => handleDeleteEntry(entry.token, entry.traineeNameShort || "this")}
+                            disabled={busy}
+                            title="Delete this entry"
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-[#e65b53]/50 text-[#e65b53] hover:bg-[#e65b53]/10 transition disabled:opacity-50"
+                          >
+                            <Trash2 size={12} /> Delete
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

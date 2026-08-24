@@ -2,9 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { TrendingUp, AlertCircle, Trophy, Eye } from "lucide-react";
+import { TrendingUp, AlertCircle, Trophy } from "lucide-react";
 import { BrandButton } from "../../../components/ui/BrandButton";
-import Link from "next/link";
 
 interface ScoreRecord {
   token: string;
@@ -279,18 +278,8 @@ export default function ShareScorePage() {
 
         {/* Actions */}
         <div className="flex items-center justify-center gap-4 flex-wrap">
-          {scoreRecord.inviteToken && (
-            <Link href={`/review/${scoreRecord.inviteToken}`}>
-              <BrandButton
-                variant="cobalt"
-                className="px-6 py-3"
-              >
-                <Eye size={16} /> Review Session
-              </BrandButton>
-            </Link>
-          )}
           <BrandButton
-            onClick={() => router.push("/leaderboard")}
+            onClick={() => router.push("/leaderboard/share")}
             variant="indigo"
             className="px-6 py-3"
           >
