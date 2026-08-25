@@ -7,8 +7,6 @@ import { Plus, Save, Archive, ExternalLink, Copy } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
 import { ChipInput } from "@/components/ui/ChipInput";
 import type { Persona } from "@/lib/scenarioTypes";
-import type { Trainee } from "@/lib/traineeStore";
-import { formatTraineeFull } from "@/lib/traineeStore";
 import { toSentenceCase, buildPersonaTitle } from "@/lib/formatUtils";
 
 // Helper function to abbreviate text (first 3 words, ~20 chars max)
@@ -106,18 +104,6 @@ export default function ScenarioEditorPage() {
     behaviorBrief: "",
   });
 
-  // Trainees state
-  const [trainees, setTrainees] = useState<Trainee[]>([]);
-  const [selectedTrainee, setSelectedTrainee] = useState<Trainee | null>(null);
-  const [traineeForm, setTraineeForm] = useState<{
-    id?: string;
-    firstName: string;
-    lastName: string;
-  }>({
-    firstName: "",
-    lastName: "",
-  });
-
   // UI state
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -131,7 +117,6 @@ export default function ScenarioEditorPage() {
         if (res.ok) {
           const data = await res.json();
           setPersonas(data.personas || []);
-          setTrainees(data.trainees || []);
           console.log(`[Editor] Loaded bootstrap data (${data._meta?.loadTimeMs}ms)`);
         }
       } catch (e) {
@@ -166,16 +151,6 @@ export default function ScenarioEditorPage() {
     }
   };
 
-  const loadTrainees = async () => {
-    try {
-      const res = await fetch("/api/trainees");
-      const data = await res.json();
-      setTrainees(data.trainees || []);
-    } catch (e) {
-      console.error("Failed to load trainees:", e);
-    }
-  };
-
   // Individual reload functions for after save/archive operations
   const reloadBootstrap = async () => {
     try {
@@ -183,7 +158,6 @@ export default function ScenarioEditorPage() {
       if (res.ok) {
         const data = await res.json();
         setPersonas(data.personas || []);
-        setTrainees(data.trainees || []);
       }
     } catch (e) {
       console.error("Failed to reload data:", e);
@@ -334,87 +308,12 @@ export default function ScenarioEditorPage() {
     setTimeout(() => setSuccessMessage(""), 4000);
   };
 
-  const handleSelectTrainee = (trainee: Trainee) => {
-    setSelectedTrainee(trainee);
-    setTraineeForm({
-      id: trainee.id,
-      firstName: trainee.firstName,
-      lastName: trainee.lastName,
-    });
-  };
-
-  const handleNewTrainee = () => {
-    setSelectedTrainee(null);
-    setTraineeForm({
-      firstName: "",
-      lastName: "",
-    });
-  };
-
-  const handleSaveTrainee = async () => {
-    if (!traineeForm.firstName.trim() || !traineeForm.lastName.trim()) {
-      alert("First name and last name are required");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const response = await fetch("/api/trainees", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: traineeForm.id,
-          firstName: traineeForm.firstName,
-          lastName: traineeForm.lastName,
-        }),
-      });
-
-      if (!response.ok) throw new Error("Failed to save trainee");
-
-      const data = await response.json();
-      await reloadBootstrap();
-      setSelectedTrainee(data.trainee);
-      setSuccessMessage(`Trainee "${formatTraineeFull(data.trainee)}" saved successfully!`);
-      setTimeout(() => setSuccessMessage(""), 3000);
-    } catch (error) {
-      console.error("Failed to save trainee:", error);
-      alert("Failed to save trainee");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Delete a trainee directly from its row in the list. Removes them from the list (soft-delete
-  // under the hood, so their past scores keep resolving); the per-row control replaces the old
-  // form-level "Archive" button, which sat confusingly next to Save.
-  const handleDeleteTrainee = async (trainee: Trainee) => {
-    if (!confirm(`Delete ${formatTraineeFull(trainee)}? They'll be removed from the list.`)) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/trainees/${trainee.id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) throw new Error("Failed to delete trainee");
-
-      await reloadBootstrap();
-      if (selectedTrainee?.id === trainee.id) handleNewTrainee();
-      setSuccessMessage("Trainee deleted");
-      setTimeout(() => setSuccessMessage(""), 3000);
-    } catch (error) {
-      console.error("Failed to delete trainee:", error);
-      alert("Failed to delete trainee");
-    }
-  };
-
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <PageHeader
         title="Scenario Editor"
-        subtitle="Create and manage personas and trainees for training scenarios"
+        subtitle="Create and manage the personas trainees practice against"
       />
 
       {/* Success Message */}
