@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Trophy, ExternalLink, Trash2 } from "lucide-react";
+import { ExternalLink, Trash2 } from "lucide-react";
 import type { LeaderboardEntry } from "@/lib/leaderboardStore";
 import type { Persona } from "@/lib/scenarioTypes";
 import type { Trainee } from "@/lib/traineeStore";
@@ -39,6 +39,40 @@ function GradeBadge({ grade }: { grade: string }) {
       {grade}
     </span>
   );
+}
+
+// Honeycomb rank medal: top 3 get a brand-colored hexagon (gold/silver/bronze); the rest a plain numeral.
+function RankMedal({ rank }: { rank: number }) {
+  const medal = { 1: "#ffb000", 2: "#c7ccd4", 3: "#c9803f" }[rank as 1 | 2 | 3];
+  if (!medal) {
+    return (
+      <span className="font-display font-semibold text-gray-400 pl-1.5">{rank}</span>
+    );
+  }
+  const fg = rank === 1 ? "#3a2a00" : rank === 2 ? "#25303e" : "#2a1500";
+  return (
+    <span
+      className="inline-flex items-center justify-center font-display font-bold text-xs"
+      style={{
+        width: 26,
+        height: 29,
+        clipPath: "polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)",
+        background: medal,
+        color: fg,
+      }}
+      aria-label={`Rank ${rank}`}
+    >
+      {rank}
+    </span>
+  );
+}
+
+// Left-edge tint that marks the podium rows.
+function rankTint(rank: number): string | undefined {
+  if (rank === 1) return "linear-gradient(90deg, rgba(255,176,0,0.07), transparent 40%)";
+  if (rank === 2) return "linear-gradient(90deg, rgba(255,255,255,0.05), transparent 40%)";
+  if (rank === 3) return "linear-gradient(90deg, rgba(249,110,16,0.06), transparent 40%)";
+  return undefined;
 }
 
 export function LeaderboardContent({ admin = false }: { admin?: boolean }) {
@@ -268,28 +302,23 @@ export function LeaderboardContent({ admin = false }: { admin?: boolean }) {
                   <th className="px-3 py-3 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Scorecard
                   </th>
-                  {admin && (
-                    <th className="px-3 py-3 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Manage
-                    </th>
-                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {entries.map((entry, idx) => {
                   const rank = idx + 1;
-                  const rankEmoji =
-                    rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : "";
+                  const tint = rankTint(rank);
 
                   return (
                     <tr
                       key={entry.token}
-                      className="hover:bg-white/5 transition"
+                      className={`group transition ${tint ? "" : "hover:bg-white/5"}`}
+                      style={tint ? { background: tint } : undefined}
                     >
-                      <td className="px-3 py-3 text-sm text-gray-300 font-semibold">
-                        {rankEmoji} {rank}
+                      <td className="px-3 py-3">
+                        <RankMedal rank={rank} />
                       </td>
-                      <td className="px-3 py-3 text-lg font-bold text-white">
+                      <td className="px-3 py-3 font-display text-xl font-bold text-white">
                         {entry.score}
                       </td>
                       <td className="px-3 py-3">
@@ -317,27 +346,27 @@ export function LeaderboardContent({ admin = false }: { admin?: boolean }) {
                       <td className="px-3 py-3 text-sm text-gray-400">
                         {formatDate(entry.createdAt)}
                       </td>
-                      <td className="px-3 py-3 text-right">
-                        <Link
-                          href={`/share/${entry.token}`}
-                          target="_blank"
-                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-[#51368D] hover:bg-[#431E80] text-white transition"
-                        >
-                          <ExternalLink size={12} /> View
-                        </Link>
-                      </td>
-                      {admin && (
-                        <td className="px-3 py-3 text-right">
-                          <button
-                            onClick={() => handleDeleteEntry(entry.token, entry.traineeNameShort || "this")}
-                            disabled={busy}
-                            title="Delete this entry"
-                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-[#e65b53]/50 text-[#e65b53] hover:bg-[#e65b53]/10 transition disabled:opacity-50"
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Link
+                            href={`/share/${entry.token}`}
+                            target="_blank"
+                            className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.07] px-3 py-1.5 text-xs font-medium text-gray-100 transition hover:border-[#0298ec]/45 hover:bg-[#0278cd]/25 hover:text-white"
                           >
-                            <Trash2 size={12} /> Delete
-                          </button>
-                        </td>
-                      )}
+                            <ExternalLink size={13} /> Scorecard
+                          </Link>
+                          {admin && (
+                            <button
+                              onClick={() => handleDeleteEntry(entry.token, entry.traineeNameShort || "this")}
+                              disabled={busy}
+                              title="Delete this entry"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#e65b53]/40 bg-[#e65b53]/10 text-[#e88079] opacity-0 transition hover:bg-[#e65b53]/20 hover:text-white focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
