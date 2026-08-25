@@ -65,6 +65,13 @@ export async function composeAttendeeSystemPrompt(
   const scenarioContext = buildScenarioContext(context);
   sections.push(scenarioContext);
 
+  // 5b. Why you walked up — booth-realistic curiosity. A real attendee wanders to the booth out
+  //     of curiosity (or the swag) and has a few plain questions on their mind. This is separate
+  //     from their pain (which stays earned-only); asking a product question is curiosity, not
+  //     venting. It also puts the greeter's real job on the table: answer common questions at a
+  //     high level, and hand off the deep-dive.
+  sections.push(buildCuriosityBlock(context));
+
   // 6. Enrichment guidance (if available)
   // Enrichment previously contributed only promptAddendum; everything else it generates was
   // stored and discarded. ventingTriggers, resistIfPitched, revealWhenEarned, and avoidTerms
@@ -189,6 +196,58 @@ useful, your instinct is to work out how you would make the case internally.`);
     composedAt: new Date().toISOString(),
     hasTrainerGuidance: !!context.trainerGuidance,
   };
+}
+
+/**
+ * Build the "why you walked up" curiosity block.
+ *
+ * A booth attendee is not a discovery subject waiting to be interviewed — they wandered over with
+ * genuine curiosity and a few plain questions of their own. Surfacing those questions makes the
+ * attendee feel like a real walk-up AND exercises the greeter's core job: answer common questions
+ * at a high level, and hand off the deep-dive. The question set is the common booth FAQ, lightly
+ * tailored to what THIS attendee would actually wonder given their tools and OTel familiarity.
+ */
+function buildCuriosityBlock(context: PromptRuntimeContext): string {
+  const otel = (context.persona.otelFamiliarity || "").toLowerCase();
+  // An active/experienced OTel user wouldn't ask "what is OpenTelemetry"; a less-familiar one might.
+  const otelCurious =
+    otel.includes("never") || otel.includes("aware") || otel.includes("considering");
+
+  const questions: string[] = [
+    `"So what is Honeycomb, exactly — what does it actually do?"`,
+    `"How are you different from what we already use?" (you'd compare against your own tools — see your tooling bias above)`,
+    `"Isn't this just observability / APM / logging? What's the real difference?"`,
+    `"Does it handle metrics and logs too, or just traces?"`,
+    `"How would this actually help me find problems faster?"`,
+    `"What does it cost — especially compared to what we pay now?"`,
+  ];
+  if (otelCurious) {
+    questions.push(
+      `"Where does OpenTelemetry fit — do I have to be all-in on it first?"`
+    );
+  }
+
+  return `WHY YOU WALKED UP TO THIS BOOTH
+You are a real conference attendee at the Honeycomb booth. You wandered over out of curiosity —
+maybe for the swag, maybe because you've heard the name "Honeycomb" or the word "observability"
+going around the floor. You are not here to be sold to; you're poking around to see whether it's
+worth your time.
+
+Like anyone at a booth, you have a few plain questions on your mind. Over the conversation you may
+naturally ask ONE OR TWO of these — in your own words, when it fits the flow — NOT as a list, never
+all of them, and not every turn. Ask the way a curious person orients, not the way an interviewer
+runs a script:
+${questions.map((q) => `  - ${q}`).join("\n")}
+
+These are CURIOSITY, not complaints. Asking one does NOT count as volunteering your pain, and it
+does not require the staffer to have earned anything — a curious person asks. Whether you then OPEN
+UP about your real frustrations still depends entirely on whether they actually listen.
+
+And notice how they handle your question. A booth greeter is not expected to be the deep technical
+or pricing expert. If they give you a clear, honest, high-level answer — or offer to connect you
+with an expert for the details — that's exactly right and it builds your trust. If they instead
+wade deep into implementation, rollout mechanics, or exact contract numbers themselves, a real
+attendee like you would rather just get the short version or the offer of the right expert.`;
 }
 
 /**
