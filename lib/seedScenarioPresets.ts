@@ -8,7 +8,13 @@
  * Only TDM (Technical Decision-Maker) is a buyer persona (isBuyer: true).
  */
 
-import { findPersonaByName, upsertPersona } from "./personaStore";
+import { createHash } from "crypto";
+import {
+  findPersonaByName,
+  upsertPersona,
+  getPersonaSeedVersion,
+  setPersonaSeedVersion,
+} from "./personaStore";
 import { Persona } from "./scenarioTypes";
 import {
   ALL_CANONICAL_PERSONAS,
@@ -126,6 +132,17 @@ function validateCanonicalPersona(persona: Persona): void {
 }
 
 /**
+ * Version signature of the canonical persona set. Changes automatically whenever any
+ * canonical persona definition changes, which triggers exactly one re-seed after a deploy.
+ */
+function canonicalSeedVersion(): string {
+  return createHash("sha1")
+    .update(JSON.stringify(ALL_CANONICAL_PERSONAS))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/**
  * Seed canonical personas for Scenarios.
  *
  * Idempotent: Only creates personas that don't already exist by normalized name.
@@ -146,6 +163,16 @@ export async function seedScenarioPresets(): Promise<void> {
   console.log(
     `[SeedScenarioPresets] All ${ALL_CANONICAL_PERSONAS.length} canonical personas passed validation`
   );
+
+  // Fast path: if the store was already seeded with this exact canonical set, skip.
+  // Previously this loop re-upserted all 6 personas on EVERY cold start (~60 sequential
+  // Upstash round-trips ≈ 5s on /api/bootstrap). The version bumps automatically whenever
+  // the canonical persona definitions change, so real content updates still re-seed once.
+  const version = canonicalSeedVersion();
+  if ((await getPersonaSeedVersion()) === version) {
+    console.log("[SeedScenarioPresets] Already seeded (version match) — skipping");
+    return;
+  }
 
   // Seed personas
   let seededCount = 0;
@@ -179,6 +206,9 @@ export async function seedScenarioPresets(): Promise<void> {
       `[SeedScenarioPresets] Seeded/updated ${seededCount} canonical personas`
     );
   }
+
+  // Stamp the version so subsequent cold starts skip the re-seed entirely.
+  await setPersonaSeedVersion(version);
 
   // Log buyer persona for verification
   const buyerPersona = ALL_CANONICAL_PERSONAS.find((p) => p.isBuyer);
