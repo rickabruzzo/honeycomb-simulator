@@ -28,8 +28,9 @@ export interface GlobalMemoryStore {
   trainees: Map<string, Trainee>;
   traineeIndex: string[];
   sessions: Map<string, SessionState>;
-  invites: Map<string, InviteRecord>;
-  inviteIndex: Map<string, string>; // token -> sessionId
+  invites: Map<string, InviteRecord>; // token -> InviteRecord
+  inviteIndex: Map<string, string>; // sessionId -> token (reverse lookup for getInviteForSession)
+  inviteOrder: Array<{ token: string; createdAt: string }>; // newest-first tracker listing
   enrichments: Map<string, EnrichmentResult>;
   scores: Map<string, unknown>;   // token -> ScoreRecord (typed at the scoreStore boundary)
   scoreIndex: string[];           // tokens, newest first
@@ -66,6 +67,7 @@ export function getMemStore(): GlobalMemoryStore {
       sessions: new Map(),
       invites: new Map(),
       inviteIndex: new Map(),
+      inviteOrder: [],
       enrichments: new Map(),
       scores: new Map(),
       scoreIndex: [],
@@ -87,6 +89,7 @@ export function getMemStore(): GlobalMemoryStore {
   store.sessions ??= new Map();
   store.invites ??= new Map();
   store.inviteIndex ??= new Map();
+  store.inviteOrder ??= [];
   store.enrichments ??= new Map();
   store.scores ??= new Map();
   store.scoreIndex ??= [];

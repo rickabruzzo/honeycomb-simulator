@@ -1,6 +1,7 @@
 import { kv } from "@vercel/kv";
 
 import { useKv } from "./kvConfig";
+import { getMemStore } from "./memoryStore";
 export interface InviteRecord {
   token: string;
   sessionId: string;
@@ -18,8 +19,10 @@ export interface InviteRecord {
   traineeNameShort?: string;
 }
 
-const inMemoryInvites = new Map<string, InviteRecord>();
-const inMemorySessionInvites = new Map<string, { token: string }>();
+// Dev/in-memory invites live on the globalThis-backed store (getMemStore), NOT module-local
+// Maps — Turbopack can run different API routes in separate module instances, so a module-local
+// Map would leave an invite created by one route invisible to the tracker/delete routes.
+// store.inviteIndex here is the token -> sessionId reverse mapping (its declared purpose).
 
 /**
  * KV is configured when Vercel/Upstash env vars are present.
@@ -31,8 +34,9 @@ export async function saveInvite(invite: InviteRecord): Promise<void> {
     await kv.set(`session_invite:${invite.sessionId}`, { token: invite.token });
     return;
   }
-  inMemoryInvites.set(invite.token, invite);
-  inMemorySessionInvites.set(invite.sessionId, { token: invite.token });
+  const store = getMemStore();
+  store.invites.set(invite.token, invite);
+  store.inviteIndex.set(invite.sessionId, invite.token);
 }
 
 export async function getInvite(token: string): Promise<InviteRecord | null> {
@@ -40,7 +44,28 @@ export async function getInvite(token: string): Promise<InviteRecord | null> {
     const result = await kv.get<InviteRecord>(`invite:${token}`);
     return result ?? null;
   }
-  return inMemoryInvites.get(token) ?? null;
+  return getMemStore().invites.get(token) ?? null;
+}
+
+/**
+ * Delete an invite record and its session_invite reverse-mapping. Returns the deleted
+ * invite (so callers can also clean up the session/score it points at), or null if absent.
+ */
+export async function deleteInvite(token: string): Promise<InviteRecord | null> {
+  const invite = await getInvite(token);
+  if (useKv()) {
+    await kv.del(`invite:${token}`);
+    if (invite?.sessionId) {
+      await kv.del(`session_invite:${invite.sessionId}`);
+    }
+    return invite;
+  }
+  const store = getMemStore();
+  store.invites.delete(token);
+  if (invite?.sessionId) {
+    store.inviteIndex.delete(invite.sessionId);
+  }
+  return invite;
 }
 
 export async function linkSessionToInvite(sessionId: string, token: string): Promise<void> {
@@ -48,7 +73,7 @@ export async function linkSessionToInvite(sessionId: string, token: string): Pro
     await kv.set(`session_invite:${sessionId}`, { token });
     return;
   }
-  inMemorySessionInvites.set(sessionId, { token });
+  getMemStore().inviteIndex.set(sessionId, token);
 }
 
 export async function getInviteForSession(sessionId: string): Promise<string | null> {
@@ -56,6 +81,5 @@ export async function getInviteForSession(sessionId: string): Promise<string | n
     const result = await kv.get<{ token: string }>(`session_invite:${sessionId}`);
     return result?.token ?? null;
   }
-  const record = inMemorySessionInvites.get(sessionId);
-  return record?.token ?? null;
+  return getMemStore().inviteIndex.get(sessionId) ?? null;
 }
