@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { useRouter } from "next/navigation";
-import { Plus, Save, Archive, ExternalLink, Trash2 } from "lucide-react";
+import { Plus, Save, Archive, ExternalLink, Copy } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
 import { ChipInput } from "@/components/ui/ChipInput";
 import type { Persona } from "@/lib/scenarioTypes";
@@ -291,28 +291,47 @@ export default function ScenarioEditorPage() {
 
   const handleSavePersona = () => savePersonaWithArchive();
 
-  const handleArchivePersona = async () => {
-    if (!selectedPersona) return;
-
-    if (!confirm(`Archive persona "${selectedPersona.name}"? It will be hidden from lists.`)) {
+  // Archive a persona from its row. Personas are reusable assets, so this archives (reversible)
+  // rather than deletes.
+  const handleArchivePersona = async (persona: Persona) => {
+    if (!confirm(`Archive persona "${persona.name}"? It will be hidden from lists.`)) {
       return;
     }
 
     try {
-      const response = await fetch(`/api/personas/${selectedPersona.id}`, {
+      const response = await fetch(`/api/personas/${persona.id}`, {
         method: "DELETE",
       });
 
       if (!response.ok) throw new Error("Failed to archive persona");
 
       await reloadBootstrap();
-      handleNewPersona();
-      setSuccessMessage("Persona archived successfully");
+      if (selectedPersona?.id === persona.id) handleNewPersona();
+      setSuccessMessage("Persona archived");
       setTimeout(() => setSuccessMessage(""), 3000);
     } catch (error) {
       console.error("Failed to archive persona:", error);
       alert("Failed to archive persona");
     }
+  };
+
+  // Duplicate a persona into the form (as a new, unsaved persona) so the user can tweak it into a
+  // variant and Save. Clearing the id means Save creates a new persona rather than overwriting.
+  const handleDuplicatePersona = (persona: Persona) => {
+    setSelectedPersona(null);
+    setPersonaForm({
+      name: "",
+      personaType: persona.personaType,
+      modifiers: [...persona.modifiers],
+      emotionalPosture: persona.emotionalPosture,
+      toolingBias: persona.toolingBias,
+      otelFamiliarity: persona.otelFamiliarity,
+      urls: persona.sources?.urls ? [...persona.sources.urls] : [],
+      notes: persona.sources?.notes || "",
+      behaviorBrief: persona.behaviorBrief || "",
+    });
+    setSuccessMessage(`Duplicated "${persona.name}" — tweak the fields and Save to create a variant.`);
+    setTimeout(() => setSuccessMessage(""), 4000);
   };
 
   const handleSelectTrainee = (trainee: Trainee) => {
@@ -416,8 +435,8 @@ export default function ScenarioEditorPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Personas Section */}
+      <div className="max-w-2xl">
+        {/* Personas Section — trainees are created/managed in the Scenario Builder */}
         <div className="space-y-4">
           <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
             <div className="flex items-center justify-between mb-4">
@@ -427,7 +446,7 @@ export default function ScenarioEditorPage() {
               </BrandButton>
             </div>
 
-            {/* Persona List */}
+            {/* Persona List — Duplicate + Archive on each row (personas are reusable; no delete) */}
             <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
               {personas.map((persona) => {
                 const displayTitle = buildPersonaTitle(
@@ -435,21 +454,52 @@ export default function ScenarioEditorPage() {
                   persona.modifiers,
                   persona.toolingBias
                 );
+                const isSelected = selectedPersona?.id === persona.id;
                 return (
-                  <button
+                  <div
                     key={persona.id}
-                    onClick={() => handleSelectPersona(persona)}
-                    className={`w-full text-left px-3 py-2 rounded transition ${
-                      selectedPersona?.id === persona.id
+                    className={`group flex items-center gap-1 rounded transition ${
+                      isSelected
                         ? "bg-[#51368D] text-white"
                         : "bg-white/5 text-gray-300 hover:bg-white/10"
                     }`}
                   >
-                    <div className="font-medium text-sm line-clamp-1">{displayTitle}</div>
-                    <div className="text-xs opacity-70 line-clamp-1">
-                      {persona.displaySubtitle || persona.personaType}
+                    <button
+                      onClick={() => handleSelectPersona(persona)}
+                      className="flex-1 min-w-0 text-left px-3 py-2"
+                    >
+                      <div className="font-medium text-sm truncate">{displayTitle}</div>
+                      <div className="text-xs opacity-70 truncate">
+                        {persona.displaySubtitle || persona.personaType}
+                      </div>
+                    </button>
+                    <div
+                      className={`flex items-center gap-0.5 pr-1.5 shrink-0 ${
+                        isSelected ? "opacity-100" : "opacity-60 group-hover:opacity-100"
+                      }`}
+                    >
+                      <button
+                        onClick={() => handleDuplicatePersona(persona)}
+                        title={`Duplicate ${persona.name}`}
+                        aria-label={`Duplicate ${persona.name}`}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded transition ${
+                          isSelected ? "text-white/85 hover:bg-white/20" : "text-gray-300 hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        <Copy size={15} />
+                      </button>
+                      <button
+                        onClick={() => handleArchivePersona(persona)}
+                        title={`Archive ${persona.name}`}
+                        aria-label={`Archive ${persona.name}`}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded transition ${
+                          isSelected ? "text-white/85 hover:bg-white/20" : "text-gray-300 hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        <Archive size={15} />
+                      </button>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -571,96 +621,9 @@ export default function ScenarioEditorPage() {
                 </div>
               )}
 
-              <div className="flex gap-2 pt-2">
-                <BrandButton
-                  onClick={handleSavePersona}
-                  disabled={saving}
-                  variant="lime"
-                  className="flex-1"
-                >
-                  <Save size={16} /> {saving ? "Saving..." : "Save"}
-                </BrandButton>
-                {selectedPersona && (
-                  <BrandButton onClick={handleArchivePersona} variant="neutral">
-                    <Archive size={16} /> Archive
-                  </BrandButton>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Trainees Section */}
-        <div className="space-y-4">
-          <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Trainees</h2>
-              <BrandButton onClick={handleNewTrainee} variant="lime" className="text-sm">
-                <Plus size={16} /> Create New
-              </BrandButton>
-            </div>
-
-            {/* Trainee List — each row carries its own Delete control on the same line */}
-            <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
-              {trainees.map((trainee) => {
-                const isSelected = selectedTrainee?.id === trainee.id;
-                return (
-                  <div
-                    key={trainee.id}
-                    className={`group flex items-center gap-1 rounded transition ${
-                      isSelected
-                        ? "bg-[#51368D] text-white"
-                        : "bg-white/5 text-gray-300 hover:bg-white/10"
-                    }`}
-                  >
-                    <button
-                      onClick={() => handleSelectTrainee(trainee)}
-                      className="flex-1 min-w-0 text-left px-3 py-2 font-medium truncate"
-                    >
-                      {formatTraineeFull(trainee)}
-                    </button>
-                    <button
-                      onClick={() => handleDeleteTrainee(trainee)}
-                      title={`Delete ${formatTraineeFull(trainee)}`}
-                      aria-label={`Delete ${formatTraineeFull(trainee)}`}
-                      className={`mr-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded transition ${
-                        isSelected
-                          ? "text-white/85 hover:bg-white/20 hover:text-white"
-                          : "text-[#e65b53]/70 opacity-60 hover:bg-[#e65b53]/15 hover:text-[#e65b53] group-hover:opacity-100"
-                      }`}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Trainee Form */}
-            <div className="space-y-3 border-t border-white/10 pt-4">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">First Name *</label>
-                <input
-                  value={traineeForm.firstName}
-                  onChange={(e) => setTraineeForm((p) => ({ ...p, firstName: e.target.value }))}
-                  placeholder="e.g., Alex"
-                  className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Last Name *</label>
-                <input
-                  value={traineeForm.lastName}
-                  onChange={(e) => setTraineeForm((p) => ({ ...p, lastName: e.target.value }))}
-                  placeholder="e.g., Smith"
-                  className="w-full bg-black/30 border border-white/20 text-gray-100 rounded px-2 py-1.5 text-sm outline-none focus:border-white/30"
-                />
-              </div>
-
               <div className="pt-2">
                 <BrandButton
-                  onClick={handleSaveTrainee}
+                  onClick={handleSavePersona}
                   disabled={saving}
                   variant="lime"
                   className="w-full justify-center"
@@ -671,6 +634,7 @@ export default function ScenarioEditorPage() {
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );

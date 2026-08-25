@@ -143,12 +143,15 @@ export async function POST(request: NextRequest) {
               childSpan.setAttribute("operation", "batch_write");
 
               if (useKv()) {
-                // Batch all writes into single pipeline
+                // Batch the session + invite writes into one pipeline...
                 await batchWrite([
                   { key: `session:${session.id}`, value: session },
                   { key: `invite:${token}`, value: invite },
-                  { key: `invite_index:${token}`, value: createdAt },
                 ]);
+                // ...then update the shared `invites:index` array the Scenario Tracker reads.
+                // The old code wrote a per-token `invite_index:<token>` key here, which nothing
+                // lists — so on KV (production) invites were created but never showed up.
+                await addInviteToIndex(token, createdAt);
                 childSpan.setAttribute("operations_count", 3);
                 kvPipelineCalls++;
               } else {
