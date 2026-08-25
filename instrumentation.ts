@@ -1,22 +1,31 @@
 /**
- * Server-startup instrumentation.
+ * Server-startup instrumentation (Next.js `register()` hook, runs once at boot).
  *
- * The KV (Upstash Redis) store is provisioned through the Vercel Marketplace
- * integration, which writes its connection vars under a project-specific prefix
- * (`confsim_KV_REST_API_URL`, `confsim_KV_REST_API_TOKEN`, …). Vercel does not
- * allow that prefix to be renamed once the store is connected to the project.
+ * 1. OpenTelemetry export. The app is richly instrumented with withSpan()/
+ *    withChildSpan() (lib/telemetry.ts), but those spans only export if a tracer
+ *    provider is registered at boot. ./tracing.ts starts the OpenTelemetry Node
+ *    SDK and points it at Honeycomb (see also ./otelconfig.yaml, the declarative
+ *    equivalent). Node.js runtime only — the SDK is a Node module.
  *
- * Our code — `@vercel/kv` and `useKv()` in lib/kvConfig.ts — reads the canonical,
- * unprefixed names (`KV_REST_API_URL`, `KV_REST_API_TOKEN`, …). This bridges the
- * two by copying the prefixed values onto the canonical names once, at server
- * boot, before any route handler or KV command runs. Existing canonical values
- * (if ever set directly) win and are left untouched.
+ * 2. KV env bridge. The Upstash store is provisioned via the Vercel Marketplace
+ *    integration under a project-specific prefix (confsim_KV_*) that Vercel won't
+ *    let us rename once connected. Our code (@vercel/kv, useKv()) reads the
+ *    canonical unprefixed names, so we copy the prefixed values onto the canonical
+ *    names once, at boot, before any route handler or KV command runs.
  */
 export async function register() {
-  // Only meaningful in the Node.js runtime, where process.env is mutable and the
-  // KV client actually runs.
+  // Node.js runtime only (process.env mutable; the OTEL SDK + KV client run here).
   if (process.env.NEXT_RUNTIME && process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  // 1. OpenTelemetry — dynamic import so the Node SDK never loads in the edge bundle.
+  try {
+    const { startTracing } = await import("./tracing");
+    startTracing();
+  } catch (err) {
+    console.error("[otel] tracing bootstrap failed:", err);
+  }
+
+  // 2. KV env bridge.
   const aliases: Record<string, string> = {
     confsim_KV_REST_API_URL: "KV_REST_API_URL",
     confsim_KV_REST_API_TOKEN: "KV_REST_API_TOKEN",
