@@ -268,9 +268,9 @@ function HoneycombSimulator() {
 
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
+    <div className="max-w-5xl mx-auto flex flex-col gap-4">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="order-1 flex items-start justify-between gap-4">
         <PageHeader
           title="Scenario Builder"
           subtitle="Create invite links for trainees to practice discovery conversations"
@@ -289,15 +289,31 @@ function HoneycombSimulator() {
         )}
       </div>
 
-      {/* Trainee Share Link */}
-      <div className="rounded-lg border border-white/15 bg-white/7 p-4 space-y-3 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold text-gray-200">Trainee Share Link</div>
+      {/* Create link — the final step, after a persona and trainee are chosen */}
+      <div className="order-3 rounded-lg border border-white/15 bg-white/7 p-4 space-y-3 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-gray-200">Create the practice link</div>
+            <div className="mt-0.5 text-sm">
+              {personas.find((p) => p.id === selectedPersonaId)?.name ?? (
+                <span className="text-gray-500">Pick a persona</span>
+              )}
+              <span className="text-gray-500"> · </span>
+              {(() => {
+                const t = trainees.find((t) => t.id === selectedTraineeId);
+                return t ? (
+                  <span className="text-gray-200">{formatTraineeFull(t)}</span>
+                ) : (
+                  <span className="text-gray-500">pick a trainee</span>
+                );
+              })()}
+            </div>
+          </div>
           <BrandButton
             onClick={handleCreateInvite}
             disabled={isCreatingInvite}
             variant="cobalt"
-            className="text-sm"
+            className="text-sm shrink-0"
           >
             {isCreatingInvite ? "Creating..." : "Create Link"}
           </BrandButton>
@@ -374,7 +390,7 @@ function HoneycombSimulator() {
       </div>
 
       {/* Setup Panel - Two Column Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="order-2 grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Persona Selection */}
         <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
           <label className="block text-sm text-gray-300 mb-3 font-medium">
@@ -498,14 +514,6 @@ function HoneycombSimulator() {
         </div>
       </div>
 
-      {/* Info Panel */}
-      <div className="rounded-lg border border-white/15 bg-white/7 p-6 shadow-sm text-center">
-        <p className="text-gray-300 text-sm">
-          Select a persona and trainee, then create a link.
-          <br />
-          The trainee will practice the conversation without seeing the persona profile.
-        </p>
-      </div>
     </div>
   );
 }

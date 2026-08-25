@@ -12,6 +12,23 @@ import type {
 
 type RangeOption = "7d" | "30d" | "all";
 
+// Brand grade colors + threshold, shared by the average-score tile and the grade-distribution bar.
+const GRADE_HEX: Record<"A" | "B" | "C" | "D" | "F", string> = {
+  A: "#64ba00",
+  B: "#0298ec",
+  C: "#ffb000",
+  D: "#f96e10",
+  F: "#e65b53",
+};
+const GRADES = ["A", "B", "C", "D", "F"] as const;
+function gradeFor(score: number): "A" | "B" | "C" | "D" | "F" {
+  if (score >= 90) return "A";
+  if (score >= 78) return "B";
+  if (score >= 65) return "C";
+  if (score >= 50) return "D";
+  return "F";
+}
+
 export function InsightsContent() {
   const [insights, setInsights] = useState<InsightsData | null>(null);
   const [conferences, setConferences] = useState<Conference[]>([]);
@@ -205,52 +222,70 @@ export function InsightsContent() {
                   )}
                 . {insights.teamCoaching.tip}
               </p>
-              <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-300">
-                <span>
-                  <span className="text-gray-500">Pass rate (C+):</span>{" "}
-                  <strong style={{ color: "#64ba00" }}>{insights.teamCoaching.passRate}%</strong>
-                </span>
-                <span className="flex items-center gap-3">
-                  <span className="text-gray-500">Grades:</span>
-                  {(["A", "B", "C", "D", "F"] as const).map((g) => (
-                    <span key={g} className="text-xs text-gray-400">
-                      {g} <span className="text-gray-200">{insights.teamCoaching.gradeDistribution[g]}</span>
-                    </span>
-                  ))}
-                </span>
-              </div>
             </div>
           )}
 
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
-              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
-                Total Sessions
-              </p>
-              <p className="text-3xl font-bold text-white">
-                {insights.activity.sessionsCompleted}
-              </p>
-            </div>
+          {/* Summary tiles — consistent style; grade distribution gets a real mini-bar */}
+          {(() => {
+            const gd = insights.teamCoaching?.gradeDistribution;
+            const passRate = insights.teamCoaching?.passRate ?? 0;
+            const total = gd ? GRADES.reduce((s, g) => s + gd[g], 0) : 0;
+            const avg = insights.activity.avgScore;
+            const avgGrade = gradeFor(avg);
+            const tile = "rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm";
+            const capLabel = "text-[11px] text-gray-400 uppercase tracking-wider mb-2";
+            const stat = "font-display text-3xl font-bold leading-none";
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className={tile}>
+                  <p className={capLabel}>Sessions</p>
+                  <p className={`${stat} text-white`}>{insights.activity.sessionsCompleted}</p>
+                </div>
 
-            <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
-              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
-                Average Score
-              </p>
-              <p className="text-3xl font-bold text-white">
-                {insights.activity.avgScore}
-              </p>
-            </div>
+                <div className={tile}>
+                  <p className={capLabel}>Average score</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className={stat} style={{ color: GRADE_HEX[avgGrade] }}>{avg}</span>
+                    <span
+                      className="text-xs font-semibold rounded px-1.5 py-0.5"
+                      style={{ background: GRADE_HEX[avgGrade], color: avgGrade === "C" ? "#25303e" : "#fff" }}
+                    >
+                      {avgGrade}
+                    </span>
+                  </div>
+                </div>
 
-            <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">
-              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
-                Active Trainees
-              </p>
-              <p className="text-3xl font-bold text-white">
-                {insights.activity.topActiveTrainees.length}
-              </p>
-            </div>
-          </div>
+                <div className={tile}>
+                  <p className={capLabel}>Pass rate (C+)</p>
+                  <p className={stat} style={{ color: "#64ba00" }}>{passRate}%</p>
+                </div>
+
+                <div className={tile}>
+                  <p className={capLabel}>Grades</p>
+                  {total > 0 && gd ? (
+                    <>
+                      <div className="flex h-3 rounded-sm overflow-hidden my-1.5">
+                        {GRADES.map((g) =>
+                          gd[g] > 0 ? (
+                            <span key={g} style={{ width: `${(gd[g] / total) * 100}%`, background: GRADE_HEX[g] }} />
+                          ) : null
+                        )}
+                      </div>
+                      <div className="flex gap-2.5 text-[11px] text-gray-400">
+                        {GRADES.map((g) => (
+                          <span key={g}>
+                            <span style={{ color: GRADE_HEX[g] }}>{g}</span> {gd[g]}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className={`${stat} text-white/40`}>—</p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Trainee Performance Table */}
           <div className="rounded-lg border border-white/15 bg-white/7 shadow-sm overflow-hidden">
