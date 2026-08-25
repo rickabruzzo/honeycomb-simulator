@@ -1,0 +1,54 @@
+# OpenTelemetry declarative configuration (file_format 1.0).
+#
+# The SDK is pointed here via OTEL_EXPERIMENTAL_CONFIG_FILE=./otelconfig.yaml
+# (that is the env var the JS SDK actually reads — the docs' OTEL_CONFIG_FILE is
+# the spec name; @opentelemetry/sdk-node 0.211 honors the EXPERIMENTAL_ form).
+#
+# Values interpolate from the environment at load time:
+#   HONEYCOMB_API_KEY          — the ingest key secret (x-honeycomb-team)
+#   OTEL_SERVICE_NAME          — service name; also the TRACES dataset name in a
+#                                Honeycomb Environments team (no dataset header on traces)
+#   HONEYCOMB_METRICS_DATASET  — metrics dataset (defaults to "metrics")
+file_format: "1.0"
+
+resource:
+  attributes:
+    - name: service.name
+      value: ${OTEL_SERVICE_NAME:-honeycomb-simulator}
+
+tracer_provider:
+  processors:
+    - batch:
+        exporter:
+          otlp_http:
+            endpoint: https://api.honeycomb.io
+            headers:
+              - name: x-honeycomb-team
+                value: ${HONEYCOMB_API_KEY}
+
+meter_provider:
+  readers:
+    - periodic:
+        exporter:
+          otlp_http:
+            endpoint: https://api.honeycomb.io
+            headers:
+              - name: x-honeycomb-team
+                value: ${HONEYCOMB_API_KEY}
+              - name: x-honeycomb-dataset
+                value: ${HONEYCOMB_METRICS_DATASET:-metrics}
+
+logger_provider:
+  processors:
+    - batch:
+        exporter:
+          otlp_http:
+            endpoint: https://api.honeycomb.io
+            headers:
+              - name: x-honeycomb-team
+                value: ${HONEYCOMB_API_KEY}
+
+propagator:
+  composite:
+    - tracecontext:
+    - baggage:
