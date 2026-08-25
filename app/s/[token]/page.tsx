@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { PracticeIntro } from "../../../components/PracticeIntro";
 import { Send } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { BrandButton } from "../../../components/ui/BrandButton";
@@ -49,6 +50,9 @@ export default function TraineePracticePage() {
   const [violations, setViolations] = useState<string[]>([]);
   const [trainingWheels, setTrainingWheels] = useState(false);
   const [revealed, setRevealed] = useState<RevealedAttributes | null>(null);
+  // The two-screen practice intro. Shown once per invite (persisted) and skipped on a resumed
+  // session that already has trainee turns.
+  const [introDismissed, setIntroDismissed] = useState(false);
   const [momentumScore, setMomentumScore] = useState(0);
   const [endPrompt, setEndPrompt] = useState<{
     outcome: string;
@@ -58,6 +62,24 @@ export default function TraineePracticePage() {
   } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Restore intro-dismissed state so a mid-session refresh doesn't replay it.
+  useEffect(() => {
+    try {
+      if (token && localStorage.getItem(`intro-done-${token}`)) setIntroDismissed(true);
+    } catch {
+      /* localStorage unavailable — fall back to showing the intro */
+    }
+  }, [token]);
+
+  const dismissIntro = () => {
+    setIntroDismissed(true);
+    try {
+      if (token) localStorage.setItem(`intro-done-${token}`, "1");
+    } catch {
+      /* ignore */
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -295,6 +317,12 @@ export default function TraineePracticePage() {
   const avatarInitial = roleRevealed ? attendeeName.charAt(0).toUpperCase() : "?";
   const band = bandForScore(momentumScore);
   const traineeTurns = messages.filter((m) => m.type === "trainee").length;
+
+  // Show the practice intro first — unless it's already been dismissed, or this is a resumed
+  // session that already has trainee turns.
+  if (!introDismissed && traineeTurns === 0) {
+    return <PracticeIntro onStart={dismissIntro} />;
+  }
 
   return (
     <div className="max-w-3xl mx-auto flex flex-col h-screen">
