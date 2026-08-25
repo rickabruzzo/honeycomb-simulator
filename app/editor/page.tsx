@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Plus, Save, Archive, ExternalLink } from "lucide-react";
+import { Plus, Save, Archive, ExternalLink, Trash2 } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
 import { ChipInput } from "@/components/ui/ChipInput";
 import type { Persona } from "@/lib/scenarioTypes";
@@ -365,27 +365,28 @@ export default function ScenarioEditorPage() {
     }
   };
 
-  const handleArchiveTrainee = async () => {
-    if (!selectedTrainee) return;
-
-    if (!confirm(`Archive trainee "${formatTraineeFull(selectedTrainee)}"? It will be hidden from lists.`)) {
+  // Delete a trainee directly from its row in the list. Removes them from the list (soft-delete
+  // under the hood, so their past scores keep resolving); the per-row control replaces the old
+  // form-level "Archive" button, which sat confusingly next to Save.
+  const handleDeleteTrainee = async (trainee: Trainee) => {
+    if (!confirm(`Delete ${formatTraineeFull(trainee)}? They'll be removed from the list.`)) {
       return;
     }
 
     try {
-      const response = await fetch(`/api/trainees/${selectedTrainee.id}`, {
+      const response = await fetch(`/api/trainees/${trainee.id}`, {
         method: "DELETE",
       });
 
-      if (!response.ok) throw new Error("Failed to archive trainee");
+      if (!response.ok) throw new Error("Failed to delete trainee");
 
       await reloadBootstrap();
-      handleNewTrainee();
-      setSuccessMessage("Trainee archived successfully");
+      if (selectedTrainee?.id === trainee.id) handleNewTrainee();
+      setSuccessMessage("Trainee deleted");
       setTimeout(() => setSuccessMessage(""), 3000);
     } catch (error) {
-      console.error("Failed to archive trainee:", error);
-      alert("Failed to archive trainee");
+      console.error("Failed to delete trainee:", error);
+      alert("Failed to delete trainee");
     }
   };
 
@@ -611,21 +612,40 @@ export default function ScenarioEditorPage() {
               </BrandButton>
             </div>
 
-            {/* Trainee List */}
+            {/* Trainee List — each row carries its own Delete control on the same line */}
             <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
-              {trainees.map((trainee) => (
-                <button
-                  key={trainee.id}
-                  onClick={() => handleSelectTrainee(trainee)}
-                  className={`w-full text-left px-3 py-2 rounded transition ${
-                    selectedTrainee?.id === trainee.id
-                      ? "bg-[#51368D] text-white"
-                      : "bg-white/5 text-gray-300 hover:bg-white/10"
-                  }`}
-                >
-                  <div className="font-medium">{formatTraineeFull(trainee)}</div>
-                </button>
-              ))}
+              {trainees.map((trainee) => {
+                const isSelected = selectedTrainee?.id === trainee.id;
+                return (
+                  <div
+                    key={trainee.id}
+                    className={`group flex items-center gap-1 rounded transition ${
+                      isSelected
+                        ? "bg-[#51368D] text-white"
+                        : "bg-white/5 text-gray-300 hover:bg-white/10"
+                    }`}
+                  >
+                    <button
+                      onClick={() => handleSelectTrainee(trainee)}
+                      className="flex-1 min-w-0 text-left px-3 py-2 font-medium truncate"
+                    >
+                      {formatTraineeFull(trainee)}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTrainee(trainee)}
+                      title={`Delete ${formatTraineeFull(trainee)}`}
+                      aria-label={`Delete ${formatTraineeFull(trainee)}`}
+                      className={`mr-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded transition ${
+                        isSelected
+                          ? "text-white/85 hover:bg-white/20 hover:text-white"
+                          : "text-[#e65b53]/70 opacity-60 hover:bg-[#e65b53]/15 hover:text-[#e65b53] group-hover:opacity-100"
+                      }`}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Trainee Form */}
@@ -650,20 +670,15 @@ export default function ScenarioEditorPage() {
                 />
               </div>
 
-              <div className="flex gap-2 pt-2">
+              <div className="pt-2">
                 <BrandButton
                   onClick={handleSaveTrainee}
                   disabled={saving}
                   variant="lime"
-                  className="flex-1"
+                  className="w-full justify-center"
                 >
                   <Save size={16} /> {saving ? "Saving..." : "Save"}
                 </BrandButton>
-                {selectedTrainee && (
-                  <BrandButton onClick={handleArchiveTrainee} variant="neutral">
-                    <Archive size={16} /> Archive
-                  </BrandButton>
-                )}
               </div>
             </div>
           </div>
