@@ -171,12 +171,39 @@ async function testResolveTrainee() {
   assert("multi-word uses canonical slug", multiWord?.id, "mary-jane-watson");
 }
 
+async function testDedupeByName() {
+  console.log("\n📋 upsertTrainee dedupes by name");
+
+  // Two by-name upserts (no explicit id) must resolve to the SAME trainee, not two.
+  const dana1 = await upsertTrainee({ firstName: "Dana", lastName: "Lee" });
+  const dana2 = await upsertTrainee({ firstName: "Dana", lastName: "Lee" });
+  assert("by-name upsert is idempotent (no duplicate id)", dana2.id, dana1.id);
+
+  // Case / whitespace differences still dedupe.
+  const danaCase = await upsertTrainee({ firstName: " dana ", lastName: "LEE" });
+  assert("by-name upsert dedupes case/space-insensitively", danaCase.id, dana1.id);
+
+  // A by-name upsert reuses a pre-existing active trainee that has a random-suffix id.
+  const rickByName = await upsertTrainee({ firstName: "Rick", lastName: "Abruzzo" });
+  assert(
+    "by-name upsert reuses existing active trainee (random-suffix id)",
+    rickByName.id,
+    "rick-abruzzo-x1y2"
+  );
+
+  // An explicit id still creates/updates that exact record (dedupe only applies with no id).
+  const explicit = await upsertTrainee({ id: "dana-lee-custom", firstName: "Dana", lastName: "Lee" });
+  assert("explicit id is honored, not deduped", explicit.id, "dana-lee-custom");
+}
+
 // ── Run async tests and report ──────────────────────────────────────
 
-testResolveTrainee().then(() => {
-  console.log(`\n${"─".repeat(50)}`);
-  console.log(`  ${passed} passed, ${failed} failed`);
-  if (failed > 0) {
-    process.exit(1);
-  }
-});
+testResolveTrainee()
+  .then(testDedupeByName)
+  .then(() => {
+    console.log(`\n${"─".repeat(50)}`);
+    console.log(`  ${passed} passed, ${failed} failed`);
+    if (failed > 0) {
+      process.exit(1);
+    }
+  });
