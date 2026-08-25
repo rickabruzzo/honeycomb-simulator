@@ -7,6 +7,7 @@ import type { Persona } from "../../lib/scenarioTypes";
 import type { Trainee } from "../../lib/traineeStore";
 import { ExternalLink, Copy, Eye } from "lucide-react";
 import { siteUrl } from "../../lib/siteUrl";
+import { PageHeader } from "../../components/PageHeader";
 
 function StatusBadge({ status }: { status: AdminInviteRow["status"] }) {
   // Brand status pills: neutral / Pacific in-progress / Lime completed.
@@ -251,12 +252,10 @@ export default function AdminPage() {
   return (
     <div className="max-w-[1400px] mx-auto space-y-4">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold">Scenario Tracker</h1>
-        <p className="text-white/70 text-sm">
-          Track training sessions, filter by persona/trainee, and view scores
-        </p>
-      </div>
+      <PageHeader
+        title="Scenario Tracker"
+        subtitle="Track training sessions, filter by persona or trainee, and view scores"
+      />
 
       {/* Filter Bar */}
       <div className="rounded-lg border border-white/15 bg-white/7 p-4 shadow-sm">

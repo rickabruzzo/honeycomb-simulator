@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense, useEffect, useRef, useState } from "react";
-import Image from "next/image";
+import { PageHeader } from "../components/PageHeader";
 import { useSearchParams } from "next/navigation";
 import { BrandButton } from "../components/ui/BrandButton";
 import type { Persona } from "../lib/scenarioTypes";
@@ -270,23 +270,11 @@ function HoneycombSimulator() {
   return (
     <div className="max-w-5xl mx-auto space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Image
-            src="/brand/2021-HC-Logomark-White-RGB.svg"
-            alt="Honeycomb"
-            width={38}
-            height={36}
-            className="shrink-0"
-            priority
-          />
-          <div>
-            <h1 className="text-2xl font-semibold">Scenario Builder</h1>
-            <p className="text-white/70 text-sm">
-              Create invite links for trainees to practice discovery conversations
-            </p>
-          </div>
-        </div>
+      <div className="flex items-start justify-between gap-4">
+        <PageHeader
+          title="Scenario Builder"
+          subtitle="Create invite links for trainees to practice discovery conversations"
+        />
 
         {enrichmentProvider && (
           <div className="text-xs text-gray-400 border border-white/10 rounded px-2 py-1">
