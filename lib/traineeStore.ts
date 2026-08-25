@@ -185,10 +185,14 @@ export async function listTrainees(
 ): Promise<Trainee[]> {
   if (useKv()) {
     const index = (await kv.get<string[]>("trainees:index")) ?? [];
-    const trainees: Trainee[] = [];
+    if (index.length === 0) return [];
 
-    for (const id of index) {
-      const trainee = await kv.get<Trainee>(`trainee:${id}`);
+    // Single MGET instead of one Upstash round-trip per trainee (N+1 → 2 calls).
+    const fetched = await kv.mget<(Trainee | null)[]>(
+      ...index.map((id) => `trainee:${id}`)
+    );
+    const trainees: Trainee[] = [];
+    for (const trainee of fetched) {
       if (trainee && (includeArchived || !trainee.isArchived)) {
         trainees.push(trainee);
       }

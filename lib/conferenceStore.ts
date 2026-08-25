@@ -38,10 +38,14 @@ export async function listConferences(
 ): Promise<Conference[]> {
   if (useKv()) {
     const index = (await kv.get<string[]>("conferences:index")) ?? [];
-    const conferences: Conference[] = [];
+    if (index.length === 0) return [];
 
-    for (const id of index) {
-      const conf = await kv.get<Conference>(`conference:${id}`);
+    // Single MGET instead of one Upstash round-trip per conference (N+1 → 2 calls).
+    const fetched = await kv.mget<(Conference | null)[]>(
+      ...index.map((id) => `conference:${id}`)
+    );
+    const conferences: Conference[] = [];
+    for (const conf of fetched) {
       if (conf && (includeArchived || !conf.isArchived)) {
         conferences.push(conf);
       }

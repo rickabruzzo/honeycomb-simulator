@@ -44,15 +44,18 @@ export async function listPersonas(
 ): Promise<Persona[]> {
   if (useKv()) {
     const index = (await kv.get<string[]>("personas:index")) ?? [];
+    // ALLOWLIST FILTER: Only canonical personas.
+    const ids = index.filter((id) => CANONICAL_PERSONA_IDS.has(id));
+    if (ids.length === 0) return [];
+
+    // Batch the reads into a single MGET instead of one round-trip per persona.
+    // The old N+1 loop was the dominant cost of /api/bootstrap on cold starts
+    // (each `kv.get` is a separate Upstash HTTP call, ~65ms each).
+    const fetched = await kv.mget<(Persona | null)[]>(
+      ...ids.map((id) => `persona:${id}`)
+    );
     const personas: Persona[] = [];
-
-    for (const id of index) {
-      // ALLOWLIST FILTER: Only canonical personas
-      if (!CANONICAL_PERSONA_IDS.has(id)) {
-        continue;
-      }
-
-      const persona = await kv.get<Persona>(`persona:${id}`);
+    for (const persona of fetched) {
       if (persona && (includeArchived || !persona.isArchived)) {
         personas.push(persona);
       }
@@ -225,6 +228,23 @@ export async function archivePersona(id: string): Promise<boolean> {
   }
 
   return true;
+}
+
+/**
+ * Seed-version guard (KV only). seedScenarioPresets used to re-upsert all canonical
+ * personas on every cold start (~60 sequential Upstash round-trips ≈ 5s on /api/bootstrap).
+ * We now stamp a version derived from the canonical persona set; when it already matches,
+ * seeding is skipped entirely. In in-memory dev mode there's no cross-process state, so we
+ * return null and let ensurePersonasSeeded's once-per-process promise gate the (instant) seed.
+ */
+export async function getPersonaSeedVersion(): Promise<string | null> {
+  if (!useKv()) return null;
+  return (await kv.get<string>("personas:seed_version")) ?? null;
+}
+
+export async function setPersonaSeedVersion(version: string): Promise<void> {
+  if (!useKv()) return;
+  await kv.set("personas:seed_version", version);
 }
 
 /**
