@@ -57,6 +57,14 @@ export function normalizeTraineeId(inputId: string, traineeName?: string): strin
 }
 
 /**
+ * Case/whitespace-insensitive full-name key, used to dedupe trainees by name.
+ * "  Rick   Abruzzo " -> "rick abruzzo"
+ */
+function normalizedName(firstName: string, lastName: string): string {
+  return `${firstName} ${lastName}`.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
  * Slugify a full name: "Rick Abruzzo" -> "rick-abruzzo"
  */
 export function slugifyName(name: string): string {
@@ -217,7 +225,20 @@ export async function upsertTrainee(
   trainee: Partial<Trainee> & { firstName: string; lastName: string }
 ): Promise<Trainee> {
   const now = new Date().toISOString();
-  const id = trainee.id || generateTraineeId(trainee.firstName, trainee.lastName);
+
+  // Resolve the id. When the caller gives no explicit id, DEDUPE BY NAME: reuse an existing,
+  // non-archived trainee with the same name instead of minting a new random-suffixed id.
+  // generateTraineeId appends a random suffix, so without this every by-name call (e.g. the
+  // grade-transcript flow) created a duplicate "Rick Abruzzo".
+  let id = trainee.id;
+  if (!id) {
+    const target = normalizedName(trainee.firstName, trainee.lastName);
+    const active = await listTrainees(false);
+    const match = active.find(
+      (t) => normalizedName(t.firstName, t.lastName) === target
+    );
+    id = match?.id ?? generateTraineeId(trainee.firstName, trainee.lastName);
+  }
 
   // Check if updating existing
   const existing = await getTrainee(id);
