@@ -54,105 +54,104 @@ function formatRelativeTime(isoString: string | null): string {
   return `${diffDays}d ago`;
 }
 
-function TokenDisplay({ token }: { token: string }) {
-  const [copied, setCopied] = React.useState(false);
-  const short = `${token.slice(0, 8)}…`;
+// Grade hex + label, consistent with the Insights / Leaderboard grade chips.
+const GRADE_HEX: Record<"A" | "B" | "C" | "D" | "F", string> = {
+  A: "#64ba00",
+  B: "#0298ec",
+  C: "#ffb000",
+  D: "#f96e10",
+  F: "#e65b53",
+};
 
-  const handleCopy = async () => {
+/** Small hexagon grade badge matching the Insights/Leaderboard chips. */
+function GradeChip({ grade }: { grade: string }) {
+  const g = (["A", "B", "C", "D", "F"].includes(grade) ? grade : "F") as
+    | "A" | "B" | "C" | "D" | "F";
+  const hex = GRADE_HEX[g];
+  // Amber/lime chips read better with a dark glyph; darker chips take white.
+  const fg = g === "A" || g === "C" ? "#25303e" : "#fff";
+  return (
+    <span
+      className="inline-flex items-center justify-center font-display text-[11px] font-bold"
+      style={{
+        width: 22,
+        height: 25,
+        clipPath: "polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)",
+        background: hex,
+        color: fg,
+      }}
+      aria-label={`Grade ${g}`}
+    >
+      {g}
+    </span>
+  );
+}
+
+/**
+ * Row actions, redesigned to one accent: a persistent ghost "Review" pill (the primary
+ * admin action) plus open-session and copy-link icon buttons that reveal on row hover.
+ * Replaces the old five saturated buttons per row.
+ */
+function RowActions({
+  reviewUrl,
+  traineeUrl,
+  reviewable,
+}: {
+  reviewUrl: string;
+  traineeUrl: string;
+  reviewable: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(token);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      await navigator.clipboard.writeText(siteUrl(traineeUrl));
     } catch {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      /* clipboard may be blocked; still flash confirmation */
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <code className="text-xs text-gray-400 font-mono">{short}</code>
-      <button
-        onClick={handleCopy}
-        className={`text-xs px-1.5 py-0.5 rounded transition ${
-          copied
-            ? "bg-emerald-500/20 text-emerald-200"
-            : "bg-white/5 hover:bg-white/10 text-gray-400"
-        }`}
-      >
-        {copied ? "✓" : "Copy"}
-      </button>
+    <div className="flex items-center justify-end gap-1.5">
+      {reviewable ? (
+        <Link
+          href={reviewUrl}
+          className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.07] px-3 py-1.5 text-xs font-medium text-gray-100 transition hover:border-[#0298ec]/45 hover:bg-[#0278cd]/25 hover:text-white"
+        >
+          <Eye size={13} /> Review
+        </Link>
+      ) : (
+        <span
+          className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-gray-500"
+          title="No session to review yet"
+        >
+          <Eye size={13} /> Review
+        </span>
+      )}
+      <div className="flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <Link
+          href={traineeUrl}
+          target="_blank"
+          title="Open session"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/12 bg-white/[0.06] text-gray-300 transition hover:border-[#0298ec]/45 hover:bg-[#0278cd]/25 hover:text-white"
+        >
+          <ExternalLink size={13} />
+        </Link>
+        <button
+          onClick={copyLink}
+          title="Copy trainee link"
+          className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition ${
+            copied
+              ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
+              : "border-white/12 bg-white/[0.06] text-gray-300 hover:border-[#0298ec]/45 hover:bg-[#0278cd]/25 hover:text-white"
+          }`}
+        >
+          {copied ? "✓" : <Copy size={13} />}
+        </button>
+      </div>
     </div>
-  );
-}
-
-function CopyUrlButton({ url }: { url: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      const fullUrl = siteUrl(url);
-      await navigator.clipboard.writeText(fullUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }
-  };
-
-  return (
-    <button
-      onClick={handleCopy}
-      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded transition ${
-        copied
-          ? "bg-emerald-500/20 text-emerald-200"
-          : "bg-white/10 hover:bg-white/15 text-gray-300"
-      }`}
-    >
-      {copied ? (
-        <>✓ Copied</>
-      ) : (
-        <>
-          <Copy size={12} /> Copy URL
-        </>
-      )}
-    </button>
-  );
-}
-
-function CopyTokenButton({ token }: { token: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(token);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }
-  };
-
-  return (
-    <button
-      onClick={handleCopy}
-      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded transition ${
-        copied
-          ? "bg-emerald-500/20 text-emerald-200"
-          : "bg-white/10 hover:bg-white/15 text-gray-300"
-      }`}
-      title="Copy token"
-    >
-      {copied ? (
-        <>✓</>
-      ) : (
-        <>
-          <Copy size={12} /> Token
-        </>
-      )}
-    </button>
   );
 }
 
@@ -254,7 +253,7 @@ export default function AdminPage() {
       {/* Header */}
       <PageHeader
         title="Scenario Tracker"
-        subtitle="Track training sessions, filter by persona or trainee, and view scores"
+        subtitle="Every practice session, its status, and its score. Create new sessions in the Scenario Builder."
       />
 
       {/* Filter Bar */}
@@ -371,9 +370,6 @@ export default function AdminPage() {
                     Score
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                    Created
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
                     Last Activity
                   </th>
                   <th className="px-3 py-3 text-right text-xs font-semibold text-gray-300 uppercase tracking-wider">
@@ -385,7 +381,7 @@ export default function AdminPage() {
                 {filteredInvites.map((invite) => (
                   <tr
                     key={invite.token}
-                    className="hover:bg-white/5 transition"
+                    className="group hover:bg-white/5 transition"
                   >
                     <td className="px-3 py-3 text-sm text-gray-300">
                       {invite.traineeShortName || "—"}
@@ -400,53 +396,23 @@ export default function AdminPage() {
                     </td>
                     <td className="px-3 py-3 text-sm text-gray-300">
                       {invite.score !== null ? (
-                        <span className="font-medium">
-                          {invite.score}
-                          {invite.grade && (
-                            <span className="text-gray-400 ml-1">/ {invite.grade}</span>
-                          )}
+                        <span className="inline-flex items-center gap-2">
+                          <span className="font-semibold">{invite.score}</span>
+                          {invite.grade && <GradeChip grade={invite.grade} />}
                         </span>
                       ) : (
-                        "—"
+                        <span className="text-gray-500">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-3 text-sm text-gray-400">
-                      {formatDate(invite.createdAt)}
-                    </td>
-                    <td className="px-3 py-3 text-sm text-gray-400">
+                    <td className="px-3 py-3 text-sm text-gray-400" title={formatDate(invite.createdAt)}>
                       {formatRelativeTime(invite.lastActivityAt)}
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <Link
-                          href={invite.traineeUrl}
-                          target="_blank"
-                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-[#51368D] hover:bg-[#431E80] text-white transition"
-                        >
-                          <ExternalLink size={12} /> Trainee
-                        </Link>
-                        {invite.shareUrl ? (
-                          <Link
-                            href={invite.shareUrl}
-                            target="_blank"
-                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-[#64BA00] hover:bg-[#4CA600] text-gray-950 transition"
-                          >
-                            <ExternalLink size={12} /> Score
-                          </Link>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-white/5 text-gray-500 cursor-not-allowed">
-                            <ExternalLink size={12} /> Score
-                          </span>
-                        )}
-                        <Link
-                          href={`/review/${invite.token}`}
-                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-cyan-700/50 hover:bg-cyan-600/50 text-white transition"
-                        >
-                          <Eye size={12} /> Review
-                        </Link>
-                        <CopyUrlButton url={invite.traineeUrl} />
-                        <CopyTokenButton token={invite.token} />
-                      </div>
+                      <RowActions
+                        reviewUrl={`/review/${invite.token}`}
+                        traineeUrl={invite.traineeUrl}
+                        reviewable={invite.status !== "NOT_STARTED"}
+                      />
                     </td>
                   </tr>
                 ))}
