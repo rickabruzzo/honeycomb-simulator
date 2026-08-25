@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { AdminInviteRow } from "../../lib/adminInvites";
 import type { Persona } from "../../lib/scenarioTypes";
 import type { Trainee } from "../../lib/traineeStore";
-import { ExternalLink, Copy, Eye } from "lucide-react";
+import { ExternalLink, Copy, Eye, Trash2 } from "lucide-react";
 import { siteUrl } from "../../lib/siteUrl";
 import { PageHeader } from "../../components/PageHeader";
 
@@ -96,10 +96,14 @@ function RowActions({
   reviewUrl,
   traineeUrl,
   reviewable,
+  onDelete,
+  deleting,
 }: {
   reviewUrl: string;
   traineeUrl: string;
   reviewable: boolean;
+  onDelete: () => void;
+  deleting: boolean;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -150,6 +154,14 @@ function RowActions({
         >
           {copied ? "✓" : <Copy size={13} />}
         </button>
+        <button
+          onClick={onDelete}
+          disabled={deleting}
+          title="Delete this session"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#e65b53]/40 bg-[#e65b53]/10 text-[#e88079] transition hover:bg-[#e65b53]/20 hover:text-white disabled:opacity-40"
+        >
+          <Trash2 size={13} />
+        </button>
       </div>
     </div>
   );
@@ -161,6 +173,7 @@ export default function AdminPage() {
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [deletingToken, setDeletingToken] = useState<string | null>(null);
 
   // Filter state
   const [filterPersonaId, setFilterPersonaId] = useState<string>("");
@@ -206,6 +219,30 @@ export default function AdminPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleDeleteInvite = async (token: string, who: string) => {
+    if (deletingToken) return;
+    if (
+      !window.confirm(
+        `Delete ${who} from the tracker? This removes the invite, its transcript, and any score. This can't be undone.`
+      )
+    ) {
+      return;
+    }
+    setDeletingToken(token);
+    try {
+      const res = await fetch(`/api/invite/${token}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      // Drop it locally so the row disappears immediately, then refresh from the server.
+      setInvites((prev) => prev.filter((inv) => inv.token !== token));
+      loadData();
+    } catch (e) {
+      console.error("Failed to delete invite:", e);
+      window.alert("Could not delete that session.");
+    } finally {
+      setDeletingToken(null);
+    }
+  };
 
   // Apply filters
   const filteredInvites = useMemo(() => {
@@ -412,6 +449,13 @@ export default function AdminPage() {
                         reviewUrl={`/review/${invite.token}`}
                         traineeUrl={invite.traineeUrl}
                         reviewable={invite.status !== "NOT_STARTED"}
+                        deleting={deletingToken === invite.token}
+                        onDelete={() =>
+                          handleDeleteInvite(
+                            invite.token,
+                            invite.traineeShortName || "this session"
+                          )
+                        }
                       />
                     </td>
                   </tr>
