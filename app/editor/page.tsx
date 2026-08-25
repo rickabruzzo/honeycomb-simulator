@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Image from "next/image";
+import { PageHeader } from "../../components/PageHeader";
 import { useRouter } from "next/navigation";
 import { Plus, Save, Archive, ExternalLink, Trash2 } from "lucide-react";
 import { BrandButton } from "@/components/ui/BrandButton";
@@ -393,22 +393,10 @@ export default function ScenarioEditorPage() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Image
-          src="/brand/2021-HC-Logomark-White-RGB.svg"
-          alt="Honeycomb"
-          width={38}
-          height={36}
-          className="shrink-0"
-          priority
-        />
-        <div>
-          <h1 className="text-2xl font-semibold">Scenario Editor</h1>
-          <p className="text-white/70 text-sm">
-            Create and manage personas and trainees for training scenarios
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Scenario Editor"
+        subtitle="Create and manage personas and trainees for training scenarios"
+      />
 
       {/* Success Message */}
       {successMessage && (

@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Trophy, Share2 } from "lucide-react";
+import { Share2 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { LeaderboardContent } from "@/components/LeaderboardContent";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { siteUrl } from "@/lib/siteUrl";
@@ -16,15 +17,10 @@ export default function LeaderboardPage() {
   return (
     <div className="max-w-[1200px] mx-auto space-y-4">
       {/* Header */}
-      <div className="text-center">
-        <div className="flex items-center justify-center gap-2 mb-2">
-          <Trophy size={32} className="text-yellow-400" />
-          <h1 className="text-3xl font-bold">Leaderboard</h1>
-        </div>
-        <p className="text-white/70 text-sm">
-          Top scores from practice sessions. Default: Last 7 days, Top 20.
-        </p>
-      </div>
+      <PageHeader
+        title="Leaderboard"
+        subtitle="Top scores from practice sessions. Default: Last 7 days, Top 20."
+      />
 
       {/* Shared Link Section */}
       {shareUrl && (
