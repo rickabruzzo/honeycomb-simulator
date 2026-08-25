@@ -36,6 +36,19 @@ export function startTracing(): void {
     process.env.OTEL_EXPORTER_OTLP_ENDPOINT?.replace(/\/+$/, "") ||
     "https://api.honeycomb.io";
 
+  // Tag every span with the deployment environment so local dev traffic (which exports to the
+  // same Honeycomb dataset, since .env.local carries the same ingest key) is cleanly separable
+  // from real Vercel traffic. `VERCEL_ENV` is production | preview on Vercel, unset locally.
+  // Picked up by the SDK's env-var resource detector (autoDetectResources is on by default).
+  const deploymentEnv = process.env.VERCEL_ENV || "development";
+  process.env.OTEL_RESOURCE_ATTRIBUTES = [
+    process.env.OTEL_RESOURCE_ATTRIBUTES,
+    `deployment.environment=${deploymentEnv}`,
+    `deployment.environment.name=${deploymentEnv}`,
+  ]
+    .filter(Boolean)
+    .join(",");
+
   const sdk = new NodeSDK({
     serviceName: process.env.OTEL_SERVICE_NAME || "honeycomb-simulator",
     traceExporter: new OTLPTraceExporter({
