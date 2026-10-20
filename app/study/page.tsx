@@ -20,14 +20,21 @@ function Section({ id, title, children }: { id: string; title: string; children:
 
 /** Just enough markdown for the FAQ: #/## headings, **bold** question lines, bullets, paragraphs. */
 function FaqMarkdown({ source }: { source: string }) {
+  // Bold (**x**) and bare https:// links, which the FAQ uses to cite honeycomb.io.
   const inline = (text: string) =>
-    text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-      part.startsWith("**") && part.endsWith("**") ? (
-        <strong key={i} className="text-white">{part.slice(2, -2)}</strong>
-      ) : (
-        <React.Fragment key={i}>{part}</React.Fragment>
-      )
-    );
+    text.split(/(\*\*[^*]+\*\*|https:\/\/[^\s,)]+)/g).map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={i} className="text-white">{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith("https://")) {
+        return (
+          <a key={i} href={part} target="_blank" rel="noreferrer" className="text-[#7cc6f2] underline-offset-2 hover:underline break-all">
+            {part.replace(/^https:\/\/(www\.)?/, "")}
+          </a>
+        );
+      }
+      return <React.Fragment key={i}>{part}</React.Fragment>;
+    });
 
   const blocks: React.ReactNode[] = [];
   let bullets: string[] = [];
@@ -45,7 +52,7 @@ function FaqMarkdown({ source }: { source: string }) {
     const line = raw.trim();
     if (!line) { flush(); continue; }
     if (line.startsWith("# ")) { flush(); continue; } // page title; the section already has one
-    if (line.startsWith("Source:")) { flush(); continue; } // authoring note, not for trainees
+    if (line.startsWith("Source of truth:")) { flush(); continue; } // authoring note, not for trainees
     if (line.startsWith("## ")) {
       flush();
       blocks.push(
