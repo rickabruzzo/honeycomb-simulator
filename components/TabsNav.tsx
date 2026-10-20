@@ -9,6 +9,8 @@ const tabs = [
   { name: "Scenario Editor", href: "/editor" },
   { name: "Leaderboard", href: "/leaderboard" },
   { name: "Insights", href: "/insights" },
+  { name: "Quiz Results", href: "/quiz-results" },
+  { name: "Study Guide", href: "/study" },
 ];
 
 export function TabsNav() {

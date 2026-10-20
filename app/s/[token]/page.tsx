@@ -54,6 +54,13 @@ export default function TraineePracticePage() {
   // session that already has trainee turns.
   const [introDismissed, setIntroDismissed] = useState(false);
   const [momentumScore, setMomentumScore] = useState(0);
+  // Study-guide quiz gate: null while loading. A trainee must pass (C or better) before a fresh
+  // session can start; the server enforces the same rule on the first message.
+  const [quizStatus, setQuizStatus] = useState<{
+    required: boolean;
+    passed: boolean;
+    quizUrl?: string | null;
+  } | null>(null);
   const [endPrompt, setEndPrompt] = useState<{
     outcome: string;
     actionLabel: string;
@@ -151,6 +158,15 @@ export default function TraineePracticePage() {
     loadSession();
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    fetch(`/api/quiz/for-invite/${token}`)
+      .then((r) => (r.ok ? r.json() : null))
+      // If the quiz can't be checked, don't strand the trainee; the server still gates the session.
+      .then((d) => setQuizStatus(d ?? { required: false, passed: true }))
+      .catch(() => setQuizStatus({ required: false, passed: true }));
+  }, [token]);
+
   const handleSendMessage = async () => {
     if (!input.trim() || !sessionId || loading) return;
 
@@ -165,6 +181,18 @@ export default function TraineePracticePage() {
         body: JSON.stringify({ message: userMessage }),
       });
 
+      if (response.status === 403) {
+        const body = await response.json().catch(() => ({}));
+        if (body?.code === "quiz_required") {
+          setInput(userMessage);
+          // Refresh so we have their quiz link to point them at.
+          fetch(`/api/quiz/for-invite/${token}`)
+            .then((r) => r.json())
+            .then(setQuizStatus)
+            .catch(() => setQuizStatus((s) => ({ ...(s ?? {}), required: true, passed: false })));
+          return;
+        }
+      }
       if (!response.ok) {
         const errText = await response.text().catch(() => "");
         throw new Error(`Message failed: ${response.status} ${errText}`);
@@ -318,8 +346,18 @@ export default function TraineePracticePage() {
   const band = bandForScore(momentumScore);
   const traineeTurns = messages.filter((m) => m.type === "trainee").length;
 
-  // Show the practice intro first — unless it's already been dismissed, or this is a resumed
-  // session that already has trainee turns.
+  // A fresh session goes quiz → ready popup → conversation. Resumed sessions (trainee turns
+  // already in the transcript) skip both.
+  if (traineeTurns === 0) {
+    if (quizStatus === null) {
+      return <div className="py-20 text-center text-gray-500">Loading…</div>;
+    }
+    if (quizStatus.required && !quizStatus.passed) {
+      return <QuizRequired quizUrl={quizStatus.quizUrl ? `${quizStatus.quizUrl}?from=${token}` : null} />;
+    }
+  }
+
+  // Then the short ready popup, unless it's already been dismissed.
   if (!introDismissed && traineeTurns === 0) {
     return <PracticeIntro onStart={dismissIntro} />;
   }
@@ -502,5 +540,33 @@ export default function TraineePracticePage() {
           </div>
         )}
       </div>
+  );
+}
+
+/** Shown on a practice link until the trainee has passed the study-guide quiz. */
+function QuizRequired({ quizUrl }: { quizUrl: string | null }) {
+  return (
+    <div className="min-h-[70vh] flex items-center justify-center px-4 py-8">
+      <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-white/7 p-6 sm:p-7 shadow-sm flex flex-col gap-4">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/40">Before you practice</span>
+        <h1 className="font-display text-2xl font-semibold text-white">Take the booth quiz first</h1>
+        <p className="text-sm leading-relaxed text-white/65">
+          The simulator unlocks once you pass the study-guide quiz with a C or better: 15 multiple-choice questions on
+          answering common questions, spotting the real pain, and landing the right next step. Retakes are unlimited.
+        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <a href="/study?trainee=1" target="_blank" rel="noreferrer" className="text-sm text-white/60 hover:text-white">
+            Read the study guide
+          </a>
+          {quizUrl ? (
+            <a href={quizUrl} className="rounded-md bg-[#0278cd] hover:bg-[#0066ba] px-5 py-2.5 text-sm font-semibold text-white">
+              Take the quiz →
+            </a>
+          ) : (
+            <span className="text-sm text-white/50">Ask your trainer for your quiz link.</span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

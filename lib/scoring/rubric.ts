@@ -99,7 +99,7 @@ HANDOFF - did the trainee secure the RIGHT next step for the read they reached?
 First decide the correct outcome FROM THE CONVERSATION, then score how well the trainee secured it.
 Do NOT assume the DETECTED OUTCOME label below is correct - judge against the read the transcript
 actually supports. The four outcomes and who each fits:
-  - DEMO handoff (pass to a demo engineer): fits ANYONE showing genuine interest - a safe, broadly good next step.
+  - DEMO handoff (pass to a Technical Support Staffer: SA, CS, DevRel, or Eng): fits ANYONE showing genuine interest - a safe, broadly good next step.
   - BADGE SCAN (sales follow-up / MQL): for someone who manages teams or budgets, can move the needle, or wants to set up a team demo - i.e. authority is present.
   - POSTCARD (self-service: white papers, content, free tier): for a self-starter IC WITHOUT budget or leadership authority who trusts content over sales. This is the BEST outcome for a skeptical attendee - never a lesser result.
   - POLITE EXIT: should be RARE, and fits any persona. It is a WIN only when there was genuinely no path to one of the outcomes above (the lift is too high, they're happy as-is, or they refuse to see the value). It is a MISS when a better outcome was clearly on the table and the trainee settled or gave up.
