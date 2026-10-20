@@ -138,7 +138,7 @@ export function analyzeTraineeMessage(text: string, currentState: string) {
   // Flag: Competitor bashing, pricing push, demo push
   const isQuestion = text.includes("?");
   const featureDumpSignals = [
-    /unlike (datadog|splunk|newrelic)/i,
+    /unlike (datadog|splunk|new ?relic|dynatrace|grafana)/i,
     /better than/i,
   ];
   const hasFeatureDump = featureDumpSignals.some((pattern) => pattern.test(text));
@@ -474,7 +474,7 @@ export function calculateDemoEligibility(
 
   // Signal 3: Current tooling context mentioned
   const toolingPhrases = [
-    "prometheus", "grafana", "datadog", "splunk", "newrelic",
+    "prometheus", "grafana", "datadog", "splunk", "newrelic", "new relic", "dynatrace",
     "elk", "elasticsearch", "jaeger", "zipkin", "current setup",
     "our stack", "our tools", "we use", "we have"
   ];

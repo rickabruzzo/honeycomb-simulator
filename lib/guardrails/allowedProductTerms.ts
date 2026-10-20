@@ -27,6 +27,20 @@ export const ALLOWED_PRODUCT_TERMS: Set<string> = new Set([
 
   // Pipeline / sampling
   "refinery",
+  "telemetry pipeline",
+
+  // AI / Honeycomb Intelligence (current product names per honeycomb.io, Oct 2026)
+  "canvas",
+  "honeycomb intelligence",
+  "mcp",
+  "mcp server",
+  "agent timeline",
+  "anomaly detection",
+
+  // Other current offerings
+  "private cloud",
+  "frontend observability",
+  "honeycomb metrics",
 
   // Wide events model
   "wide events",

@@ -40,11 +40,12 @@ export const PRODUCT_QUESTIONS: string[] = [
   "How does it help engineers find issues faster?",
   "What makes this different from a regular monitoring tool?",
   "Do you do dashboards, or is it something more than that?",
+  "Do you use AI to find issues, or is it all dashboards and alerts?",
 ];
 
 /**
  * Derived from FAQ: Competitor Questions.
- * Covers: Datadog, New Relic, Grafana, Prometheus, Splunk, Elastic, X-Ray, Sentry.
+ * Covers: Datadog, New Relic, Grafana, Prometheus, Splunk, Elastic, X-Ray, Sentry, Dynatrace.
  */
 export const COMPETITOR_QUESTIONS: string[] = [
   "So are you basically like Datadog?",
@@ -55,11 +56,12 @@ export const COMPETITOR_QUESTIONS: string[] = [
   "How are you different from Sentry?",
   "We've been looking at Datadog — why would we consider this instead?",
   "Is this competing with Datadog, or more complementary?",
+  "How are you different from Dynatrace?",
 ];
 
 /**
  * Derived from FAQ: OpenTelemetry / ingest / AI / LLM / front-end / pricing.
- * Covers: free tier, OTel, LLM observability, logs, front-end, pricing model.
+ * Covers: free tier, OTel, LLM/agent observability, logs, front-end, pricing model, MCP, Private Cloud.
  */
 export const EVALUATION_QUESTIONS: string[] = [
   "Do you have a free tier?",
@@ -73,6 +75,10 @@ export const EVALUATION_QUESTIONS: string[] = [
   "Is OpenTelemetry required, or can I use something else to send data?",
   "Can I get started without ripping out my current instrumentation?",
   "Does it support anomaly detection, or do you set thresholds manually?",
+  // Current offerings (honeycomb.io, Oct 2026): agent observability, MCP, Private Cloud.
+  "We're building with AI agents now. Can it show what they're actually doing?",
+  "Can I use Honeycomb from Claude Code or Cursor?",
+  "Can we run it inside our own cloud account instead of SaaS?",
 ];
 
 /**
