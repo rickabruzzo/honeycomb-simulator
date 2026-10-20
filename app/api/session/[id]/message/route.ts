@@ -128,7 +128,7 @@ export async function POST(
         if (!hasTraineeTurns) {
           const bank = await getQuizBank();
           if (isQuizUsable(bank)) {
-            const traineeId = session.kickoff.traineeId;
+            const traineeId = session.kickoff.traineeId ?? null;
             const inviteToken = traineeId ? null : await getInviteForSession(id);
             if (!(await quizAllowsSession({ traineeId, token: inviteToken }, bank))) {
               span.setAttribute("status", 403);

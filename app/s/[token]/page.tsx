@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { PracticeIntro } from "../../../components/PracticeIntro";
-import { QuizFlow } from "../../../components/quiz/QuizFlow";
 import { Send } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { BrandButton } from "../../../components/ui/BrandButton";
@@ -60,9 +59,7 @@ export default function TraineePracticePage() {
   const [quizStatus, setQuizStatus] = useState<{
     required: boolean;
     passed: boolean;
-    questionsPerAttempt?: number;
-    passPercent?: number;
-    sources?: { title: string; note?: string; url: string }[];
+    quizUrl?: string | null;
   } | null>(null);
   const [endPrompt, setEndPrompt] = useState<{
     outcome: string;
@@ -163,7 +160,7 @@ export default function TraineePracticePage() {
 
   useEffect(() => {
     if (!token) return;
-    fetch(`/api/quiz/${token}`)
+    fetch(`/api/quiz/for-invite/${token}`)
       .then((r) => (r.ok ? r.json() : null))
       // If the quiz can't be checked, don't strand the trainee; the server still gates the session.
       .then((d) => setQuizStatus(d ?? { required: false, passed: true }))
@@ -188,7 +185,11 @@ export default function TraineePracticePage() {
         const body = await response.json().catch(() => ({}));
         if (body?.code === "quiz_required") {
           setInput(userMessage);
-          setQuizStatus((s) => ({ ...(s ?? {}), required: true, passed: false }));
+          // Refresh so we have their quiz link to point them at.
+          fetch(`/api/quiz/for-invite/${token}`)
+            .then((r) => r.json())
+            .then(setQuizStatus)
+            .catch(() => setQuizStatus((s) => ({ ...(s ?? {}), required: true, passed: false })));
           return;
         }
       }
@@ -352,16 +353,7 @@ export default function TraineePracticePage() {
       return <div className="py-20 text-center text-gray-500">Loading…</div>;
     }
     if (quizStatus.required && !quizStatus.passed) {
-      return (
-        <QuizFlow
-          token={token}
-          status={quizStatus}
-          onUnlocked={() => {
-            setQuizStatus({ ...quizStatus, passed: true });
-            window.scrollTo(0, 0);
-          }}
-        />
-      );
+      return <QuizRequired quizUrl={quizStatus.quizUrl ? `${quizStatus.quizUrl}?from=${token}` : null} />;
     }
   }
 
@@ -548,5 +540,33 @@ export default function TraineePracticePage() {
           </div>
         )}
       </div>
+  );
+}
+
+/** Shown on a practice link until the trainee has passed the study-guide quiz. */
+function QuizRequired({ quizUrl }: { quizUrl: string | null }) {
+  return (
+    <div className="min-h-[70vh] flex items-center justify-center px-4 py-8">
+      <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-white/7 p-6 sm:p-7 shadow-sm flex flex-col gap-4">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/40">Before you practice</span>
+        <h1 className="font-display text-2xl font-semibold text-white">Take the booth quiz first</h1>
+        <p className="text-sm leading-relaxed text-white/65">
+          The simulator unlocks once you pass the study-guide quiz with a C or better: 15 multiple-choice questions on
+          answering common questions, spotting the real pain, and landing the right next step. Retakes are unlimited.
+        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <a href="/study?trainee=1" target="_blank" rel="noreferrer" className="text-sm text-white/60 hover:text-white">
+            Read the study guide
+          </a>
+          {quizUrl ? (
+            <a href={quizUrl} className="rounded-md bg-[#0278cd] hover:bg-[#0066ba] px-5 py-2.5 text-sm font-semibold text-white">
+              Take the quiz →
+            </a>
+          ) : (
+            <span className="text-sm text-white/50">Ask your trainer for your quiz link.</span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

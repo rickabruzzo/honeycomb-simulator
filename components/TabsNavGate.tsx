@@ -17,9 +17,10 @@ export function TabsNavGate() {
   const traineeView = new URLSearchParams(search).has("trainee");
 
   // Hide the admin tabs on everything a trainee or a share-link viewer can land on:
-  // the practice session, the scorecard, and the shared leaderboard/insights views.
+  // the practice session, the quiz, the scorecard, and the shared leaderboard/insights views.
   if (
     pathname?.startsWith("/s/") ||
+    pathname?.startsWith("/q/") ||
     pathname?.startsWith("/share/") ||
     (pathname === "/study" && traineeView) ||
     pathname === "/leaderboard/share" ||

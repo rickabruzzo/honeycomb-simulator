@@ -104,3 +104,31 @@ export interface QuizResult {
   leader: { id: string; name: string; title: string; line: string };
   missed: Array<{ moduleTitle: string; summary: string }>;
 }
+
+/** A personal quiz link, created by an admin for one trainee (separate from practice links). */
+export interface QuizLink {
+  token: string;
+  traineeId: string;
+  traineeName: string;
+  createdAt: string;
+}
+
+export interface AttemptSummary {
+  attemptId: string;
+  grade: Grade;
+  right: number;
+  total: number;
+  percent: number;
+  passed: boolean;
+  completedAt: string;
+  missedModules: string[]; // module titles of missed questions (repeats allowed)
+}
+
+/** Everything the Quiz Results tab shows for one trainee. */
+export interface QuizRecord {
+  traineeId: string;
+  traineeName: string;
+  quizToken: string;
+  attempts: AttemptSummary[]; // newest first
+  passedAt?: string;
+}

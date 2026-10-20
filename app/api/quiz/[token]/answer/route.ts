@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withSpan } from "@/lib/telemetry";
 import { getQuizBank, isQuizUsable } from "@/lib/quiz/bank";
-import { answerQuestion } from "@/lib/quiz/store";
+import { answerQuestion, getQuizLink } from "@/lib/quiz/store";
 
 const STATUS = { not_found: 404, bad_request: 400, bank_changed: 409 } as const;
 
@@ -16,10 +16,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     if (!attemptId || !Number.isInteger(index) || !Number.isInteger(pos)) {
       return NextResponse.json({ error: "attemptId, index and pos are required" }, { status: 400 });
     }
+    const link = await getQuizLink(token);
+    if (!link) return NextResponse.json({ error: "Quiz link not found" }, { status: 404 });
     const bank = await getQuizBank();
     if (!isQuizUsable(bank)) return NextResponse.json({ error: "Quiz unavailable" }, { status: 404 });
 
-    const out = await answerQuestion(token, attemptId, index, pos, bank);
+    const out = await answerQuestion(link, attemptId, index, pos, bank);
     if ("error" in out) {
       span.setAttribute("error", out.error);
       return NextResponse.json({ error: out.error }, { status: STATUS[out.error] });

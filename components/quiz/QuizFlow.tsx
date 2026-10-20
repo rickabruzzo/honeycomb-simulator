@@ -20,7 +20,7 @@ const GRADE_COLOR: Record<string, string> = {
 const KEYS = "ABCD";
 
 interface Status {
-  required: boolean;
+  traineeName?: string;
   passed: boolean;
   questionsPerAttempt?: number;
   passPercent?: number;
@@ -56,11 +56,11 @@ function passMark(total: number, percent: number) {
 export function QuizFlow({
   token,
   status,
-  onUnlocked,
+  continueHref,
 }: {
-  token: string;
+  token: string; // the trainee's personal quiz-link token
   status: Status;
-  onUnlocked: () => void;
+  continueHref?: string | null; // their practice link, when they came from one
 }) {
   const [phase, setPhase] = useState<Phase>("intro");
   const [attemptId, setAttemptId] = useState<string | null>(null);
@@ -161,8 +161,13 @@ export function QuizFlow({
       <div className="w-full max-w-2xl">
         {phase === "intro" && (
           <Card>
-            <Eyebrow>Before you practice</Eyebrow>
-            <h1 className="font-display text-2xl font-semibold text-white">Booth study guide</h1>
+            <Eyebrow>{status.traineeName ? `For ${status.traineeName}` : "Before you practice"}</Eyebrow>
+            <h1 className="font-display text-2xl font-semibold text-white">Booth study guide quiz</h1>
+            {status.passed && (
+              <div className="rounded-lg border border-[#64ba00]/30 bg-[#64ba00]/10 px-3 py-2.5 text-[13px] text-[#9ede5a]">
+                You&apos;ve already passed, so the simulator is unlocked. Retake it any time for practice.
+              </div>
+            )}
             <p className="text-sm leading-relaxed text-white/65">
               A short quiz on what makes booth conversations go well: answering the common questions, spotting
               the real pain, reading when someone&apos;s ready for a next step, and knowing what to hand off.{" "}
@@ -234,7 +239,7 @@ export function QuizFlow({
         )}
 
         {phase === "result" && result && (
-          <ResultCard result={result} onRetake={start} onContinue={onUnlocked} busy={busy} />
+          <ResultCard result={result} onRetake={start} continueHref={continueHref} busy={busy} />
         )}
       </div>
     </div>
@@ -431,12 +436,12 @@ function QuestionCard({
 function ResultCard({
   result,
   onRetake,
-  onContinue,
+  continueHref,
   busy,
 }: {
   result: QuizResult;
   onRetake: () => void;
-  onContinue: () => void;
+  continueHref?: string | null;
   busy: boolean;
 }) {
   const color = GRADE_COLOR[result.grade];
@@ -497,7 +502,9 @@ function ResultCard({
         }`}
       >
         {result.passed
-          ? "Simulator unlocked. You can come back to the study guide any time."
+          ? continueHref
+            ? "Simulator unlocked. You can come back to the study guide any time."
+            : "Simulator unlocked. Open your practice link to start a conversation."
           : "You need a C to unlock the simulator. Retakes draw a fresh set of questions."}
       </div>
 
@@ -531,13 +538,13 @@ function ResultCard({
           >
             {busy ? "Loading…" : "Retake quiz"}
           </button>
-          {result.passed && (
-            <button
-              onClick={onContinue}
+          {result.passed && continueHref && (
+            <a
+              href={continueHref}
               className="rounded-md bg-[#0278cd] hover:bg-[#0066ba] px-5 py-2.5 text-sm font-semibold text-white"
             >
               Continue to the simulator →
-            </button>
+            </a>
           )}
         </div>
       </div>
