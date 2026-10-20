@@ -37,9 +37,9 @@ export function getOutcomeAction(outcome: string): OutcomeAction {
     case "DEMO_READY":
       return {
         actionType: "HANDOFF_DEMOER",
-        actionLabel: "Pass off to Demoer",
-        systemMessage: "You hand them off to the demo engineer.",
-        tooltip: "Connect them with a demo engineer for a deeper dive",
+        actionLabel: "Hand off to Technical Support",
+        systemMessage: "You hand them off to a Technical Support Staffer.",
+        tooltip: "Connect them with a Technical Support Staffer (SA, CS, DevRel, or Eng) for a deeper dive",
       };
 
     case "SELF_SERVICE_READY":

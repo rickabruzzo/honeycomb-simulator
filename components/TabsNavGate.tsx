@@ -10,6 +10,7 @@ export function TabsNavGate() {
   if (
     pathname?.startsWith("/s/") ||
     pathname?.startsWith("/share/") ||
+    pathname === "/study" ||
     pathname === "/leaderboard/share" ||
     pathname === "/insights/share"
   ) {

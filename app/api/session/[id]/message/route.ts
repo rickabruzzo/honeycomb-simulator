@@ -28,6 +28,8 @@ import { getMomentumBand } from "@/lib/attendee/momentumBands";
 import { computeRevealed } from "@/lib/attendee/trainingWheels";
 import type { PromptRuntimeContext } from "@/lib/llm/promptBundleTypes";
 import { getInviteForSession } from "@/lib/invites";
+import { getQuizBank, isQuizUsable } from "@/lib/quiz/bank";
+import { quizAllowsSession } from "@/lib/quiz/store";
 import { saveScore } from "@/lib/scoreStore";
 import { addToLeaderboardIndex } from "@/lib/leaderboardStore";
 import { getOutcomeAction, shouldShowCompletionCTA } from "@/lib/outcomeActions";
@@ -119,6 +121,24 @@ export async function POST(
           span.setAttribute("trainee_id", session.kickoff.traineeId);
         }
         span.setAttribute("current_state", session.currentState);
+
+        // Study-guide gate: a fresh session can't start until the trainee has passed the quiz
+        // (C or better). Sessions already under way when the gate shipped carry on untouched.
+        const hasTraineeTurns = session.transcript.some((m) => m.type === "trainee");
+        if (!hasTraineeTurns) {
+          const bank = await getQuizBank();
+          if (isQuizUsable(bank)) {
+            const inviteToken = await getInviteForSession(id);
+            if (!(await quizAllowsSession(inviteToken, bank))) {
+              span.setAttribute("status", 403);
+              span.setAttribute("error", "quiz_required");
+              return NextResponse.json(
+                { error: "Pass the study-guide quiz to start the simulator", code: "quiz_required" },
+                { status: 403 }
+              );
+            }
+          }
+        }
 
         // Enrichment is generated ONCE at invite-create (and can be produced out of band by
         // /api/enrichment/ensure). Here we only READ the persona cache — we never generate

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { PracticeIntro } from "../../../components/PracticeIntro";
+import { QuizFlow } from "../../../components/quiz/QuizFlow";
 import { Send } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { BrandButton } from "../../../components/ui/BrandButton";
@@ -54,6 +55,15 @@ export default function TraineePracticePage() {
   // session that already has trainee turns.
   const [introDismissed, setIntroDismissed] = useState(false);
   const [momentumScore, setMomentumScore] = useState(0);
+  // Study-guide quiz gate: null while loading. A trainee must pass (C or better) before a fresh
+  // session can start; the server enforces the same rule on the first message.
+  const [quizStatus, setQuizStatus] = useState<{
+    required: boolean;
+    passed: boolean;
+    questionsPerAttempt?: number;
+    passPercent?: number;
+    sources?: { title: string; note?: string; url: string }[];
+  } | null>(null);
   const [endPrompt, setEndPrompt] = useState<{
     outcome: string;
     actionLabel: string;
@@ -151,6 +161,15 @@ export default function TraineePracticePage() {
     loadSession();
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    fetch(`/api/quiz/${token}`)
+      .then((r) => (r.ok ? r.json() : null))
+      // If the quiz can't be checked, don't strand the trainee; the server still gates the session.
+      .then((d) => setQuizStatus(d ?? { required: false, passed: true }))
+      .catch(() => setQuizStatus({ required: false, passed: true }));
+  }, [token]);
+
   const handleSendMessage = async () => {
     if (!input.trim() || !sessionId || loading) return;
 
@@ -165,6 +184,14 @@ export default function TraineePracticePage() {
         body: JSON.stringify({ message: userMessage }),
       });
 
+      if (response.status === 403) {
+        const body = await response.json().catch(() => ({}));
+        if (body?.code === "quiz_required") {
+          setInput(userMessage);
+          setQuizStatus((s) => ({ ...(s ?? {}), required: true, passed: false }));
+          return;
+        }
+      }
       if (!response.ok) {
         const errText = await response.text().catch(() => "");
         throw new Error(`Message failed: ${response.status} ${errText}`);
@@ -318,8 +345,27 @@ export default function TraineePracticePage() {
   const band = bandForScore(momentumScore);
   const traineeTurns = messages.filter((m) => m.type === "trainee").length;
 
-  // Show the practice intro first — unless it's already been dismissed, or this is a resumed
-  // session that already has trainee turns.
+  // A fresh session goes quiz → ready popup → conversation. Resumed sessions (trainee turns
+  // already in the transcript) skip both.
+  if (traineeTurns === 0) {
+    if (quizStatus === null) {
+      return <div className="py-20 text-center text-gray-500">Loading…</div>;
+    }
+    if (quizStatus.required && !quizStatus.passed) {
+      return (
+        <QuizFlow
+          token={token}
+          status={quizStatus}
+          onUnlocked={() => {
+            setQuizStatus({ ...quizStatus, passed: true });
+            window.scrollTo(0, 0);
+          }}
+        />
+      );
+    }
+  }
+
+  // Then the short ready popup, unless it's already been dismissed.
   if (!introDismissed && traineeTurns === 0) {
     return <PracticeIntro onStart={dismissIntro} />;
   }

@@ -34,6 +34,7 @@ export interface GlobalMemoryStore {
   enrichments: Map<string, EnrichmentResult>;
   scores: Map<string, unknown>;   // token -> ScoreRecord (typed at the scoreStore boundary)
   scoreIndex: string[];           // tokens, newest first
+  quiz: Map<string, unknown>;     // study-guide quiz attempts/passes, keyed like their KV keys
   meta: {
     bootstrapCache?: any;
     bootstrapCacheAt?: number;
@@ -71,6 +72,7 @@ export function getMemStore(): GlobalMemoryStore {
       enrichments: new Map(),
       scores: new Map(),
       scoreIndex: [],
+      quiz: new Map(),
       meta: {},
     };
   }
@@ -93,6 +95,7 @@ export function getMemStore(): GlobalMemoryStore {
   store.enrichments ??= new Map();
   store.scores ??= new Map();
   store.scoreIndex ??= [];
+  store.quiz ??= new Map();
   store.meta ??= {};
 
   return globalThis.__HC_SIM_MEM__;
