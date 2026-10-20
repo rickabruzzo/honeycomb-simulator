@@ -139,10 +139,20 @@ export async function answerQuestion(
   };
 }
 
-/** Server-side gate used by the message route: true when this invite may start the simulator. */
-export async function quizAllowsSession(token: string | null, bank: QuizBank): Promise<boolean> {
-  if (!token) return true; // sessions without an invite (admin/dev paths) aren't gated
-  const traineeKey = await traineeKeyForToken(token);
+/**
+ * Server-side gate used by the message route: true when this session may start the simulator.
+ * Prefers the trainee recorded on the session itself; falls back to the invite token. Sessions
+ * with neither (admin/dev paths) aren't gated.
+ */
+export async function quizAllowsSession(
+  who: { traineeId?: string | null; token?: string | null },
+  bank: QuizBank
+): Promise<boolean> {
+  const traineeKey = who.traineeId
+    ? `trainee:${who.traineeId}`
+    : who.token
+      ? await traineeKeyForToken(who.token)
+      : null;
   if (!traineeKey) return true;
   return Boolean(await getPass(traineeKey, bank));
 }

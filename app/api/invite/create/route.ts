@@ -147,12 +147,15 @@ export async function POST(request: NextRequest) {
                 await batchWrite([
                   { key: `session:${session.id}`, value: session },
                   { key: `invite:${token}`, value: invite },
+                  // Reverse mapping (what saveInvite writes in memory mode). Without it,
+                  // getInviteForSession can't resolve the invite from a session on KV.
+                  { key: `session_invite:${session.id}`, value: { token } },
                 ]);
                 // ...then update the shared `invites:index` array the Scenario Tracker reads.
                 // The old code wrote a per-token `invite_index:<token>` key here, which nothing
                 // lists — so on KV (production) invites were created but never showed up.
                 await addInviteToIndex(token, createdAt);
-                childSpan.setAttribute("operations_count", 3);
+                childSpan.setAttribute("operations_count", 4);
                 kvPipelineCalls++;
               } else {
                 // In-memory mode: call individual functions
