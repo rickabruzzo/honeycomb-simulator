@@ -518,7 +518,7 @@ function ResultCard({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <a href="/study" target="_blank" rel="noreferrer" className="text-sm text-white/60 hover:text-white">
+        <a href="/study?trainee=1" target="_blank" rel="noreferrer" className="text-sm text-white/60 hover:text-white">
           Open the study guide
         </a>
         <div className="flex gap-2">

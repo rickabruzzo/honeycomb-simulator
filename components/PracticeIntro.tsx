@@ -28,7 +28,7 @@ export function PracticeIntro({ onStart }: { onStart: () => void }) {
             coaching.
           </p>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <a href="/study" target="_blank" rel="noreferrer" className="text-sm text-white/60 hover:text-white transition">
+            <a href="/study?trainee=1" target="_blank" rel="noreferrer" className="text-sm text-white/60 hover:text-white transition">
               Revisit the study guide
             </a>
             <button
