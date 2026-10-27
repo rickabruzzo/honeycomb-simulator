@@ -10,6 +10,7 @@ import { useKv as kvEnabled } from "../kvConfig";
 import { getMemStore } from "../memoryStore";
 import { getInvite } from "../invites";
 import { getTrainee } from "../traineeStore";
+import { uniqueToken } from "../readableToken";
 import { buildItems, computeResult, correctPos, drawQuestions, toClientQuestion } from "./logic";
 import type {
   AttemptSummary,
@@ -78,10 +79,12 @@ export async function getOrCreateQuizLink(traineeId: string): Promise<QuizLink |
   }
   const trainee = await getTrainee(traineeId);
   if (!trainee) return null;
+  const traineeName = `${trainee.firstName} ${trainee.lastName}`.trim();
   const link: QuizLink = {
-    token: randomUUID(),
+    // Readable: /q/rick-abruzzo-x7k2. Older UUID links still resolve (lookup is by key).
+    token: await uniqueToken(traineeName, async (t) => Boolean(await getQuizLink(t))),
     traineeId,
-    traineeName: `${trainee.firstName} ${trainee.lastName}`.trim(),
+    traineeName,
     createdAt: new Date().toISOString(),
   };
   await set(linkKey(link.token), link);
