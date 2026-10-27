@@ -89,7 +89,7 @@ export function OutcomesGrid() {
   const outcomes: Array<[string, string]> = [
     ["Demo", "Hand off to a Technical Support Staffer: anyone genuinely interested"],
     ["Sales follow-up", "Badge scan: someone who manages a team or budget"],
-    ["Self-serve", "Free tier and docs: the self-directed IC who'd rather explore alone"],
+    ["Self-serve", "Hand the self-directed IC the 'You Meet Us At The Booth. Now What?' postcard: free-tier signup, white papers, case studies"],
     ["Polite exit", "Rare: when there's genuinely no fit"],
   ];
   return (
