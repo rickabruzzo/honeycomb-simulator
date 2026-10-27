@@ -28,7 +28,7 @@ export type AdminInviteRow = {
 /**
  * Determine session status based on session data and score existence
  */
-function determineStatus(
+export function determineStatus(
   session: SessionState | null,
   hasScore: boolean
 ): "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" {
