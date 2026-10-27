@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import { StudyGuideLink } from "./StudyGuideLink";
 import type { ClientQuestion, QuizResult, QuizSource } from "../../lib/quiz/types";
 
 /**
@@ -210,7 +211,7 @@ export function QuizFlow({
             )}
             {error && <p className="text-sm text-[#e65b53]">{error}</p>}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-xs text-white/40">Study links open in a new tab.</span>
+              <StudyGuideLink>Read the study guide first</StudyGuideLink>
               <button
                 onClick={start}
                 disabled={busy}
@@ -525,9 +526,7 @@ function ResultCard({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <a href="/study?trainee=1" target="_blank" rel="noreferrer" className="text-sm text-white/60 hover:text-white">
-          Open the study guide
-        </a>
+        <StudyGuideLink>Open the study guide</StudyGuideLink>
         <div className="flex gap-2">
           <button
             onClick={onRetake}

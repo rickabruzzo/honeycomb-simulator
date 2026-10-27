@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { StudyGuideLink } from "./quiz/StudyGuideLink";
 import { OutcomesGrid } from "./quiz/CoachingContent";
 
 /**
@@ -28,9 +29,7 @@ export function PracticeIntro({ onStart }: { onStart: () => void }) {
             coaching.
           </p>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <a href="/study?trainee=1" target="_blank" rel="noreferrer" className="text-sm text-white/60 hover:text-white transition">
-              Revisit the study guide
-            </a>
+            <StudyGuideLink>Revisit the study guide</StudyGuideLink>
             <button
               onClick={onStart}
               className="inline-flex items-center gap-2 rounded-md bg-[#0278cd] hover:bg-[#0066ba] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition"
