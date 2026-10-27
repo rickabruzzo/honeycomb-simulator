@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   listTrainees,
+  normalizeEmail,
   upsertTrainee,
 } from "@/lib/traineeStore";
 import { Trainee } from "@/lib/traineeStore";
@@ -38,8 +39,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Upsert trainee (creates if missing id, updates if present)
-    const trainee = await upsertTrainee(body as Partial<Trainee> & { firstName: string; lastName: string });
+    // Email is optional here (admins add people by name); when given it has to look like one.
+    if (body.email !== undefined && body.email !== "") {
+      if (typeof body.email !== "string" || !normalizeEmail(body.email)) {
+        return NextResponse.json(
+          { error: "That email address doesn't look right" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Upsert trainee (creates if missing id, updates if present). An empty email means
+    // "not provided", so it's left out rather than wiping a stored address.
+    const { email, ...rest } = body as Partial<Trainee> & { firstName: string; lastName: string };
+    const trainee = await upsertTrainee(email ? { ...rest, email } : rest);
 
     // Invalidate bootstrap cache so new trainee appears in Builder immediately
     invalidateBootstrapCache();
