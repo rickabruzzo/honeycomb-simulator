@@ -70,7 +70,7 @@ export function normalizeTraineeId(inputId: string, traineeName?: string): strin
  * Case/whitespace-insensitive full-name key, used to dedupe trainees by name.
  * "  Rick   Abruzzo " -> "rick abruzzo"
  */
-function normalizedName(firstName: string, lastName: string): string {
+export function normalizedName(firstName: string, lastName: string): string {
   return `${firstName} ${lastName}`.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
