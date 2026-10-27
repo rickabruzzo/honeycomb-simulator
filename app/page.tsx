@@ -7,6 +7,7 @@ import { BrandButton } from "../components/ui/BrandButton";
 import type { Persona } from "../lib/scenarioTypes";
 import type { Trainee } from "../lib/traineeStore";
 import { formatTraineeFull } from "../lib/traineeStore";
+import type { ImportPlan } from "../lib/traineeCsv";
 import { siteUrl } from "../lib/siteUrl";
 
 function HoneycombSimulator() {
@@ -31,8 +32,17 @@ function HoneycombSimulator() {
   // Inline new-trainee creation, so a link can be made without leaving the builder
   const [newTraineeFirst, setNewTraineeFirst] = useState<string>("");
   const [newTraineeLast, setNewTraineeLast] = useState<string>("");
+  const [newTraineeEmail, setNewTraineeEmail] = useState<string>("");
   const [isCreatingTrainee, setIsCreatingTrainee] = useState(false);
   const [traineeCreateError, setTraineeCreateError] = useState<string>("");
+  // CSV import: preview the plan first, then commit it.
+  const [csvText, setCsvText] = useState<string>("");
+  const [csvName, setCsvName] = useState<string>("");
+  const [csvPlan, setCsvPlan] = useState<ImportPlan | null>(null);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvError, setCsvError] = useState<string>("");
+  const [csvDone, setCsvDone] = useState<{ created: number; updated: number } | null>(null);
+  const [csvShowSkipped, setCsvShowSkipped] = useState(false);
 
   // Enrichment status
   const [enrichmentProvider, setEnrichmentProvider] = useState<"openai" | "anthropic" | "mock" | null>(null);
@@ -215,10 +225,11 @@ function HoneycombSimulator() {
     setTraineeCreateError("");
 
     try {
+      const email = newTraineeEmail.trim();
       const response = await fetch("/api/trainees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName, lastName }),
+        body: JSON.stringify({ firstName, lastName, ...(email ? { email } : {}) }),
       });
 
       if (!response.ok) {
@@ -235,11 +246,65 @@ function HoneycombSimulator() {
       }
       setNewTraineeFirst("");
       setNewTraineeLast("");
+      setNewTraineeEmail("");
     } catch (error: any) {
       console.error("Failed to create trainee:", error);
       setTraineeCreateError(error.message || "Failed to create trainee");
     } finally {
       setIsCreatingTrainee(false);
+    }
+  };
+
+  // CSV import, step 1: read the file and ask the server what it would do (nothing is saved).
+  const handleCsvFile = async (file: File | undefined) => {
+    setCsvPlan(null);
+    setCsvDone(null);
+    setCsvError("");
+    setCsvShowSkipped(false);
+    if (!file) return;
+    setCsvBusy(true);
+    try {
+      const text = await file.text();
+      setCsvText(text);
+      setCsvName(file.name);
+      const response = await fetch("/api/trainees/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: text }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Couldn't read that CSV");
+      setCsvPlan(data.plan);
+    } catch (error) {
+      setCsvError(error instanceof Error ? error.message : "Couldn't read that CSV");
+    } finally {
+      setCsvBusy(false);
+    }
+  };
+
+  // CSV import, step 2: apply the previewed plan.
+  const handleCsvCommit = async () => {
+    if (!csvText || !csvPlan) return;
+    setCsvBusy(true);
+    setCsvError("");
+    try {
+      const response = await fetch("/api/trainees/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: csvText, commit: true }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Import failed");
+      setCsvDone(data.applied);
+      setCsvPlan(null);
+      setCsvText("");
+      // Reload the list so new and updated trainees show up (bypassing the bootstrap cache).
+      const refreshed = await fetch("/api/trainees").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (refreshed?.trainees) setTrainees(refreshed.trainees);
+    } catch (error) {
+      setCsvError(error instanceof Error ? error.message : "Import failed");
+    } finally {
+      setCsvBusy(false);
     }
   };
 
@@ -472,6 +537,10 @@ function HoneycombSimulator() {
                 </button>
               </div>
               <div className="mt-2 text-gray-500">They will not see the persona details above.</div>
+              {(() => {
+                const email = trainees.find((t) => t.id === selectedTraineeId)?.email;
+                return email ? <div className="mt-1 text-gray-500">Email: <span className="text-gray-300">{email}</span></div> : null;
+              })()}
             </div>
           )}
 
@@ -488,10 +557,17 @@ function HoneycombSimulator() {
               <input
                 value={newTraineeLast}
                 onChange={(e) => setNewTraineeLast(e.target.value)}
+                placeholder="Last name"
+                className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 text-sm outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10"
+              />
+              <input
+                type="email"
+                value={newTraineeEmail}
+                onChange={(e) => setNewTraineeEmail(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleCreateTrainee();
                 }}
-                placeholder="Last name"
+                placeholder="Email (optional)"
                 className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 text-sm outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10"
               />
               <BrandButton
@@ -507,7 +583,78 @@ function HoneycombSimulator() {
               <div className="mt-2 text-sm text-red-300">{traineeCreateError}</div>
             ) : (
               <div className="mt-2 text-xs text-gray-500">
-                Creates the trainee and selects them for this link.
+                Creates the trainee and selects them for this link. Email is only shown to admins.
+              </div>
+            )}
+          </div>
+
+          {/* CSV import: preview what would change, then import */}
+          <div className="mt-4 border-t border-white/10 pt-3">
+            <div className="text-xs text-gray-400 mb-2 font-medium">Import trainees from a CSV</div>
+            <input
+              type="file"
+              accept=".csv,text/csv,text/plain"
+              disabled={csvBusy}
+              onChange={(e) => {
+                handleCsvFile(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+              className="block w-full text-sm text-gray-300 file:mr-3 file:rounded-md file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-white/15 disabled:opacity-50"
+            />
+            <div className="mt-2 text-xs text-gray-500">
+              Columns: first, last, email. A header row is fine. Matching names get their email filled in.
+            </div>
+            {csvError && <div className="mt-2 text-sm text-red-300">{csvError}</div>}
+            {csvPlan && (
+              <div className="mt-3 rounded-md border border-white/15 bg-black/20 p-3 text-sm">
+                <div className="text-gray-200">
+                  <span className="text-gray-400">{csvName}:</span>{" "}
+                  <strong className="text-[#9ede5a]">{csvPlan.create.length} new</strong>
+                  <span className="text-gray-500"> · </span>
+                  <strong className="text-[#7cc6f2]">{csvPlan.update.length} updated</strong>
+                  <span className="text-gray-500"> · </span>
+                  <strong className="text-gray-300">{csvPlan.skip.length} skipped</strong>
+                </div>
+                {csvPlan.skip.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCsvShowSkipped((v) => !v)}
+                    className="mt-1.5 text-xs text-gray-400 underline underline-offset-2 hover:text-white"
+                  >
+                    {csvShowSkipped ? "Hide" : "Show"} skipped rows
+                  </button>
+                )}
+                {csvShowSkipped && (
+                  <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs text-gray-400">
+                    {csvPlan.skip.map((s) => (
+                      <li key={s.line}>
+                        <span className="text-gray-500">line {s.line}</span> · <code className="text-gray-300">{s.raw}</code> · {s.reason}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-3 flex items-center gap-2">
+                  <BrandButton
+                    onClick={handleCsvCommit}
+                    disabled={csvBusy || csvPlan.create.length + csvPlan.update.length === 0}
+                    variant="lime"
+                    className="text-sm justify-center"
+                  >
+                    {csvBusy ? "Importing..." : `Import ${csvPlan.create.length + csvPlan.update.length}`}
+                  </BrandButton>
+                  <button
+                    type="button"
+                    onClick={() => { setCsvPlan(null); setCsvText(""); }}
+                    className="text-xs text-gray-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {csvDone && (
+              <div className="mt-2 text-sm text-[#9ede5a]">
+                Imported: {csvDone.created} new, {csvDone.updated} updated.
               </div>
             )}
           </div>
