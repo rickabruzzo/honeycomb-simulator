@@ -547,37 +547,45 @@ function HoneycombSimulator() {
           {/* Inline: create a new trainee without leaving the builder */}
           <div className="mt-4 border-t border-white/10 pt-3">
             <div className="text-xs text-gray-400 mb-2 font-medium">Add a new trainee</div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                value={newTraineeFirst}
-                onChange={(e) => setNewTraineeFirst(e.target.value)}
-                placeholder="First name"
-                className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 text-sm outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10"
-              />
-              <input
-                value={newTraineeLast}
-                onChange={(e) => setNewTraineeLast(e.target.value)}
-                placeholder="Last name"
-                className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 text-sm outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10"
-              />
-              <input
-                type="email"
-                value={newTraineeEmail}
-                onChange={(e) => setNewTraineeEmail(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreateTrainee();
-                }}
-                placeholder="Email (optional)"
-                className="flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 text-sm outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10"
-              />
-              <BrandButton
-                onClick={handleCreateTrainee}
-                disabled={isCreatingTrainee}
-                variant="lime"
-                className="text-sm justify-center"
-              >
-                {isCreatingTrainee ? "Adding..." : "Add"}
-              </BrandButton>
+            {/* Names on one row, email + Add on the next: three inputs and a button don't fit the card. */}
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  value={newTraineeFirst}
+                  onChange={(e) => setNewTraineeFirst(e.target.value)}
+                  placeholder="First name"
+                  className="min-w-0 bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 text-sm outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10"
+                />
+                <input
+                  value={newTraineeLast}
+                  onChange={(e) => setNewTraineeLast(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreateTrainee();
+                  }}
+                  placeholder="Last name"
+                  className="min-w-0 bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 text-sm outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10"
+                />
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={newTraineeEmail}
+                  onChange={(e) => setNewTraineeEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreateTrainee();
+                  }}
+                  placeholder="Email (optional)"
+                  className="min-w-0 flex-1 bg-black/30 border border-white/20 text-gray-100 rounded-md px-3 py-2 text-sm outline-none focus:border-white/30 focus:ring-2 focus:ring-white/10"
+                />
+                <BrandButton
+                  onClick={handleCreateTrainee}
+                  disabled={isCreatingTrainee}
+                  variant="lime"
+                  className="shrink-0 text-sm justify-center"
+                >
+                  {isCreatingTrainee ? "Adding..." : "Add"}
+                </BrandButton>
+              </div>
             </div>
             {traineeCreateError ? (
               <div className="mt-2 text-sm text-red-300">{traineeCreateError}</div>
