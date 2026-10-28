@@ -20,6 +20,7 @@ export function TabsNavGate() {
   // start link, the practice session, the quiz, the scorecard, and the shared leaderboard/insights.
   if (
     pathname === "/start" ||
+    pathname === "/signin" ||
     pathname?.startsWith("/s/") ||
     pathname?.startsWith("/q/") ||
     pathname?.startsWith("/share/") ||
