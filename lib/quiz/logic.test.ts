@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildItems, computeResult, correctPos, drawQuestions, gradeFor, toClientQuestion } from "./logic";
+import { buildItems, computeResult, correctPos, drawQuestions, gradeFor, partialPos, toClientQuestion } from "./logic";
 import type { QuizAttempt, QuizBank, QuizQuestion } from "./types";
 
 function q(id: string, module: string): QuizQuestion {
@@ -90,5 +90,53 @@ describe("client view and scoring", () => {
     expect(result).toMatchObject({ right: 10, total: 15, grade: "C", passed: true });
     expect(result.leader).toMatchObject({ name: "X", line: "c" });
     expect(result.missed).toHaveLength(5);
+    // Records from before partial credit have no `partial` on items.
+    expect(result).toMatchObject({ partial: 0, points: 10, okay: [] });
+  });
+});
+
+describe("partial credit", () => {
+  const withPartial: QuizQuestion = {
+    ...q("p-0", "m1"),
+    choices: [
+      { text: "a", why_not: "no a" },
+      { text: "b", correct: true },
+      { text: "c", partial: true, why_not: "okay, but b is better" },
+      { text: "d", why_not: "no d" },
+    ],
+  };
+  const bank = {
+    version: "t",
+    gateVersion: 1,
+    questionsPerAttempt: 15,
+    passPercent: 65,
+    questions: [withPartial, ...POOL],
+    sources: [],
+    leaders: [],
+    gradeLines: { A: "a", B: "b", C: "c", D: "d", F: "f" },
+  } satisfies QuizBank;
+
+  it("maps the partial choice through the display order, or -1 when there is none", () => {
+    const [item] = buildItems([withPartial]);
+    expect(toClientQuestion(withPartial, item, 0).choices[partialPos(withPartial, item)]).toBe("c");
+    expect(partialPos(POOL[0], buildItems([POOL[0]])[0])).toBe(-1);
+  });
+
+  it("counts a partial answer as half a point, so 9 right + 2 partial passes like 10 right", () => {
+    const drawn = [withPartial, withPartial, ...POOL.slice(0, 13)];
+    const items = buildItems(drawn).map((it, i) => ({
+      ...it,
+      answeredPos: 0,
+      correct: i >= 2 && i < 11, // 9 right
+      partial: i < 2, // 2 partial (the two withPartial copies)
+    }));
+    const attempt: QuizAttempt = {
+      id: "1", token: "t", traineeKey: "trainee:x", bankVersion: "t", gateVersion: 1, leaderId: "", items, createdAt: "",
+    };
+    const result = computeResult(attempt, bank);
+    expect(result).toMatchObject({ right: 9, partial: 2, points: 10, total: 15, percent: 66.7, grade: "C", passed: true });
+    expect(result.missed).toHaveLength(4);
+    expect(result.okay).toHaveLength(2);
+    expect(result.okay[0].moduleTitle).toBe("M1");
   });
 });

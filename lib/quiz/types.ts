@@ -7,6 +7,8 @@
 export interface QuizChoice {
   text: string;
   correct?: boolean;
+  /** The "next best" answer: acceptable, not ideal. Half a point. At most one per question. */
+  partial?: boolean;
   why_not?: string;
 }
 
@@ -71,6 +73,8 @@ export interface AttemptItem {
   order: number[]; // order[displayPos] = index into question.choices
   answeredPos?: number;
   correct?: boolean;
+  /** First-try pick was the question's partial-credit choice (half a point). */
+  partial?: boolean;
 }
 
 export interface QuizAttempt {
@@ -97,12 +101,18 @@ export interface QuizPass {
 
 export interface QuizResult {
   right: number;
+  /** Partial-credit picks (half a point each). */
+  partial: number;
+  /** right + partial / 2 */
+  points: number;
   total: number;
   percent: number;
   grade: Grade;
   passed: boolean;
   leader: { id: string; name: string; title: string; line: string };
   missed: Array<{ moduleTitle: string; summary: string }>;
+  /** Questions answered with the acceptable-but-not-best choice. */
+  okay: Array<{ moduleTitle: string; summary: string }>;
 }
 
 /** A personal quiz link, created by an admin for one trainee (separate from practice links). */
@@ -117,11 +127,13 @@ export interface AttemptSummary {
   attemptId: string;
   grade: Grade;
   right: number;
+  partial?: number; // absent on records from before partial credit
   total: number;
   percent: number;
   passed: boolean;
   completedAt: string;
   missedModules: string[]; // module titles of missed questions (repeats allowed)
+  okayModules?: string[]; // module titles of partial-credit picks (absent on older records)
 }
 
 /** Everything the Quiz Results tab shows for one trainee. */

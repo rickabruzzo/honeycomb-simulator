@@ -33,8 +33,13 @@ function validate(bank: NonNullable<ReturnType<typeof loadBankFromDisk>>): strin
     if (q.choices?.length !== 4) problems.push(`${q.id}: ${q.choices?.length ?? 0} choices`);
     const correct = q.choices?.filter((c) => c.correct === true).length ?? 0;
     if (correct !== 1) problems.push(`${q.id}: ${correct} correct choices`);
+    // Partial credit: at most one "next best" choice, never the correct one, and it needs the
+    // why_not that becomes its "okay, but…" explanation.
+    const partial = q.choices?.filter((c) => c.partial === true).length ?? 0;
+    if (partial > 1) problems.push(`${q.id}: ${partial} partial choices (max 1)`);
     q.choices?.forEach((c, i) => {
       if (!c.correct && !c.why_not) problems.push(`${q.id}: choice ${i} missing why_not`);
+      if (c.partial && c.correct) problems.push(`${q.id}: choice ${i} is both correct and partial`);
     });
     if (!q.why_best) problems.push(`${q.id}: missing why_best`);
     if (!q.prompt) problems.push(`${q.id}: missing prompt`);
