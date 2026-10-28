@@ -19,9 +19,11 @@ describe("readableToken", () => {
     }
   });
 
-  it("draws distinct suffixes", () => {
+  it("draws (almost always) distinct suffixes", () => {
+    // 31^4 ≈ 923k suffixes: 200 draws collide about 2% of the time by chance (birthday bound),
+    // so one repeat is tolerated; two would mean the randomness is broken.
     const seen = new Set(Array.from({ length: 200 }, () => readableToken("Rick Abruzzo")));
-    expect(seen.size).toBe(200);
+    expect(seen.size).toBeGreaterThanOrEqual(199);
   });
 });
 
