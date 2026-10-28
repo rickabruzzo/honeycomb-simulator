@@ -67,6 +67,16 @@ export function detectDemoCommitment(text: string): boolean {
     "talk to the demo person",
     "who does demos",
     "get a demo from",
+
+    // Accepting the demo the greeter offered
+    "look at the demo",
+    "demo station",
+    "grab someone from the technical",
+    "let's see it",
+    "lets see it",
+    "let's do the demo",
+    "the demo works for me",
+    "a demo works",
   ];
 
   return containsAny(text, demoCommitmentPhrases);
