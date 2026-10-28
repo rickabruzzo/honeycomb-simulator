@@ -11,7 +11,7 @@ import { getMemStore } from "../memoryStore";
 import { getInvite } from "../invites";
 import { getTrainee } from "../traineeStore";
 import { uniqueToken } from "../readableToken";
-import { buildItems, computeResult, correctPos, drawQuestions, toClientQuestion } from "./logic";
+import { buildItems, computeResult, correctPos, drawQuestions, partialPos, toClientQuestion } from "./logic";
 import type {
   AttemptSummary,
   ClientQuestion,
@@ -177,6 +177,8 @@ export type AnswerOutcome =
   | { error: "not_found" | "bad_request" | "bank_changed" }
   | {
       correct: boolean;
+      /** The pick was the question's acceptable-but-not-best choice (half a point). */
+      partial: boolean;
       correctPos: number;
       whyNot: string | null;
       whyBest: string;
@@ -188,6 +190,7 @@ async function recordCompletion(link: QuizLink, attempt: QuizAttempt, result: Qu
     attemptId: attempt.id,
     grade: result.grade,
     right: result.right,
+    partial: result.partial,
     total: result.total,
     percent: result.percent,
     passed: result.passed,
@@ -243,6 +246,9 @@ export async function answerQuestion(
   if (item.answeredPos === undefined) {
     item.answeredPos = pos;
     item.correct = pos === right;
+    // The acceptable-but-not-best choice, when the question has one: half a point.
+    const okay = partialPos(q, item);
+    item.partial = !item.correct && okay >= 0 && pos === okay;
   }
   const picked = q.choices[item.order[item.answeredPos]];
 
@@ -258,6 +264,7 @@ export async function answerQuestion(
 
   return {
     correct: item.correct === true,
+    partial: item.partial === true,
     correctPos: right,
     whyNot: item.correct ? null : picked.why_not ?? null,
     whyBest: q.why_best,
