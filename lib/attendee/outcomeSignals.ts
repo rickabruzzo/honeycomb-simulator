@@ -83,7 +83,8 @@ export function detectOutcomeFromText(text: string): OutcomeSignalType {
     // accepting the demo the greeter offered
     /\b(take|have) a (quick )?look at (the |your )?demo\b/.test(t) ||
     /\bdemo station\b/.test(t) ||
-    /\bgrab (someone|one of (your|the) \w+) (from|on) (the )?technical\b/.test(t) ||
+    /\bgrab (someone|one of (your|the) \w+) (from|on) (the )?(technical|support)\b/.test(t) ||
+    /\b(grab|get|bring( over)?) (the|a|your) (technical|support) (person|staffer|folks|team|people|side)\b/.test(t) ||
     /\b(let s|lets) (see|do) (it|the demo|that)\b/.test(t) ||
     /\b(sure|yeah|yes|ok|okay) ?,? ?(a |the )?(quick )?demo (works|sounds good|is fine|would be great)\b/.test(t)
   ) return "DEMO";

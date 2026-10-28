@@ -583,10 +583,9 @@ export function intentFallbackMove(
 
     case "commit_ready":
       // Ask for the badge once. If the trainee already offered it (or the attendee already
-      // asked), asking again reads as a stuck record; move to the demo or just answer.
-      if (badgeScanOffered || isMoveTooRecent("ask_badge", history)) {
-        return !isMoveTooRecent("ask_demo", history) ? "ask_demo" : "answer";
-      }
+      // asked), another canned CTA question reads as a stuck record; the greeter has usually
+      // just asked something ("anything you'd want them to cover?"), so answer it instead.
+      if (badgeScanOffered || isMoveTooRecent("ask_badge", history)) return "answer";
       return "ask_badge";
 
     case "neutral":

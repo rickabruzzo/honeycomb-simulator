@@ -7,6 +7,8 @@ describe("detectDemoCommitment", () => {
     expect(detectDemoCommitment("Yeah, go ahead and grab someone from the technical side — I'll take a quick look at the demo if it's not a long wait.")).toBe(true);
     expect(detectDemoCommitment("Sure, the demo station works for me.")).toBe(true);
     expect(detectCommittedOutcome("Yeah, let's see it.")).toBe("DEMO_READY");
+    expect(detectDemoCommitment("Go ahead and grab the support person, I've got a few minutes before my next session.")).toBe(true);
+    expect(detectDemoCommitment("Yeah, grab the technical person — I want to see if it actually handles pipeline stages.")).toBe(true);
   });
 
   it("does not fire on a description that merely mentions a demo", () => {

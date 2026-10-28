@@ -11,11 +11,13 @@ describe("intentFallbackMove for commit_ready", () => {
     expect(intentFallbackMove("commit_ready", [], true, false)).toBe("ask_badge");
   });
 
-  it("does not ask again once the badge scan has been offered", () => {
-    expect(intentFallbackMove("commit_ready", [], true, true)).not.toBe("ask_badge");
+  it("answers instead of asking again once the badge scan has been offered", () => {
+    // Another canned CTA question ("walk me through…") would be the same stuck record; the
+    // greeter usually just asked something ("anything you'd want them to cover?"), so answer it.
+    expect(intentFallbackMove("commit_ready", [], true, true)).toBe("answer");
   });
 
-  it("does not ask again right after it already asked", () => {
-    expect(intentFallbackMove("commit_ready", ["ask_badge"], true, false)).not.toBe("ask_badge");
+  it("answers instead of asking again right after it already asked", () => {
+    expect(intentFallbackMove("commit_ready", ["ask_badge"], true, false)).toBe("answer");
   });
 });

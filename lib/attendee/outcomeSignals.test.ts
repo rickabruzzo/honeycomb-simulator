@@ -40,6 +40,8 @@ describe("detectOutcomeFromText", () => {
     ).toBe("DEMO");
     expect(detectOutcomeFromText("Sure, the demo station works for me.")).toBe("DEMO");
     expect(detectOutcomeFromText("Yeah, let's see it.")).toBe("DEMO");
+    expect(detectOutcomeFromText("Go ahead and grab the support person, I've got a few minutes before my next session.")).toBe("DEMO");
+    expect(detectOutcomeFromText("Yeah, grab the technical person — I want to see if it actually handles pipeline stages.")).toBe("DEMO");
   });
 
   it("finds no outcome in a conversation that is still discovery", () => {
