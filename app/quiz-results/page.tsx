@@ -41,6 +41,12 @@ function fmtDate(iso?: string) {
     " · " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+/** right + half a point per partial pick, as "10" or "10.5". Older records have no partial count. */
+function points(a: AttemptSummary): string {
+  const p = a.right + (a.partial ?? 0) / 2;
+  return Number.isInteger(p) ? String(p) : p.toFixed(1);
+}
+
 function best(attempts: AttemptSummary[]): AttemptSummary | null {
   return attempts.reduce<AttemptSummary | null>((b, a) => (!b || a.percent > b.percent ? a : b), null);
 }
@@ -283,7 +289,9 @@ export default function QuizResultsPage() {
                       {b ? (
                         <span className="inline-flex items-center gap-2">
                           <GradeChip grade={b.grade} />
-                          <span className="tabular-nums text-white/80">{b.right}/{b.total}</span>
+                          <span className="tabular-nums text-white/80" title={b.partial ? `${b.right} right · ${b.partial} partial (half credit)` : undefined}>
+                            {points(b)}/{b.total}
+                          </span>
                         </span>
                       ) : (
                         <span className="text-white/35">—</span>

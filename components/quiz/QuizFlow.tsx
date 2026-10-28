@@ -31,9 +31,15 @@ interface Status {
 interface Verdict {
   pos: number;
   correct: boolean;
+  partial: boolean; // acceptable, not the best: half a point
   correctPos: number;
   whyNot: string | null;
   whyBest: string;
+}
+
+/** 10 → "10", 10.5 → "10.5" */
+function fmtPoints(points: number) {
+  return Number.isInteger(points) ? String(points) : points.toFixed(1);
 }
 
 type Phase = "intro" | "quiz" | "result";
@@ -70,6 +76,7 @@ export function QuizFlow({
   const [picked, setPicked] = useState<number | null>(null);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [right, setRight] = useState(0);
+  const [partial, setPartial] = useState(0);
   const [result, setResult] = useState<QuizResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +98,7 @@ export function QuizFlow({
       setPicked(null);
       setVerdict(null);
       setRight(0);
+      setPartial(0);
       setResult(null);
       setPhase("quiz");
       window.scrollTo(0, 0);
@@ -121,6 +129,7 @@ export function QuizFlow({
       const data = await res.json();
       setVerdict({ pos: picked, ...data });
       if (data.correct) setRight((r) => r + 1);
+      if (data.partial) setPartial((p) => p + 1);
       if (data.result) setResult(data.result);
     } catch (e) {
       console.error(e);
@@ -230,6 +239,7 @@ export function QuizFlow({
             picked={picked}
             verdict={verdict}
             right={right}
+            partial={partial}
             busy={busy}
             error={error}
             onPick={(n) => !verdict && setPicked(n)}
@@ -253,6 +263,7 @@ function QuestionCard({
   picked,
   verdict,
   right,
+  partial,
   busy,
   error,
   onPick,
@@ -265,6 +276,7 @@ function QuestionCard({
   picked: number | null;
   verdict: Verdict | null;
   right: number;
+  partial: number;
   busy: boolean;
   error: string | null;
   onPick: (n: number) => void;
@@ -348,6 +360,9 @@ function QuestionCard({
             if (n === verdict.correctPos) {
               tone = "border-[#64ba00] bg-[#64ba00]/12";
               key = "bg-[#64ba00] text-[#1b2a00]";
+            } else if (n === verdict.pos && verdict.partial) {
+              tone = "border-[#ffb000] bg-[#ffb000]/12";
+              key = "bg-[#ffb000] text-[#2a1d00]";
             } else if (n === verdict.pos) {
               tone = "border-[#e65b53] bg-[#e65b53]/12";
               key = "bg-[#e65b53] text-white";
@@ -382,7 +397,11 @@ function QuestionCard({
       {verdict && (
         <div
           className={`flex flex-col gap-2.5 rounded-xl border px-4 py-3.5 ${
-            verdict.correct ? "border-[#64ba00]/35 bg-[#64ba00]/8" : "border-[#e65b53]/35 bg-[#e65b53]/8"
+            verdict.correct
+              ? "border-[#64ba00]/35 bg-[#64ba00]/8"
+              : verdict.partial
+                ? "border-[#ffb000]/35 bg-[#ffb000]/8"
+                : "border-[#e65b53]/35 bg-[#e65b53]/8"
           }`}
           aria-live="polite"
         >
@@ -390,6 +409,17 @@ function QuestionCard({
             <>
               <h3 className="font-display text-xs font-semibold uppercase tracking-wide text-[#9ede5a]">
                 Right. Here&apos;s why it works
+              </h3>
+              <p className="text-sm leading-relaxed text-white/85">{verdict.whyBest}</p>
+            </>
+          ) : verdict.partial ? (
+            <>
+              <h3 className="font-display text-xs font-semibold uppercase tracking-wide text-[#ffd27a]">
+                Okay, not the best move · half credit
+              </h3>
+              <p className="text-sm leading-relaxed text-white/85">{verdict.whyNot}</p>
+              <h3 className="mt-1 font-display text-xs font-semibold uppercase tracking-wide text-[#9ede5a]">
+                Why {KEYS[verdict.correctPos]} is better
               </h3>
               <p className="text-sm leading-relaxed text-white/85">{verdict.whyBest}</p>
             </>
@@ -411,7 +441,9 @@ function QuestionCard({
       {error && <p className="text-sm text-[#e65b53]">{error}</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="text-xs text-white/40 tabular-nums">{right} right on first try</span>
+        <span className="text-xs text-white/40 tabular-nums">
+          {right} right{partial > 0 ? ` · ${partial} partial` : ""} on first try
+        </span>
         {verdict ? (
           <button
             onClick={onNext}
@@ -488,8 +520,12 @@ function ResultCard({
               {result.grade}
             </div>
             <div className="font-display text-3xl font-bold tabular-nums text-white">
-              {result.right}/{result.total}
-              <small className="block font-sans text-[13px] font-normal text-white/60">{Math.round(result.percent)}% right on first try</small>
+              {fmtPoints(result.points ?? result.right)}/{result.total}
+              <small className="block font-sans text-[13px] font-normal text-white/60">
+                {result.partial
+                  ? `${result.right} right · ${result.partial} partial (half credit), first try`
+                  : `${Math.round(result.percent)}% right on first try`}
+              </small>
             </div>
           </div>
         </div>
@@ -516,6 +552,24 @@ function ResultCard({
             {result.missed.map((m, n) => (
               <li key={n} className="flex items-baseline gap-2.5 text-sm text-white/80">
                 <span className="min-w-[112px] shrink-0 text-[11px] font-semibold uppercase tracking-wide text-[#f19a94]">
+                  {m.moduleTitle}
+                </span>
+                <span className="line-clamp-2">&ldquo;{m.summary}&rdquo;</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(result.okay?.length ?? 0) > 0 && (
+        <div className="flex flex-col gap-2.5">
+          <h2 className="font-display text-xs font-semibold uppercase tracking-wide text-white/50">
+            Okay, not the best move (half credit)
+          </h2>
+          <ul className="flex flex-col gap-2">
+            {result.okay.map((m, n) => (
+              <li key={n} className="flex items-baseline gap-2.5 text-sm text-white/80">
+                <span className="min-w-[112px] shrink-0 text-[11px] font-semibold uppercase tracking-wide text-[#ffd27a]">
                   {m.moduleTitle}
                 </span>
                 <span className="line-clamp-2">&ldquo;{m.summary}&rdquo;</span>
