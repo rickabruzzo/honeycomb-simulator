@@ -1,5 +1,6 @@
 // app/api/session/[id]/message/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { markTraineePracticed } from "@/lib/traineeStore";
 import { getSession, saveSession } from "@/lib/storage";
 import {
   analyzeTraineeMessage,
@@ -193,6 +194,13 @@ export async function POST(
           }),
         };
         session.transcript.push(traineeMsg);
+
+        // Their first-ever simulator turn: from now on new sessions default to training wheels off.
+        if (!hasTraineeTurns && session.kickoff.traineeId) {
+          await markTraineePracticed(session.kickoff.traineeId).catch((err) =>
+            console.warn("[message] could not record first practice:", err)
+          );
+        }
 
         // 2) Analyze trainee message (your rules engine)
         const analysis = analyzeTraineeMessage(message, session.currentState);
