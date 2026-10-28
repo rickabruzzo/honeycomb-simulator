@@ -37,6 +37,16 @@ export default function StartPage() {
       .catch(() => setTrainees([]));
   }, []);
 
+  // Coming back via the browser's back/forward cache restores the page mid-"Starting…", with
+  // every button disabled. Clear the in-flight state so it's usable again.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setBusy(null);
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+
   const matches = useMemo(() => {
     if (!trainees) return [];
     const needle = query.trim().toLowerCase();
@@ -56,6 +66,7 @@ export default function StartPage() {
       const data = await res.json().catch(() => ({}));
       if (res.status === 409 && data.trainee) {
         setExists(data.trainee);
+        setBusy(null); // the "Continue as …" button must be clickable
         return;
       }
       if (!res.ok || !data.next) throw new Error(data.error || "Something went wrong. Try again.");

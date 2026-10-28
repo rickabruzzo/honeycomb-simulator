@@ -7,10 +7,18 @@ import {
 import { Trainee } from "@/lib/traineeStore";
 import { invalidateBootstrapCache } from "@/lib/memoryStore";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const trainees = await listTrainees(false); // Exclude archived
-    return NextResponse.json({ trainees });
+    // Emails are for admins. The shared leaderboard/insights pages also load this list (for a
+    // filter), so emails are left out unless the caller asks with ?include=email.
+    const includeEmail = new URL(request.url).searchParams.get("include") === "email";
+    const withoutEmail = (t: Trainee): Trainee => {
+      const copy = { ...t };
+      delete copy.email;
+      return copy;
+    };
+    return NextResponse.json({ trainees: includeEmail ? trainees : trainees.map(withoutEmail) });
   } catch (error) {
     console.error("Failed to list trainees:", error);
     return NextResponse.json(

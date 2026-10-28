@@ -9,22 +9,23 @@ import { getMemStore } from "./memoryStore";
  * per trainee so a returning visitor resumes an unfinished session instead of piling up new ones.
  */
 
-export type SelfServeStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
-
 export interface SelfServeDecision {
   passed: boolean;
   quizToken: string;
-  /** The session we remembered for this trainee, if it still exists. */
-  existing: { token: string; status: SelfServeStatus } | null;
+  /**
+   * The session we remembered for this trainee. Resumable only while it is still open and
+   * unscored; an ended, scored or deleted session gets replaced, never handed back.
+   */
+  existing: { token: string; resumable: boolean } | null;
   /** Creates a new random-persona practice session and returns its invite token. */
   createInvite: () => Promise<string>;
 }
 
-/** Reuse an unfinished session; otherwise create one. Then quiz first unless they've passed. */
+/** Reuse a resumable session; otherwise create one. Then quiz first unless they've passed. */
 export async function pickSelfServeNext(
   d: SelfServeDecision
 ): Promise<{ next: string; inviteToken: string; reused: boolean }> {
-  const reused = Boolean(d.existing && d.existing.status !== "COMPLETED");
+  const reused = Boolean(d.existing?.resumable);
   const inviteToken = reused ? d.existing!.token : await d.createInvite();
   const next = d.passed ? `/s/${inviteToken}` : `/q/${d.quizToken}?from=${inviteToken}`;
   return { next, inviteToken, reused };

@@ -16,26 +16,24 @@ describe("pickSelfServeNext", () => {
     expect(r).toEqual({ next: "/q/qa-quiztest-q1?from=qa-quiztest-new1", inviteToken: "qa-quiztest-new1", reused: false });
   });
 
-  it("resumes an unfinished session instead of making another", async () => {
-    const c = create();
-    for (const status of ["NOT_STARTED", "IN_PROGRESS"] as const) {
-      const r = await pickSelfServeNext({
-        passed: true,
-        quizToken: "q",
-        existing: { token: "qa-quiztest-old1", status },
-        createInvite: c.fn,
-      });
-      expect(r).toEqual({ next: "/s/qa-quiztest-old1", inviteToken: "qa-quiztest-old1", reused: true });
-    }
-    expect(c.calls()).toBe(0);
-  });
-
-  it("starts a fresh session once the last one was completed", async () => {
+  it("resumes a session that is still open and unscored instead of making another", async () => {
     const c = create();
     const r = await pickSelfServeNext({
       passed: true,
       quizToken: "q",
-      existing: { token: "qa-quiztest-old1", status: "COMPLETED" },
+      existing: { token: "qa-quiztest-old1", resumable: true },
+      createInvite: c.fn,
+    });
+    expect(r).toEqual({ next: "/s/qa-quiztest-old1", inviteToken: "qa-quiztest-old1", reused: true });
+    expect(c.calls()).toBe(0);
+  });
+
+  it("starts a fresh session once the last one is scored, ended or gone", async () => {
+    const c = create();
+    const r = await pickSelfServeNext({
+      passed: true,
+      quizToken: "q",
+      existing: { token: "qa-quiztest-old1", resumable: false },
       createInvite: c.fn,
     });
     expect(r.reused).toBe(false);

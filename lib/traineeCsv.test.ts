@@ -23,6 +23,12 @@ describe("parseTraineeCsv", () => {
     expect(rows[1]).toMatchObject({ firstName: "Rick", lastName: "Abruzzo", email: "rick@example.com" });
   });
 
+  it("treats a second cell with an @ as the email even when the name is one word", () => {
+    // A "Name,Email" sheet: the email must never end up as somebody's last name.
+    const rows = parseTraineeCsv("Rick,rick@example.com\n");
+    expect(rows[0]).toMatchObject({ firstName: "Rick", lastName: "", email: "rick@example.com" });
+  });
+
   it("keeps a row with no last name so the plan can report it", () => {
     const rows = parseTraineeCsv("Cher\n");
     expect(rows[0]).toMatchObject({ firstName: "Cher", lastName: "", email: null });
@@ -67,6 +73,12 @@ describe("planTraineeImport", () => {
     const plan = planTraineeImport(parseTraineeCsv("Someone,Else,maggie@example.com\n"), existing);
     expect(plan.create).toEqual([]);
     expect(plan.skip).toEqual([{ line: 1, raw: "Someone,Else,maggie@example.com", reason: "email already belongs to Maggie Ennis" }]);
+  });
+
+  it("skips rows whose name cells look like an email", () => {
+    const plan = planTraineeImport(parseTraineeCsv("rick@example.com,Abruzzo,rick@example.com\nRick,rick@example.com\n"), []);
+    expect(plan.create).toEqual([]);
+    expect(plan.skip.map((s) => s.reason)).toEqual(["name looks like an email", "missing last name"]);
   });
 
   it("creates a trainee without an email when the column is empty", () => {

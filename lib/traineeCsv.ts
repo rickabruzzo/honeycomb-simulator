@@ -64,7 +64,8 @@ export function parseTraineeCsv(text: string): CsvRow[] {
     if (cells.length >= 3) {
       row = { firstName: cells[0], lastName: cells[1], email: cells[2] || null };
     } else if (cells.length === 2) {
-      row = cells[1].includes("@") && cells[0].includes(" ")
+      // "Name,Email" sheets: an @ in the second cell is always the email, never a last name.
+      row = cells[1].includes("@")
         ? { ...splitName(cells[0]), email: cells[1] }
         : { firstName: cells[0], lastName: cells[1], email: null };
     } else {
@@ -87,6 +88,7 @@ export function planTraineeImport(
 
   for (const row of rows) {
     const skip = (reason: string) => plan.skip.push({ line: row.line, raw: row.raw, reason });
+    if (row.firstName.includes("@") || row.lastName.includes("@")) { skip("name looks like an email"); continue; }
     if (!row.lastName) { skip("missing last name"); continue; }
     const email = row.email ? normalizeEmail(row.email) : null;
     if (row.email && !email) { skip("invalid email"); continue; }

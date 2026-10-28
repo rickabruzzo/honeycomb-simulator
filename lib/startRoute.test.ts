@@ -63,6 +63,24 @@ describe("POST /api/start", () => {
     expect(getMemStore().invites.size).toBe(1);
   });
 
+  it("starts a new session when the remembered one has ended or is gone", async () => {
+    const t = await upsertTrainee({ firstName: "QA", lastName: "Quiztest" });
+    const first = await (await post({ traineeId: t.id })).json();
+    const firstInvite = /from=([a-z0-9-]+)$/.exec(first.next)![1];
+    // Ended without a score (e.g. "End session" with nothing said): not resumable.
+    const session = getMemStore().sessions.get(getMemStore().invites.get(firstInvite)!.sessionId)!;
+    session.active = false;
+    const second = await (await post({ traineeId: t.id })).json();
+    expect(second.next).not.toBe(first.next);
+    expect(getMemStore().invites.size).toBe(2);
+    // Session record deleted but the invite left behind: not resumable either.
+    const secondInvite = /from=([a-z0-9-]+)$/.exec(second.next)![1];
+    getMemStore().sessions.delete(getMemStore().invites.get(secondInvite)!.sessionId);
+    const third = await (await post({ traineeId: t.id })).json();
+    expect(third.next).not.toBe(second.next);
+    expect(getMemStore().invites.size).toBe(3);
+  });
+
   it("skips the quiz once the trainee has passed", async () => {
     const t = await upsertTrainee({ firstName: "QA", lastName: "Quiztest" });
     getMemStore().quiz.set(`quiz_pass:trainee:${t.id}`, { gateVersion: 1, grade: "C", percent: 70, right: 7, total: 10, bankVersion: "x", passedAt: "2026-10-27T00:00:00Z" });

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { determineStatus } from "@/lib/adminInvites";
 import { createInvite } from "@/lib/createInvite";
 import { getInvite } from "@/lib/invites";
+import { invalidateBootstrapCache } from "@/lib/memoryStore";
 import { ensurePersonasSeeded, listPersonas } from "@/lib/personaStore";
 import { getQuizBank, isQuizUsable } from "@/lib/quiz/bank";
 import { getOrCreateQuizLink, traineePassed } from "@/lib/quiz/store";
@@ -39,20 +39,22 @@ export async function POST(req: Request) {
     const traineeName = `${trainee.firstName} ${trainee.lastName}`.trim();
     span.setAttribute("trainee_id", trainee.id);
     span.setAttribute("self_serve.added", resolved.added);
+    if (resolved.added) invalidateBootstrapCache(); // so the Builder's select shows them right away
 
     const bank = await getQuizBank();
     const passed = !isQuizUsable(bank) || (await traineePassed(trainee.id, bank));
     const quizLink = await getOrCreateQuizLink(trainee.id);
     if (!quizLink) return NextResponse.json({ error: "Trainee not found" }, { status: 404 });
 
-    // The session we last handed this person, if it's still around and still worth resuming.
-    let existing: { token: string; status: ReturnType<typeof determineStatus> } | null = null;
+    // The session we last handed this person. Resume it only while it's still open and unscored;
+    // an ended, scored or deleted session would strand them on "This session has ended".
+    let existing: { token: string; resumable: boolean } | null = null;
     const rememberedToken = await getSelfServeInvite(trainee.id);
     if (rememberedToken) {
       const invite = await getInvite(rememberedToken);
       if (invite && !invite.revoked) {
         const [session, score] = await Promise.all([getSession(invite.sessionId), getScore(rememberedToken)]);
-        existing = { token: rememberedToken, status: determineStatus(session, Boolean(score)) };
+        existing = { token: rememberedToken, resumable: Boolean(session?.active) && !score };
       }
     }
 

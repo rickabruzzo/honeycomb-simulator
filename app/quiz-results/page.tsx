@@ -93,7 +93,7 @@ export default function QuizResultsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [r, t] = await Promise.all([fetch("/api/quiz-links"), fetch("/api/trainees")]);
+      const [r, t] = await Promise.all([fetch("/api/quiz-links"), fetch("/api/trainees?include=email")]);
       const rd = await r.json();
       const td = await t.json();
       setRows(rd.records ?? []);

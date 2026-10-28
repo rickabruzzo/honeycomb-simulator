@@ -299,7 +299,7 @@ function HoneycombSimulator() {
       setCsvPlan(null);
       setCsvText("");
       // Reload the list so new and updated trainees show up (bypassing the bootstrap cache).
-      const refreshed = await fetch("/api/trainees").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      const refreshed = await fetch("/api/trainees?include=email").then((r) => (r.ok ? r.json() : null)).catch(() => null);
       if (refreshed?.trainees) setTrainees(refreshed.trainees);
     } catch (error) {
       setCsvError(error instanceof Error ? error.message : "Import failed");
