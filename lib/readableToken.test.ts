@@ -7,6 +7,11 @@ describe("readableToken", () => {
     expect(t).toMatch(/^rick-abruzzo-[a-z0-9]{4}$/);
   });
 
+  it("keeps accented letters as their plain forms instead of dropping them", () => {
+    expect(readableToken("José Núñez")).toMatch(/^jose-nunez-[a-z0-9]{4}$/);
+    expect(readableToken("Siobhán Ó Briain")).toMatch(/^siobhan-o-briain-[a-z0-9]{4}$/);
+  });
+
   it("falls back to 'trainee' when the name has nothing to slug", () => {
     expect(readableToken("   ")).toMatch(/^trainee-[a-z0-9]{4}$/);
     expect(readableToken("!!!")).toMatch(/^trainee-[a-z0-9]{4}$/);

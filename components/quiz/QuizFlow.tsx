@@ -156,6 +156,14 @@ export function QuizFlow({
     if (phase !== "quiz") return;
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "Enter") {
+        // Enter checks the current pick, or moves on once there's a verdict. The footer button
+        // may not have focus (keyboard picks, Safari), so this doesn't rely on it.
+        e.preventDefault();
+        if (verdict) next();
+        else if (picked !== null && !busy) check();
+        return;
+      }
       if (!verdict) {
         const k = e.key.toUpperCase();
         const n = "1234".indexOf(k) >= 0 ? "1234".indexOf(k) : KEYS.indexOf(k);
@@ -164,7 +172,9 @@ export function QuizFlow({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phase, verdict, questions, i]);
+    // check/next are stable enough per render; re-binding on their inputs is what matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, verdict, questions, i, picked, busy]);
 
   return (
     <div className="min-h-screen flex items-start sm:items-center justify-center px-4 py-8">
