@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { kv } from "@vercel/kv";
-import { listInvitesFromIndex } from "@/lib/inviteIndex";
+import { clearInviteIndex, listInvitesFromIndex } from "@/lib/inviteIndex";
 import { getInvite } from "@/lib/invites";
 import { deleteSession } from "@/lib/storage";
 
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
       }
 
       // 3. Clear invites index
-      await kv.del("invites:index");
+      await clearInviteIndex();
 
       // 4. Get all scores from index and delete
       const scoresIndex = (await kv.get<string[]>("scores:index")) ?? [];

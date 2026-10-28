@@ -1,5 +1,6 @@
 import { kv } from "@vercel/kv";
 import { useKv } from "./kvConfig";
+import { kvIndexAdd, kvIndexList, type KvIndex } from "./kvIndex";
 import { getMemStore } from "./memoryStore";
 
 export interface Trainee {
@@ -22,6 +23,17 @@ export function normalizeEmail(raw: string): string | null {
 }
 
 const MAX_INDEX_SIZE = 500;
+
+/**
+ * KV: trainee ids as a sorted set scored by creation time, newest first (see lib/kvIndex.ts —
+ * the old JSON array at `trainees:index` lost entries when a room of people hit /start at once;
+ * it is migrated on first read).
+ */
+const TRAINEE_INDEX: KvIndex = {
+  key: "trainees:index:v2",
+  legacyKey: "trainees:index",
+  cap: MAX_INDEX_SIZE,
+};
 
 // Seed-once guard to prevent repeated seeding
 let seedingPromise: Promise<void> | null = null;
@@ -212,7 +224,7 @@ export async function listTrainees(
   includeArchived = false
 ): Promise<Trainee[]> {
   if (useKv()) {
-    const index = (await kv.get<string[]>("trainees:index")) ?? [];
+    const index = await kvIndexList(TRAINEE_INDEX);
     if (index.length === 0) return [];
 
     // Single MGET instead of one Upstash round-trip per trainee (N+1 → 2 calls).
@@ -296,12 +308,10 @@ export async function upsertTrainee(
     // Save trainee
     await kv.set(`trainee:${id}`, fullTrainee);
 
-    // Update index if new (prepend to keep newest first)
+    // Update index if new (newest first). One atomic ZADD + trim, so two trainees created at
+    // the same moment can't overwrite each other's entry.
     if (!isUpdate) {
-      const index = (await kv.get<string[]>("trainees:index")) ?? [];
-      const filtered = index.filter((i) => i !== id);
-      const updated = [id, ...filtered].slice(0, MAX_INDEX_SIZE);
-      await kv.set("trainees:index", updated);
+      await kvIndexAdd(TRAINEE_INDEX, id);
     }
   } else {
     // In-memory fallback
