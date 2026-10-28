@@ -57,11 +57,13 @@ export function detectOutcomeFromText(text: string): OutcomeSignalType {
     /\b(pricing|price|cost|how much|rates?) (for|per|across) (a |an |our |my |the )?(team|seat|user|org|month|year|enterprise|company)/.test(t) ||
     /\bper (seat|user) (pricing|price|cost)\b/.test(t) ||
     /\b(seats|licenses|users) (for|do we|would we|per|across)\b/.test(t) ||
-    // explicit decision authority
-    /\bi ?(m| am)?( the)? (decision maker|buyer|budget (owner|holder))\b/.test(t) ||
-    /\bi (decide|choose|pick|own|approve|sign off on|am responsible for)\b/.test(t) ||
-    /\b(my|our) (call|decision|budget|spend)\b/.test(t) ||
-    /\bi (manage|lead|run|own|head up|oversee) (a |an |the |my |our )?(team|org|group|platform|department|engineers|engineering)\b/.test(t) ||
+    // budget / spend ownership
+    /\bi ?(m| am)?( the)? (budget (owner|holder))\b/.test(t) ||
+    /\b(my|our) (budget|spend)\b/.test(t) ||
+    // NOTE: a bare role or decision-authority statement ("I run engineering", "I manage the
+    // platform team", "that'd be my call") is deliberately NOT here. It's a READ about who the
+    // attendee is, which tells the greeter the badge scan is the right next step; it is not an
+    // outcome, and must never end the conversation for them.
     // team rollout / evaluating for a group
     /\broll (this|it) out\b/.test(t) ||
     /\bteam ?wide\b/.test(t) ||

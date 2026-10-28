@@ -67,10 +67,11 @@ expect(
   "BADGE_SCAN"
 );
 
+// A role statement is a read about the person, not an outcome: it must never end the conversation.
 expect(
-  '"I manage the platform team" → BADGE_SCAN',
+  '"I manage the platform team" → NONE (a read, not an outcome)',
   detectOutcomeFromText("I manage the platform team here."),
-  "BADGE_SCAN"
+  "NONE"
 );
 
 expect(
