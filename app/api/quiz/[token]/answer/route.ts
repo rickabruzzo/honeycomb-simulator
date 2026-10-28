@@ -28,9 +28,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     }
     span.setAttribute("quiz.attempt_id", attemptId);
     span.setAttribute("quiz.correct", out.correct);
+    span.setAttribute("quiz.partial", out.partial);
     if (out.result) {
       span.setAttribute("quiz.grade", out.result.grade);
       span.setAttribute("quiz.passed", out.result.passed);
+      span.setAttribute("quiz.points", out.result.points);
     }
     return NextResponse.json(out);
   }, { route: "/api/quiz/[token]/answer", method: "POST" });

@@ -52,6 +52,7 @@ describe("answerQuestion with a partial-credit choice", () => {
     expect(out).toMatchObject({
       correct: false,
       partial: true,
+      pos, // the server says which choice counted, so a retried request can't repaint another one
       whyNot: "Fine, but they told you how they like to explore.",
       whyBest: "They want to explore alone.",
     });
@@ -59,13 +60,32 @@ describe("answerQuestion with a partial-credit choice", () => {
     expect(out.result).toMatchObject({ right: 0, partial: 1, points: 0.5, total: 1, percent: 50, passed: false });
     expect(out.result?.okay).toHaveLength(1);
 
-    // The record keeps the partial count for the Quiz Results tab.
-    const record = getMemStore().quiz.get(`quiz_results:trainee:${trainee.id}`) as { attempts: Array<{ partial?: number; right: number }> };
-    expect(record.attempts[0]).toMatchObject({ right: 0, partial: 1 });
+    // The record keeps the partial count and modules for the Quiz Results tab.
+    const record = getMemStore().quiz.get(`quiz_results:trainee:${trainee.id}`) as {
+      attempts: Array<{ partial?: number; right: number; okayModules?: string[] }>;
+    };
+    expect(record.attempts[0]).toMatchObject({ right: 0, partial: 1, okayModules: ["Module one"] });
 
     // Re-answering returns the original verdict; the score is first try only.
     const again = await answerQuestion(link, attemptId, 0, (pos + 1) % 4, bank);
-    expect(again).toMatchObject({ correct: false, partial: true });
+    expect(again).toMatchObject({ correct: false, partial: true, pos });
+  });
+
+  it("credits whichever partial choice was picked, even if the bank wrongly flags two", async () => {
+    const twoPartials: QuizQuestion = {
+      ...question,
+      choices: question.choices.map((c) => (c.text === "badge scan" ? { ...c, partial: true } : c)),
+    };
+    const loose: QuizBank = { ...bank, questions: [twoPartials] };
+    for (const text of ["demo first", "badge scan"]) {
+      const trainee = await upsertTrainee({ firstName: "Quiz", lastName: `Tester ${text}` });
+      const link = (await getOrCreateQuizLink(trainee.id))!;
+      const { attemptId } = await startAttempt(link, loose);
+      const attempt = getMemStore().quiz.get(`quiz_attempt:${attemptId}`) as QuizAttempt;
+      const pos = attempt.items[0].order.findIndex((ci) => twoPartials.choices[ci].text === text);
+      const out = await answerQuestion(link, attemptId, 0, pos, loose);
+      expect(out).toMatchObject({ correct: false, partial: true });
+    }
   });
 
   it("marks a plain wrong answer as not partial", async () => {

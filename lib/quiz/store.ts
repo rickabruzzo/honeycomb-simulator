@@ -11,7 +11,7 @@ import { getMemStore } from "../memoryStore";
 import { getInvite } from "../invites";
 import { getTrainee } from "../traineeStore";
 import { uniqueToken } from "../readableToken";
-import { buildItems, computeResult, correctPos, drawQuestions, partialPos, toClientQuestion } from "./logic";
+import { buildItems, computeResult, correctPos, drawQuestions, toClientQuestion } from "./logic";
 import type {
   AttemptSummary,
   ClientQuestion,
@@ -179,6 +179,8 @@ export type AnswerOutcome =
       correct: boolean;
       /** The pick was the question's acceptable-but-not-best choice (half a point). */
       partial: boolean;
+      /** The first-try pick that counted (display position), so a retried request repaints the right one. */
+      pos: number;
       correctPos: number;
       whyNot: string | null;
       whyBest: string;
@@ -196,6 +198,7 @@ async function recordCompletion(link: QuizLink, attempt: QuizAttempt, result: Qu
     passed: result.passed,
     completedAt: attempt.completedAt!,
     missedModules: result.missed.map((m) => m.moduleTitle),
+    okayModules: result.okay.map((m) => m.moduleTitle),
   };
   const record: QuizRecord = (await get<QuizRecord>(recordKey(link.traineeId))) ?? {
     traineeId: link.traineeId,
@@ -246,9 +249,9 @@ export async function answerQuestion(
   if (item.answeredPos === undefined) {
     item.answeredPos = pos;
     item.correct = pos === right;
-    // The acceptable-but-not-best choice, when the question has one: half a point.
-    const okay = partialPos(q, item);
-    item.partial = !item.correct && okay >= 0 && pos === okay;
+    // The acceptable-but-not-best choice, when the question has one: half a point. Judged on the
+    // picked choice itself, so a bank that wrongly flags two still credits either deterministically.
+    item.partial = !item.correct && q.choices[item.order[pos]].partial === true;
   }
   const picked = q.choices[item.order[item.answeredPos]];
 
@@ -265,6 +268,7 @@ export async function answerQuestion(
   return {
     correct: item.correct === true,
     partial: item.partial === true,
+    pos: item.answeredPos,
     correctPos: right,
     whyNot: item.correct ? null : picked.why_not ?? null,
     whyBest: q.why_best,

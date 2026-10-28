@@ -133,6 +133,7 @@ export interface AttemptSummary {
   passed: boolean;
   completedAt: string;
   missedModules: string[]; // module titles of missed questions (repeats allowed)
+  okayModules?: string[]; // module titles of partial-credit picks (absent on older records)
 }
 
 /** Everything the Quiz Results tab shows for one trainee. */
