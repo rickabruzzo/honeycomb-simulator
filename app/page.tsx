@@ -19,6 +19,12 @@ function HoneycombSimulator() {
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>("");
   const [selectedTraineeId, setSelectedTraineeId] = useState<string>("");
   const [trainingWheels, setTrainingWheels] = useState<boolean>(false);
+  // Default per trainee: on for their first simulator run, off once they've practiced. The admin
+  // can still flip it for this link.
+  const selectedHasPracticed = trainees.find((t) => t.id === selectedTraineeId)?.firstPracticeAt;
+  useEffect(() => {
+    if (selectedTraineeId) setTrainingWheels(!selectedHasPracticed);
+  }, [selectedTraineeId, selectedHasPracticed]);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataRefreshing, setDataRefreshing] = useState(false);
 
@@ -405,6 +411,7 @@ function HoneycombSimulator() {
             Training wheels
             <span className="text-gray-500">
               {" "}— reveal the attendee&apos;s details to the trainee as they earn them
+              <span className="text-gray-500"> (on by default for a trainee&apos;s first run)</span>
             </span>
           </span>
         </label>

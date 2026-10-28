@@ -72,7 +72,8 @@ export async function POST(req: Request) {
           const made = await createInvite({
             personaId: persona.id,
             traineeId: trainee.id,
-            trainingWheels: false,
+            // Training wheels for a first run only; once they've practiced, sessions are unassisted.
+            trainingWheels: !trainee.firstPracticeAt,
             createdBy: "self-serve",
           });
           if (!made.ok) throw new Error(made.error);
