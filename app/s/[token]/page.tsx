@@ -487,11 +487,11 @@ export default function TraineePracticePage() {
           )}
         </div>
 
-        {/* Completion CTA (when outcome reached) */}
+        {/* Wrap-up suggestion. Only the trainee ends the conversation: the input stays below. */}
         {endPrompt && sessionId && (
           <div className="bg-emerald-500/10 border border-emerald-400/20 rounded-lg p-4 space-y-3">
             <div className="text-sm text-emerald-200 font-medium">
-              ✓ Looks like you've reached an outcome. Finish the interaction:
+              Sounds like a next step is on the table. When you&apos;ve landed it, wrap up with:
             </div>
             <BrandButton
               onClick={handleCompleteSession}
@@ -503,13 +503,13 @@ export default function TraineePracticePage() {
               {endPrompt.actionLabel}
             </BrandButton>
             <div className="text-xs text-emerald-200/70 text-center">
-              Ready to complete this interaction
+              Or keep the conversation going below. You decide when it&apos;s over.
             </div>
           </div>
         )}
 
-        {/* Fixed Input at Bottom - Hide when CTA is showing */}
-        {!endPrompt && (
+        {/* Fixed Input at Bottom - always available; a suggested wrap-up never removes it */}
+        {(
           <div className="sticky bottom-0 bg-[var(--hc-page,#1e2734)]/95 backdrop-blur-sm border-t border-white/10 pt-4 mt-4">
             <div className="flex items-center gap-3">
               <input

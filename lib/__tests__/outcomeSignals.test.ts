@@ -48,17 +48,18 @@ expect(
   "BADGE_SCAN"
 );
 
-// ── Authority / budget → BADGE_SCAN ("numbers = in charge of numbers") ──────
+// ── Money / authority / org statements are READS, not outcomes (only an ask, an acceptance or
+// an intent to act counts; the trainee decides when the conversation is over) ─────────────
 expect(
-  '"what does it cost per seat" → BADGE_SCAN',
+  '"what does it cost per seat" → NONE (a question, not an ask)',
   detectOutcomeFromText("Roughly what does it cost per seat?"),
-  "BADGE_SCAN"
+  "NONE"
 );
 
 expect(
-  '"get budget approved" → BADGE_SCAN',
+  '"get budget approved" → NONE (a statement, not an ask)',
   detectOutcomeFromText("I'd need to get budget approved first."),
-  "BADGE_SCAN"
+  "NONE"
 );
 
 expect(
@@ -67,16 +68,17 @@ expect(
   "BADGE_SCAN"
 );
 
+// A role statement is a read about the person, not an outcome: it must never end the conversation.
 expect(
-  '"I manage the platform team" → BADGE_SCAN',
+  '"I manage the platform team" → NONE (a read, not an outcome)',
   detectOutcomeFromText("I manage the platform team here."),
-  "BADGE_SCAN"
+  "NONE"
 );
 
 expect(
-  '"pricing for our org" → BADGE_SCAN',
+  '"pricing for our org" → NONE (a question, not an ask)',
   detectOutcomeFromText("What's the pricing for our org?"),
-  "BADGE_SCAN"
+  "NONE"
 );
 
 expect(
