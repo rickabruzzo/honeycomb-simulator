@@ -47,7 +47,7 @@ export function getOutcomeAction(outcome: string): OutcomeAction {
         actionType: "HAND_POSTCARD",
         actionLabel: "Hand them a postcard",
         systemMessage:
-          "You hand them a postcard pointing to white papers, docs, and the free tier to explore on their own.",
+          "You hand them the 'You Meet Us At The Booth. Now What?' postcard: a landing page with free-tier signup, white papers and case studies.",
         tooltip:
           "Best for a self-directed, skeptical IC without budget/authority who trusts content over sales",
       };

@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Copy, ExternalLink, Trash2, Check } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import type { AttemptSummary, QuizRecord } from "@/lib/quiz/types";
+import { siteUrl } from "@/lib/siteUrl";
 
 /**
  * Quiz Results: send trainees their personal study-guide quiz link and track how they do. The
@@ -15,6 +16,7 @@ interface TraineeOpt {
   id: string;
   firstName: string;
   lastName: string;
+  email?: string;
 }
 
 const GRADE_HEX: Record<string, string> = { A: "#64ba00", B: "#0298ec", C: "#ffb000", D: "#f96e10", F: "#e65b53" };
@@ -85,10 +87,13 @@ export default function QuizResultsPage() {
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<{ name: string; url: string } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // The generic link is absolute on the client only (siteUrl falls back to window.origin), so
+  // read it after hydration to keep the server and client markup identical.
+  const startUrl = useSyncExternalStore(() => () => {}, () => siteUrl("/start"), () => "");
 
   const load = useCallback(async () => {
     try {
-      const [r, t] = await Promise.all([fetch("/api/quiz-links"), fetch("/api/trainees")]);
+      const [r, t] = await Promise.all([fetch("/api/quiz-links"), fetch("/api/trainees?include=email")]);
       const rd = await r.json();
       const td = await t.json();
       setRows(rd.records ?? []);
@@ -152,6 +157,7 @@ export default function QuizResultsPage() {
   }, [rows]);
 
   const linkedIds = new Set(rows.map((r) => r.traineeId));
+  const emailById = new Map(trainees.map((t) => [t.id, t.email]));
   const options = [...trainees].sort((a, b) =>
     `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
   );
@@ -191,6 +197,11 @@ export default function QuizResultsPage() {
           One link per trainee; asking again returns the same link. Trainees who open a practice link before passing are
           pointed to theirs automatically.
         </p>
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/15 bg-black/20 px-3 py-2 text-sm">
+          <span className="text-white/70">Or share the generic link. Anyone picks their name or adds themselves, then quiz → simulator:</span>
+          <code className="truncate text-white/85">{startUrl || "…"}</code>
+          {startUrl && <CopyButton text={startUrl} label="Copy generic link" />}
+        </div>
         {created && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#64ba00]/30 bg-[#64ba00]/10 px-3 py-2 text-sm">
             <span className="text-[#9ede5a]">Quiz link for {created.name}:</span>
@@ -253,7 +264,12 @@ export default function QuizResultsPage() {
                 const url = quizUrl(r.quizToken);
                 return (
                   <tr key={r.traineeId} className="group border-b border-white/5 last:border-0 hover:bg-white/[0.03]">
-                    <td className="px-4 py-3 font-medium text-white">{r.traineeName}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-white">{r.traineeName}</div>
+                      {emailById.get(r.traineeId) && (
+                        <div className="text-xs text-white/45">{emailById.get(r.traineeId)}</div>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       {r.passed ? (
                         <span className="rounded-full border border-[#64ba00]/40 px-2.5 py-0.5 text-xs font-semibold text-[#9ede5a]">Passed</span>

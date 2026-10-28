@@ -6,9 +6,19 @@ export interface Trainee {
   id: string;
   firstName: string;
   lastName: string;
+  /** Lowercased. Admin-only (Builder, Quiz Results); never shown on trainee-facing pages. */
+  email?: string;
   isArchived?: boolean;
   createdAt: string;
   updatedAt?: string;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Trim + lowercase an email; null when it doesn't look like one. */
+export function normalizeEmail(raw: string): string | null {
+  const email = raw.trim().toLowerCase();
+  return EMAIL_RE.test(email) ? email : null;
 }
 
 const MAX_INDEX_SIZE = 500;
@@ -60,8 +70,26 @@ export function normalizeTraineeId(inputId: string, traineeName?: string): strin
  * Case/whitespace-insensitive full-name key, used to dedupe trainees by name.
  * "  Rick   Abruzzo " -> "rick abruzzo"
  */
-function normalizedName(firstName: string, lastName: string): string {
+export function normalizedName(firstName: string, lastName: string): string {
   return `${firstName} ${lastName}`.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Active trainee with this name (case/whitespace-insensitive), or null. */
+export async function findTraineeByName(
+  firstName: string,
+  lastName: string
+): Promise<Trainee | null> {
+  const target = normalizedName(firstName, lastName);
+  const active = await listTrainees(false);
+  return active.find((t) => normalizedName(t.firstName, t.lastName) === target) ?? null;
+}
+
+/** Active trainee with this email (case-insensitive), or null. */
+export async function findTraineeByEmail(email: string): Promise<Trainee | null> {
+  const target = email.trim().toLowerCase();
+  if (!target) return null;
+  const active = await listTrainees(false);
+  return active.find((t) => t.email === target) ?? null;
 }
 
 /**
@@ -248,10 +276,17 @@ export async function upsertTrainee(
   const existing = await getTrainee(id);
   const isUpdate = Boolean(existing);
 
+  // A caller that doesn't mention email (e.g. the by-name grading flow) must not wipe a stored one.
+  const email =
+    trainee.email !== undefined
+      ? normalizeEmail(trainee.email) ?? undefined
+      : existing?.email;
+
   const fullTrainee: Trainee = {
     id,
     firstName: trainee.firstName,
     lastName: trainee.lastName,
+    ...(email ? { email } : {}),
     createdAt: existing?.createdAt ?? now,
     updatedAt: isUpdate ? now : undefined,
     isArchived: trainee.isArchived ?? false,

@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   listTrainees,
+  normalizeEmail,
   upsertTrainee,
 } from "@/lib/traineeStore";
 import { Trainee } from "@/lib/traineeStore";
 import { invalidateBootstrapCache } from "@/lib/memoryStore";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const trainees = await listTrainees(false); // Exclude archived
-    return NextResponse.json({ trainees });
+    // Emails are for admins. The shared leaderboard/insights pages also load this list (for a
+    // filter), so emails are left out unless the caller asks with ?include=email.
+    const includeEmail = new URL(request.url).searchParams.get("include") === "email";
+    const withoutEmail = (t: Trainee): Trainee => {
+      const copy = { ...t };
+      delete copy.email;
+      return copy;
+    };
+    return NextResponse.json({ trainees: includeEmail ? trainees : trainees.map(withoutEmail) });
   } catch (error) {
     console.error("Failed to list trainees:", error);
     return NextResponse.json(
@@ -38,8 +47,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Upsert trainee (creates if missing id, updates if present)
-    const trainee = await upsertTrainee(body as Partial<Trainee> & { firstName: string; lastName: string });
+    // Email is optional here (admins add people by name); when given it has to look like one.
+    if (body.email !== undefined && body.email !== "") {
+      if (typeof body.email !== "string" || !normalizeEmail(body.email)) {
+        return NextResponse.json(
+          { error: "That email address doesn't look right" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Upsert trainee (creates if missing id, updates if present). An empty email means
+    // "not provided", so it's left out rather than wiping a stored address.
+    const { email, ...rest } = body as Partial<Trainee> & { firstName: string; lastName: string };
+    const trainee = await upsertTrainee(email ? { ...rest, email } : rest);
 
     // Invalidate bootstrap cache so new trainee appears in Builder immediately
     invalidateBootstrapCache();

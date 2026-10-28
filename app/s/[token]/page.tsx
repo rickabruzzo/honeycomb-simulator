@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { PracticeIntro } from "../../../components/PracticeIntro";
+import { StudyGuideLink } from "../../../components/quiz/StudyGuideLink";
 import { Send } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { BrandButton } from "../../../components/ui/BrandButton";
@@ -555,9 +556,7 @@ function QuizRequired({ quizUrl }: { quizUrl: string | null }) {
           answering common questions, spotting the real pain, and landing the right next step. Retakes are unlimited.
         </p>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <a href="/study?trainee=1" target="_blank" rel="noreferrer" className="text-sm text-white/60 hover:text-white">
-            Read the study guide
-          </a>
+          <StudyGuideLink>Read the study guide</StudyGuideLink>
           {quizUrl ? (
             <a href={quizUrl} className="rounded-md bg-[#0278cd] hover:bg-[#0066ba] px-5 py-2.5 text-sm font-semibold text-white">
               Take the quiz →
