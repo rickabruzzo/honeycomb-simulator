@@ -15,7 +15,7 @@ vi.mock("@/auth", () => ({ auth: async () => session.current }));
 
 import { POST } from "../app/api/start/route";
 
-const post = () => POST(new Request("http://localhost/api/start", { method: "POST", body: "{}" }));
+const post = () => POST(); // identity comes from the session, not the body
 const signedIn = (email: string, extra: Partial<{ name: string; givenName: string; familyName: string }> = {}) => {
   session.current = { user: { email, ...extra } };
 };
