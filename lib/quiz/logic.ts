@@ -96,28 +96,38 @@ export function correctPos(q: QuizQuestion, item: AttemptItem): number {
   return item.order.findIndex((ci) => q.choices[ci].correct === true);
 }
 
+/** Index of the partial-credit ("next best") choice in display order, or -1 when there is none. */
+export function partialPos(q: QuizQuestion, item: AttemptItem): number {
+  return item.order.findIndex((ci) => q.choices[ci].partial === true);
+}
+
 export function computeResult(attempt: QuizAttempt, bank: QuizBank): QuizResult {
   const byId = new Map(bank.questions.map((q) => [q.id, q]));
   const total = attempt.items.length;
   const right = attempt.items.filter((it) => it.correct).length;
-  const percent = total ? Math.round((right / total) * 1000) / 10 : 0;
+  // Partial picks are worth half. Older attempts have no `partial` flag, which counts as none.
+  const partial = attempt.items.filter((it) => !it.correct && it.partial === true).length;
+  const points = right + partial / 2;
+  const percent = total ? Math.round((points / total) * 1000) / 10 : 0;
   const grade = gradeFor(percent);
   const leader =
     bank.leaders.find((l) => l.id === attempt.leaderId) ??
     bank.leaders[0] ?? { id: "", name: "", title: "", portrait: "" };
+  const describe = (it: AttemptItem) => {
+    const q = byId.get(it.qid);
+    const said = q?.attendee ?? q?.transcript?.find((l) => l.who === "attendee")?.text ?? q?.prompt ?? "";
+    return { moduleTitle: q?.moduleTitle ?? "", summary: said };
+  };
   return {
     right,
+    partial,
+    points,
     total,
     percent,
     grade,
     passed: percent >= bank.passPercent,
     leader: { id: leader.id, name: leader.name, title: leader.title, line: bank.gradeLines[grade] ?? "" },
-    missed: attempt.items
-      .filter((it) => it.correct === false)
-      .map((it) => {
-        const q = byId.get(it.qid);
-        const said = q?.attendee ?? q?.transcript?.find((l) => l.who === "attendee")?.text ?? q?.prompt ?? "";
-        return { moduleTitle: q?.moduleTitle ?? "", summary: said };
-      }),
+    missed: attempt.items.filter((it) => it.correct === false && it.partial !== true).map(describe),
+    okay: attempt.items.filter((it) => it.correct === false && it.partial === true).map(describe),
   };
 }
