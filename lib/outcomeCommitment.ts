@@ -104,6 +104,11 @@ export function detectMqlCommitment(text: string): boolean {
     "let me scan",
     "get my badge",
     "take my badge",
+    "scan the badge",
+    "scan it",
+    "just scan",
+    "take the badge",
+    "swipe my badge",
 
     // Sales follow-up
     "have someone follow up",

@@ -11,6 +11,11 @@ describe("detectDemoCommitment", () => {
     expect(detectDemoCommitment("Yeah, grab the technical person — I want to see if it actually handles pipeline stages.")).toBe(true);
   });
 
+  it("prefers the badge scan when the attendee asks for it and only maybe the demo", () => {
+    expect(detectCommittedOutcome("Just scan the badge, I'll swing by the demo station if I get time later.")).toBe("MQL_READY");
+    expect(detectCommittedOutcome("Go ahead and scan it, have someone follow up after the show.")).toBe("MQL_READY");
+  });
+
   it("does not fire on a description that merely mentions a demo", () => {
     expect(detectDemoCommitment("The last demo I sat through at a booth was a waste of twenty minutes.")).toBe(false);
   });
