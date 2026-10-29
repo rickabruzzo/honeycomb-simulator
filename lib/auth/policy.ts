@@ -69,16 +69,27 @@ export function isAdminPath(pathname: string): boolean {
 
 /**
  * Admin-only APIs: the Builder/Tracker/Editor/Quiz Results calls, plus any mutation of the data
- * the shared pages read. The trainee flow (/api/start, /api/quiz/*, /api/session/*, GET
- * /api/invite/<token>) needs only a sign-in.
+ * the shared pages read, plus anything that lists emails or exposes a session's hidden attendee
+ * profile. The trainee flow needs only a sign-in: /api/start, /api/quiz/*, GET /api/invite/<token>,
+ * and their own session's /trainee, /message, /complete, /end and feedback reads.
  */
-export function isAdminApi(pathname: string, method: string): boolean {
+export function isAdminApi(pathname: string, method: string, search = ""): boolean {
   const m = method.toUpperCase();
   if (pathname.startsWith("/api/admin/") || pathname === "/api/bootstrap") return true;
   if (pathname === "/api/quiz-links" || pathname.startsWith("/api/quiz-links/")) return true;
-  if (pathname === "/api/invite/create") return true;
+  // Creating or deleting a practice link is the Builder's; a trainee only ever GETs their own.
+  if (pathname === "/api/invite" || pathname.startsWith("/api/invite/")) return m !== "GET";
   if (pathname.startsWith("/api/review/") || pathname.startsWith("/api/enrichment/")) return true;
-  if (pathname === "/api/trainees" || pathname.startsWith("/api/trainees/")) return m !== "GET" || pathname !== "/api/trainees";
+  if (pathname === "/api/session/start") return true;
+  const session = pathname.match(/^\/api\/session\/[^/]+(\/[^/]+)?$/);
+  if (session) {
+    const sub = session[1] ?? "";
+    if (sub === "") return true; // the whole session, attendee profile included: /trainee is the redacted view
+    if (sub === "/feedback") return m !== "GET";
+    return false;
+  }
+  if (pathname === "/api/trainees") return m !== "GET" || new URLSearchParams(search).get("include") === "email";
+  if (pathname.startsWith("/api/trainees/")) return true;
   if (pathname === "/api/leaderboard" || pathname.startsWith("/api/leaderboard/")) return m !== "GET";
   if (pathname === "/api/insights" || pathname.startsWith("/api/insights/")) return m !== "GET";
   if (pathname === "/api/personas" || pathname.startsWith("/api/personas/")) return m !== "GET";

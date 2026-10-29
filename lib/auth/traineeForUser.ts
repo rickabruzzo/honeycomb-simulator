@@ -1,6 +1,8 @@
 import {
   findTraineeByEmail,
   findTraineeByName,
+  generateTraineeId,
+  getTrainee,
   normalizeEmail,
   upsertTrainee,
   type Trainee,
@@ -44,5 +46,11 @@ export async function traineeForUser(user: GoogleUser): Promise<Trainee> {
   if (sameName && !sameName.email) {
     return upsertTrainee({ ...sameName, email });
   }
-  return upsertTrainee({ firstName, lastName, email });
+  // A same-name record that belongs to someone else (it has a different email) stays theirs: pass
+  // an explicit, unused id so upsertTrainee's dedupe-by-name cannot hand their record to this user.
+  let id = generateTraineeId(firstName, lastName);
+  for (let attempt = 0; attempt < 5 && (await getTrainee(id)); attempt++) {
+    id = generateTraineeId(firstName, lastName);
+  }
+  return upsertTrainee({ id, firstName, lastName, email });
 }

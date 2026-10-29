@@ -74,6 +74,21 @@ describe("isAdminApi", () => {
       expect(isAdminApi(p, m), `${m} ${p}`).toBe(false);
     }
   });
+
+  it("keeps the Builder's session and link operations, and email listings, to admins", () => {
+    for (const [p, m, s] of [
+      ["/api/invite/x", "DELETE", ""], ["/api/session/start", "POST", ""], ["/api/session/x", "GET", ""],
+      ["/api/session/x/feedback", "POST", ""], ["/api/session/x/feedback", "DELETE", ""], ["/api/trainees", "GET", "?include=email"],
+    ] as const) {
+      expect(isAdminApi(p, m, s), `${m} ${p}${s}`).toBe(true);
+    }
+    for (const [p, m, s] of [
+      ["/api/session/x/trainee", "GET", ""], ["/api/session/x/complete", "POST", ""], ["/api/session/x/end", "POST", ""],
+      ["/api/session/x/feedback", "GET", ""], ["/api/trainees", "GET", ""], ["/api/trainees", "GET", "?include=name"],
+    ] as const) {
+      expect(isAdminApi(p, m, s), `${m} ${p}${s}`).toBe(false);
+    }
+  });
 });
 
 describe("authDisabled", () => {

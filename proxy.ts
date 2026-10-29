@@ -26,7 +26,7 @@ export default auth((req) => {
     return NextResponse.redirect(signin);
   }
 
-  const needsAdmin = isApi ? isAdminApi(pathname, method) : isAdminPath(pathname);
+  const needsAdmin = isApi ? isAdminApi(pathname, method, search) : isAdminPath(pathname);
   if (needsAdmin && !isAdminEmail(email)) {
     if (isApi) return NextResponse.json({ error: "Admin access required", code: "forbidden" }, { status: 403 });
     const signin = new URL("/signin", req.nextUrl);

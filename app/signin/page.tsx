@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth, authConfigured, signIn } from "@/auth";
-import { allowedDomain } from "@/lib/auth/policy";
+import { allowedDomain, isAllowedEmail } from "@/lib/auth/policy";
+import { safeCallbackUrl, signinDestination } from "@/lib/auth/signinRedirect";
 
 /**
  * The one sign-in page. Google only, restricted to the company's Workspace domain. Also where
@@ -18,16 +19,25 @@ const ERRORS: Record<string, string> = {
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ callbackUrl?: string; error?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { callbackUrl, error } = await searchParams;
-  // Only same-site paths are safe to return to.
-  const redirectTo = callbackUrl && callbackUrl.startsWith("/") && !callbackUrl.startsWith("//") ? callbackUrl : "/start";
+  const { callbackUrl, error: errorParam } = await searchParams;
+  const error = Array.isArray(errorParam) ? errorParam[0] : errorParam;
+  const redirectTo = safeCallbackUrl(callbackUrl);
 
   const session = await auth();
-  if (session?.user?.email && error !== "NotAdmin") redirect(redirectTo);
+  const email = session?.user?.email ?? null;
+  const destination = signinDestination({ email, error, callbackUrl });
+  if (destination) redirect(destination);
 
-  const message = error ? ERRORS[error] ?? "Sign-in didn't complete. Try again." : null;
+  // A session from outside the domain is shown the way out here; redirecting it on would only
+  // bounce it between the gate and this page.
+  const wrongDomain = Boolean(email) && !isAllowedEmail(email);
+  const message = wrongDomain
+    ? `You're signed in as ${email}. ${ERRORS.AccessDenied}`
+    : error
+      ? ERRORS[error] ?? "Sign-in didn't complete. Try again."
+      : null;
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4 py-8">
@@ -66,7 +76,7 @@ export default async function SignInPage({
           </p>
         )}
 
-        {error === "NotAdmin" && (
+        {(error === "NotAdmin" || wrongDomain) && (
           <form
             action={async () => {
               "use server";

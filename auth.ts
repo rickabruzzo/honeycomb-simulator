@@ -25,7 +25,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       authorization: { params: { hd: allowedDomain(), prompt: "select_account" } },
     }),
   ],
-  session: { strategy: "jwt" },
+  // A day, not Auth.js's 30: a disabled Workspace account is locked out by the next morning, and
+  // signing back in is one click on the account picker.
+  session: { strategy: "jwt", maxAge: 60 * 60 * 24 },
   trustHost: true,
   pages: { signIn: "/signin", error: "/signin" },
   callbacks: {

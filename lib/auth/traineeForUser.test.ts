@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { getMemStore } from "../memoryStore";
-import { listTrainees, upsertTrainee } from "../traineeStore";
+import { getTrainee, listTrainees, upsertTrainee } from "../traineeStore";
 import { traineeForUser } from "./traineeForUser";
 
 beforeEach(() => {
@@ -23,6 +23,15 @@ describe("traineeForUser", () => {
     expect(found.id).toBe(t.id);
     expect(found.email).toBe("maggieennis@honeycomb.io");
     expect(await listTrainees()).toHaveLength(1);
+  });
+
+  it("never takes over a same-name record that belongs to a different email", async () => {
+    const rick = await upsertTrainee({ firstName: "Rick", lastName: "Abruzzo", email: "rick@honeycomb.io" });
+    const other = await traineeForUser({ email: "rick2@honeycomb.io", name: "Rick Abruzzo", givenName: "Rick", familyName: "Abruzzo" });
+    expect(other.id).not.toBe(rick.id);
+    expect(other.email).toBe("rick2@honeycomb.io");
+    expect((await getTrainee(rick.id))?.email).toBe("rick@honeycomb.io");
+    expect(await listTrainees()).toHaveLength(2);
   });
 
   it("creates a trainee from the Google given/family name", async () => {
