@@ -55,7 +55,7 @@ function getInMemoryStore() {
 /**
  * Generate a readable ID from name with random suffix
  */
-function generateTraineeId(firstName: string, lastName: string): string {
+export function generateTraineeId(firstName: string, lastName: string): string {
   const slug = `${firstName}-${lastName}`
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")

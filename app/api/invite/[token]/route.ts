@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getInvite, deleteInvite } from "@/lib/invites";
+import { requireLinkOwner } from "@/lib/auth/requireLinkOwner";
 import { removeInviteFromIndex } from "@/lib/inviteIndex";
 import { deleteSession } from "@/lib/storage";
 import { deleteScore } from "@/lib/scoreStore";
@@ -21,6 +22,10 @@ export async function GET(req: Request, ctx: any) {
       { status: 404 }
     );
   }
+
+  // A practice link only opens for its trainee (or an admin).
+  const owner = await requireLinkOwner(invite.traineeId);
+  if (!owner.ok) return owner.response;
 
   // Check expiration if set
   if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {

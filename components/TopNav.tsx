@@ -1,7 +1,11 @@
 import React from "react";
 import Image from "next/image";
+import { auth, signOut } from "@/auth";
 
-export function TopNav() {
+/** Brand bar. Shows who's signed in (Google) with a sign-out control; nothing when signed out. */
+export async function TopNav() {
+  const session = await auth().catch(() => null);
+  const user = session?.user ?? null;
   return (
     <div className="border-b border-white/10 bg-black/20 backdrop-blur-sm">
       <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
@@ -19,6 +23,20 @@ export function TopNav() {
             <span className="text-white/70 text-sm">Conference Simulator</span>
           </div>
         </div>
+        {user?.email && (
+          <form
+            action={async () => {
+              "use server";
+              await signOut({ redirectTo: "/signin" });
+            }}
+            className="flex items-center gap-3 text-sm"
+          >
+            <span className="hidden sm:inline text-white/60">{user.name ?? user.email}</span>
+            <button type="submit" className="rounded-md border border-white/15 px-2.5 py-1 text-xs text-white/70 hover:border-white/35 hover:text-white">
+              Sign out
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

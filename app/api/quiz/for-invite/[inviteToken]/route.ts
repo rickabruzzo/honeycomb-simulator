@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getQuizBank, isQuizUsable } from "@/lib/quiz/bank";
 import { getOrCreateQuizLink, traineeIdForInvite, traineePassed } from "@/lib/quiz/store";
+import { requireLinkOwner } from "@/lib/auth/requireLinkOwner";
 
 /**
  * Used by a practice link: is the quiz required for this trainee, have they passed, and where is
@@ -12,6 +13,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ inviteToken: s
   if (!isQuizUsable(bank)) return NextResponse.json({ required: false, passed: true });
   const traineeId = await traineeIdForInvite(inviteToken);
   if (!traineeId) return NextResponse.json({ required: false, passed: true });
+  const owner = await requireLinkOwner(traineeId);
+  if (!owner.ok) return owner.response;
   if (await traineePassed(traineeId, bank)) return NextResponse.json({ required: true, passed: true });
   const link = await getOrCreateQuizLink(traineeId);
   return NextResponse.json({
