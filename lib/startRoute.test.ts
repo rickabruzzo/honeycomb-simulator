@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getMemStore } from "./memoryStore";
-import { listTrainees, upsertTrainee } from "./traineeStore";
+import { listTrainees, markTraineePracticed, upsertTrainee } from "./traineeStore";
 
 // after() throws outside a request scope; the route never awaits it, so a no-op is faithful.
 vi.mock("next/server", async (orig) => ({ ...(await orig<typeof import("next/server")>()), after: () => {} }));
@@ -79,6 +79,19 @@ describe("POST /api/start", () => {
     const third = await (await post({ traineeId: t.id })).json();
     expect(third.next).not.toBe(second.next);
     expect(getMemStore().invites.size).toBe(3);
+  });
+
+  it("turns training wheels on for a trainee's first session and off once they've practiced", async () => {
+    const t = await upsertTrainee({ firstName: "QA", lastName: "Quiztest" });
+    const first = await (await post({ traineeId: t.id })).json();
+    const firstInvite = getMemStore().invites.get(/from=([a-z0-9-]+)$/.exec(first.next)![1])!;
+    expect(firstInvite.trainingWheels).toBe(true);
+    // They practice (first trainee turn recorded) and that session ends; the next one is unassisted.
+    await markTraineePracticed(t.id);
+    getMemStore().sessions.get(firstInvite.sessionId)!.active = false;
+    const second = await (await post({ traineeId: t.id })).json();
+    const secondInvite = getMemStore().invites.get(/from=([a-z0-9-]+)$/.exec(second.next)![1])!;
+    expect(secondInvite.trainingWheels).toBe(false);
   });
 
   it("skips the quiz once the trainee has passed", async () => {

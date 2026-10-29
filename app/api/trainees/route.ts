@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  findTraineeByEmail,
+  findTraineeByName,
+  getTrainee,
   listTrainees,
   normalizeEmail,
   upsertTrainee,
@@ -53,6 +56,19 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           { error: "That email address doesn't look right" },
           { status: 400 }
+        );
+      }
+    }
+
+    // An email that belongs to someone else must not be moved onto this name (the by-name
+    // upsert below would otherwise silently overwrite that other trainee's address).
+    if (typeof body.email === "string" && body.email !== "") {
+      const owner = await findTraineeByEmail(body.email);
+      const target = body.id ? await getTrainee(body.id) : await findTraineeByName(body.firstName, body.lastName);
+      if (owner && owner.id !== target?.id) {
+        return NextResponse.json(
+          { error: `That email already belongs to ${owner.firstName} ${owner.lastName}`.trim() },
+          { status: 409 }
         );
       }
     }

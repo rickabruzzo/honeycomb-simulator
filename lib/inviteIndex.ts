@@ -6,7 +6,8 @@ import { getMemStore } from "./memoryStore";
 // module-local array — otherwise a Turbopack route running in a separate module instance would
 // keep its own empty copy and the tracker would show nothing / delete would 404 in dev.
 
-const MAX_INDEX_SIZE = 100;
+// 500 (was 100): the self-serve link creates a session per visitor, so 100 filled within days.
+const MAX_INDEX_SIZE = 500;
 
 /**
  * KV: a sorted set of tokens scored by createdAt (see lib/kvIndex.ts for why — concurrent

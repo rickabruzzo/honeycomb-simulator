@@ -9,6 +9,7 @@ import {
   findTraineeByEmail,
   findTraineeByName,
   listTrainees,
+  markTraineePracticed,
   normalizeEmail,
   upsertTrainee,
 } from "./traineeStore";
@@ -49,6 +50,18 @@ describe("trainee email", () => {
     const found = await findTraineeByEmail("QT@Example.com");
     expect(found?.id).toBe(t.id);
     expect(await findTraineeByEmail("missing@example.com")).toBeNull();
+  });
+
+  it("records the first practice once and keeps it through later upserts", async () => {
+    const t = await upsertTrainee({ firstName: "Quiz", lastName: "Tester" });
+    expect(t.firstPracticeAt).toBeUndefined();
+    await markTraineePracticed(t.id);
+    const first = (await findTraineeByName("Quiz", "Tester"))!.firstPracticeAt;
+    expect(first).toMatch(/^\d{4}-/);
+    await new Promise((r) => setTimeout(r, 5));
+    await markTraineePracticed(t.id); // a second session must not move the date
+    const again = await upsertTrainee({ firstName: "Quiz", lastName: "Tester" }); // by-name upsert keeps it
+    expect(again.firstPracticeAt).toBe(first);
   });
 
   it("rejects malformed emails", () => {

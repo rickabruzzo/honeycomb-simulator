@@ -67,6 +67,22 @@ export function detectDemoCommitment(text: string): boolean {
     "talk to the demo person",
     "who does demos",
     "get a demo from",
+
+    // Accepting the demo the greeter offered
+    "look at the demo",
+    "demo station",
+    "grab someone from the technical",
+    "grab someone from the support",
+    "grab the technical",
+    "grab the support",
+    "grab a technical",
+    "grab your technical",
+    "bring over the technical",
+    "let's see it",
+    "lets see it",
+    "let's do the demo",
+    "the demo works for me",
+    "a demo works",
   ];
 
   return containsAny(text, demoCommitmentPhrases);
@@ -88,6 +104,11 @@ export function detectMqlCommitment(text: string): boolean {
     "let me scan",
     "get my badge",
     "take my badge",
+    "scan the badge",
+    "scan it",
+    "just scan",
+    "take the badge",
+    "swipe my badge",
 
     // Sales follow-up
     "have someone follow up",

@@ -544,10 +544,11 @@ export function allowedMovesForIntent(
 /**
  * When the selected move is not allowed by intent, pick the best fallback.
  */
-function intentFallbackMove(
+export function intentFallbackMove(
   intent: AttendeeIntent,
   history: DirectorMove[],
-  solutionIntroduced?: boolean
+  solutionIntroduced?: boolean,
+  badgeScanOffered?: boolean
 ): DirectorMove {
   switch (intent) {
     case "confused":
@@ -581,7 +582,11 @@ function intentFallbackMove(
       return "ask_rollout_effort";
 
     case "commit_ready":
-      return "ask_badge"; // permissive — keep candidate when possible
+      // Ask for the badge once. If the trainee already offered it (or the attendee already
+      // asked), another canned CTA question reads as a stuck record; the greeter has usually
+      // just asked something ("anything you'd want them to cover?"), so answer it instead.
+      if (badgeScanOffered || isMoveTooRecent("ask_badge", history)) return "answer";
+      return "ask_badge";
 
     case "neutral":
     default:
@@ -1160,13 +1165,13 @@ export function decideNextMove(
       session.badgeScanOffered
     );
     if (!allowed.has(move)) {
-      move = intentFallbackMove(intent, history, solutionIntroduced);
+      move = intentFallbackMove(intent, history, solutionIntroduced, session.badgeScanOffered);
     }
 
     // Double-check: if lockout pushed us to ask_docs/exit but intent is
     // "confused", the confused gate only allows share_pain/ask_clarifying.
     if (intent === "confused" && !allowed.has(move)) {
-      move = intentFallbackMove(intent, history, solutionIntroduced);
+      move = intentFallbackMove(intent, history, solutionIntroduced, session.badgeScanOffered);
     }
 
     // Anti-repeat on intent fallback: if the fallback move is too recent,

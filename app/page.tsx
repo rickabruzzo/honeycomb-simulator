@@ -19,6 +19,12 @@ function HoneycombSimulator() {
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>("");
   const [selectedTraineeId, setSelectedTraineeId] = useState<string>("");
   const [trainingWheels, setTrainingWheels] = useState<boolean>(false);
+  // Default per trainee: on for their first simulator run, off once they've practiced. The admin
+  // can still flip it for this link.
+  const selectedHasPracticed = trainees.find((t) => t.id === selectedTraineeId)?.firstPracticeAt;
+  useEffect(() => {
+    if (selectedTraineeId) setTrainingWheels(!selectedHasPracticed);
+  }, [selectedTraineeId, selectedHasPracticed]);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataRefreshing, setDataRefreshing] = useState(false);
 
@@ -405,6 +411,7 @@ function HoneycombSimulator() {
             Training wheels
             <span className="text-gray-500">
               {" "}— reveal the attendee&apos;s details to the trainee as they earn them
+              <span className="text-gray-500"> (on by default for a trainee&apos;s first run)</span>
             </span>
           </span>
         </label>
@@ -623,6 +630,22 @@ function HoneycombSimulator() {
                   <span className="text-gray-500"> · </span>
                   <strong className="text-gray-300">{csvPlan.skip.length} skipped</strong>
                 </div>
+                {(csvPlan.create.length > 0 || csvPlan.update.length > 0) && (
+                  <div className="mt-1.5 text-xs text-gray-400">
+                    {csvPlan.create.length > 0 && (
+                      <div>
+                        <span className="text-gray-500">New: </span>
+                        {csvPlan.create.map((t) => `${t.firstName} ${t.lastName}`).join(", ")}
+                      </div>
+                    )}
+                    {csvPlan.update.length > 0 && (
+                      <div>
+                        <span className="text-gray-500">Email filled in: </span>
+                        {csvPlan.update.map((t) => `${t.firstName} ${t.lastName}`).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {csvPlan.skip.length > 0 && (
                   <button
                     type="button"
