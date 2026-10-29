@@ -34,6 +34,18 @@ describe("parseTraineeCsv", () => {
     expect(rows[0]).toMatchObject({ firstName: "Cher", lastName: "", email: null });
   });
 
+  it("recognises a header by any cell, and never mistakes a data row for one", () => {
+    expect(parseTraineeCsv("Full name,Email\nRick Abruzzo,rick@example.com\n")).toEqual([
+      { line: 2, firstName: "Rick", lastName: "Abruzzo", email: "rick@example.com", raw: "Rick Abruzzo,rick@example.com" },
+    ]);
+    // A first row with an email in it is data, even if a name starts with "First".
+    expect(parseTraineeCsv("Firstname,Lastly,first@example.com\n")).toHaveLength(1);
+  });
+
+  it("reads old-Mac (CR-only) line endings", () => {
+    expect(parseTraineeCsv("Rick,Abruzzo\rMaggie,Ennis\r")).toHaveLength(2);
+  });
+
   it("ignores blank lines", () => {
     expect(parseTraineeCsv("\n\nRick,Abruzzo\n\n")).toHaveLength(1);
   });

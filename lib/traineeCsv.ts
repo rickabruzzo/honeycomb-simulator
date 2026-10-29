@@ -21,7 +21,7 @@ export interface ImportPlan {
   skip: Array<{ line: number; raw: string; reason: string }>;
 }
 
-const HEADER_RE = /^(first|last|e-?mail|name)/i;
+const HEADER_RE = /^(first|last|full|given|sur|e-?mail|name)/i;
 
 /** One CSV line → trimmed cells, honoring double-quoted fields with "" escapes. */
 function splitCells(line: string): string[] {
@@ -52,13 +52,16 @@ function splitName(full: string): { firstName: string; lastName: string } {
 export function parseTraineeCsv(text: string): CsvRow[] {
   const rows: CsvRow[] = [];
   let sawFirstRow = false;
-  text.replace(/^﻿/, "").split(/\r?\n/).forEach((rawLine, i) => {
+  // \r\n (Windows), \n, or \r alone (Excel for Mac's "CSV (Macintosh)").
+  text.replace(/^﻿/, "").split(/\r\n|\r|\n/).forEach((rawLine, i) => {
     const raw = rawLine.trim();
     if (!raw) return;
     const cells = splitCells(raw);
     if (!sawFirstRow) {
       sawFirstRow = true;
-      if (HEADER_RE.test(cells[0] ?? "")) return;
+      // A header names its columns and holds no email; a data row with an @ is never a header.
+      const isHeader = !cells.some((c) => c.includes("@")) && cells.some((c) => HEADER_RE.test(c));
+      if (isHeader) return;
     }
     let row: Omit<CsvRow, "line" | "raw">;
     if (cells.length >= 3) {

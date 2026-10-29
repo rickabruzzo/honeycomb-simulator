@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { GET } from "../app/api/trainees/route";
+import { GET, POST } from "../app/api/trainees/route";
 import { getMemStore } from "./memoryStore";
 import { upsertTrainee } from "./traineeStore";
 
@@ -19,5 +19,23 @@ describe("GET /api/trainees", () => {
     expect(JSON.stringify(plain)).not.toContain("@");
     const withEmail = await (await GET(new Request("http://localhost/api/trainees?include=email"))).json();
     expect(withEmail.trainees[0].email).toBe("qa@example.com");
+  });
+});
+
+describe("POST /api/trainees", () => {
+  const post = (body: unknown) =>
+    POST(new Request("http://localhost/api/trainees", { method: "POST", body: JSON.stringify(body) }) as never);
+
+  it("refuses an email that already belongs to a different trainee", async () => {
+    await upsertTrainee({ firstName: "Maggie", lastName: "Ennis", email: "maggie@example.com" });
+    const res = await post({ firstName: "Rick", lastName: "Abruzzo", email: "maggie@example.com" });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/Maggie Ennis/);
+  });
+
+  it("still lets the same trainee keep or update their own email", async () => {
+    await upsertTrainee({ firstName: "Maggie", lastName: "Ennis", email: "maggie@example.com" });
+    const res = await post({ firstName: "Maggie", lastName: "Ennis", email: "maggie@example.com" });
+    expect(res.status).toBe(200);
   });
 });

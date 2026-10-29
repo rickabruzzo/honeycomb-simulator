@@ -630,6 +630,22 @@ function HoneycombSimulator() {
                   <span className="text-gray-500"> · </span>
                   <strong className="text-gray-300">{csvPlan.skip.length} skipped</strong>
                 </div>
+                {(csvPlan.create.length > 0 || csvPlan.update.length > 0) && (
+                  <div className="mt-1.5 text-xs text-gray-400">
+                    {csvPlan.create.length > 0 && (
+                      <div>
+                        <span className="text-gray-500">New: </span>
+                        {csvPlan.create.map((t) => `${t.firstName} ${t.lastName}`).join(", ")}
+                      </div>
+                    )}
+                    {csvPlan.update.length > 0 && (
+                      <div>
+                        <span className="text-gray-500">Email filled in: </span>
+                        {csvPlan.update.map((t) => `${t.firstName} ${t.lastName}`).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {csvPlan.skip.length > 0 && (
                   <button
                     type="button"

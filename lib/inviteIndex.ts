@@ -3,6 +3,7 @@ import { kv } from "@vercel/kv";
 import { useKv } from "./kvConfig";
 import { getMemStore } from "./memoryStore";
 const INVITE_INDEX_KEY = "invites:index";
+const MAX_INDEX_SIZE = 500;
 
 // In-memory fallback lives on the globalThis-backed store (getMemStore().inviteOrder), NOT a
 // module-local array — otherwise a Turbopack route running in a separate module instance would
@@ -31,8 +32,10 @@ export async function addInviteToIndex(
     // Prepend new entry (newest first)
     const updated = [entry, ...existing];
 
-    // Keep only most recent 100 to avoid unbounded growth
-    const trimmed = updated.slice(0, 100);
+    // Keep only the most recent MAX_INDEX_SIZE to avoid unbounded growth. The self-serve link
+    // creates a session per visitor, so 100 filled within days; the tracker still lists the
+    // newest 50 by default.
+    const trimmed = updated.slice(0, MAX_INDEX_SIZE);
 
     await kv.set(INVITE_INDEX_KEY, trimmed);
     return;
@@ -40,7 +43,7 @@ export async function addInviteToIndex(
 
   // In-memory fallback (shared store)
   const store = getMemStore();
-  store.inviteOrder = [entry, ...store.inviteOrder].slice(0, 100);
+  store.inviteOrder = [entry, ...store.inviteOrder].slice(0, MAX_INDEX_SIZE);
 }
 
 /**
