@@ -37,37 +37,18 @@ export function outcomeSignalToCommittedOutcome(
 export function detectOutcomeFromText(text: string): OutcomeSignalType {
   const t = text.toLowerCase().trim().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ");
 
-  // ── Authority / budget signal → BADGE_SCAN (highest priority) ────────────
-  // "No one talks numbers unless they're in charge of numbers." When the attendee raises
-  // budget, per-seat/team pricing, procurement, a team rollout, or their own decision
-  // authority, that IS the buying-authority signal — the read is sales-qualified (MQL),
-  // even without an explicit "scan my badge." Keep these anchored to ownership/rollout
-  // language so a curious IC asking a bare "is there a free tier?" stays a postcard.
+  // ── Intent to act for a group → BADGE_SCAN ───────────────────────────────
+  // The attendee saying what they'd DO with this ("roll it out to my team", "set up a demo
+  // for my org", "pilot it with my team") is a next step on the table, so the badge scan is
+  // suggested. Statements about who they are or how their org works are NOT here: "I run
+  // engineering", "I manage the platform team", "our budget", "pricing for a team of 50",
+  // "not consistent across the org" are READS that tell the greeter which next step fits.
+  // They never commit an outcome; an outcome needs an ask, an acceptance, or an intent to act,
+  // and only the trainee ends the conversation.
   if (
-    // budget ownership / approval
-    /\b(our|my|the|your) (team s |teams )?budget\b/.test(t) ||
-    /\bbudget (for|to|owner|holder|approv)/.test(t) ||
-    /\b(get|need|secure|approve|approved|run) (the )?(budget|approval|sign off|signoff|buy in|purchase)\b/.test(t) ||
-    // procurement / contract / renewal
-    /\bprocurement\b/.test(t) ||
-    /\b(annual|enterprise) (contract|plan|pricing|agreement|deal|license)\b/.test(t) ||
-    /\bcurrent (spend|contract|tooling budget)\b/.test(t) ||
-    /\brenewal\b/.test(t) ||
-    // per-seat / per-team pricing (talking numbers for a group = authority)
-    /\b(pricing|price|cost|how much|rates?) (for|per|across) (a |an |our |my |the )?(team|seat|user|org|month|year|enterprise|company)/.test(t) ||
-    /\bper (seat|user) (pricing|price|cost)\b/.test(t) ||
-    /\b(seats|licenses|users) (for|do we|would we|per|across)\b/.test(t) ||
-    // explicit decision authority
-    /\bi ?(m| am)?( the)? (decision maker|buyer|budget (owner|holder))\b/.test(t) ||
-    /\bi (decide|choose|pick|own|approve|sign off on|am responsible for)\b/.test(t) ||
-    /\b(my|our) (call|decision|budget|spend)\b/.test(t) ||
-    /\bi (manage|lead|run|own|head up|oversee) (a |an |the |my |our )?(team|org|group|platform|department|engineers|engineering)\b/.test(t) ||
-    // team rollout / evaluating for a group
     /\broll (this|it) out\b/.test(t) ||
-    /\bteam ?wide\b/.test(t) ||
-    /\b(standardiz|pilot|evaluat|bring|take) \w* ?(this|it)? ?(for|to|across|back to|with) (my|our|the) (team|org|company|group|engineering)\b/.test(t) ||
     /\bset up (a |the )?(demo|call|time|meeting) for (my|our|the) (team|org|group|company)\b/.test(t) ||
-    /\bacross (the|our) (org|team|company|engineering|department)\b/.test(t)
+    /\b(pilot|bring|take|trial) (this|it) (back )?(to|with|for) (my|our|the) (team|org|company|group|engineering)\b/.test(t)
   ) return "BADGE_SCAN";
 
   // ── Badge scan / sales follow-up (highest priority) ──────────────────────
@@ -98,7 +79,14 @@ export function detectOutcomeFromText(text: string): OutcomeSignalType {
     /\bwalk me through\b/.test(t) ||
     /\bsee it in action\b/.test(t) ||
     /\bwho (can|does) demo\b/.test(t) ||
-    /\bcan (we|someone) walk through\b/.test(t)
+    /\bcan (we|someone) walk through\b/.test(t) ||
+    // accepting the demo the greeter offered
+    /\b(take|have) a (quick )?look at (the |your )?demo\b/.test(t) ||
+    /\bdemo station\b/.test(t) ||
+    /\bgrab (someone|one of (your|the) \w+) (from|on) (the )?(technical|support)\b/.test(t) ||
+    /\b(grab|get|bring( over)?) (the|a|your) (technical|support) (person|staffer|folks|team|people|side)\b/.test(t) ||
+    /\b(let s|lets) (see|do) (it|the demo|that)\b/.test(t) ||
+    /\b(sure|yeah|yes|ok|okay) ?,? ?(a |the )?(quick )?demo (works|sounds good|is fine|would be great)\b/.test(t)
   ) return "DEMO";
 
   // ── Flyer / docs / self-serve exit ───────────────────────────────────────

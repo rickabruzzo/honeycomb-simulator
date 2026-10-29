@@ -47,6 +47,7 @@ import {
   type BoothEntryMode,
 } from "./boothFaqBehavior";
 import { decideReplyOwner } from "./replyPolicy";
+import { detectMqlCommitment } from "../outcomeCommitment";
 
 export interface AttendeeReplyResult {
   text: string;
@@ -661,6 +662,17 @@ function generateFromDirective(
     .map((m) => m.text.toLowerCase())
     .join(" ");
 
+  // A direct question about the attendee's tooling is answered first, whatever move the director
+  // picked. Before this lived only under `case "answer"`, so an ask_clarifying/ask_docs turn
+  // met "What are you using today…?" with a persona question instead of naming the stack.
+  if (isTraineeQuestion && TOOL_ENUM_Q_RE.test(traineeText)) {
+    const explicitAnswer = generateExplicitToolAnswer(traineeText, session, persona, traineeTurnCount);
+    const toolAnswer = explicitAnswer ?? pickUnused(TOOL_ANSWER_GENERIC, recentAttendeeText, traineeTurnCount);
+    const sanitized = persona ? sanitizeResponse(toolAnswer, persona) : toolAnswer;
+    recordDirectorMove(session, "answer");
+    return { text: postProcessAttendeeText(sanitized, persona), source: "template", confidence: 0.95 };
+  }
+
   switch (move) {
     case "share_pain": {
       const targetPainId = directive.mustInclude?.painAnchorId;
@@ -1170,10 +1182,14 @@ function generateAttendeeReplyInternal(params: {
     session.solutionIntroduced = true;
   }
 
-  // 3c2. Badge-scan CTA already happened? Once the trainee offers or performs it, the
-  //       attendee must not turn around and ask for it again.
-  if (!session.badgeScanOffered && isTraineeBadgeOffer(traineeText)) {
-    session.badgeScanOffered = true;
+  // 3c2. Badge-scan CTA already happened? Once the trainee offers or performs it, or the
+  //       attendee itself has already asked for it (an LLM turn can), the attendee must not
+  //       turn around and ask for it again.
+  if (!session.badgeScanOffered) {
+    const lastAttendeeText = session.transcript.filter((m) => m.type === "attendee").at(-1)?.text ?? "";
+    if (isTraineeBadgeOffer(traineeText) || detectMqlCommitment(lastAttendeeText)) {
+      session.badgeScanOffered = true;
+    }
   }
 
   // 3d. Product-explanation detection — stricter than solutionIntroduced.

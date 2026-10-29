@@ -25,6 +25,7 @@
  */
 
 import { kv } from "@vercel/kv";
+import { clearInviteIndex } from "../lib/inviteIndex";
 import { useKv } from "../lib/kvConfig";
 import { getMemStore } from "../lib/memoryStore";
 
@@ -88,7 +89,7 @@ async function wipeTrainingData() {
     // Wipe indexes
     try {
       await kv.del("sessions:index");
-      await kv.del("invites:index");
+      await clearInviteIndex();
       await kv.del("scorecards:index");
       wiped += 3;
       console.log("✓ Wiped indexes");

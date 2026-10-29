@@ -17,7 +17,10 @@ function suffix(len: number): string {
 }
 
 export function readableToken(fullName: string, suffixLen = 4): string {
-  const slug = slugifyName(fullName) || "trainee";
+  // Fold accents to plain letters (José → jose) so they aren't dropped by the slug's a-z filter.
+  // Only here, in the link: trainee ids keep using slugifyName unchanged.
+  const plain = fullName.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const slug = slugifyName(plain) || "trainee";
   return `${slug}-${suffix(suffixLen)}`;
 }
 

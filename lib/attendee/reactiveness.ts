@@ -221,7 +221,9 @@ export function makeCallbackPhrase(
   // Domain terms from trainee preferred, then attendee, then any generic term
   const allTerms = [...traineeTerms, ...attendeeTerms];
   const domainTerm = allTerms.find((t) => DOMAIN_TERM_SET.has(t));
-  const term = domainTerm ?? allTerms[0];
+  // Domain terms only. A generic word from the greeter's sentence ("Makes sense" → "makes")
+  // produced prefixes like "Around makes, …", so with no domain term there is no prefix.
+  const term = domainTerm;
 
   if (!term) return "";
 
@@ -288,7 +290,9 @@ export function makeContextualCallback(opts: ContextualCallbackOpts): string {
   const attendeeTerms = extractKeyPhrases(lastAttendeeText);
   const allTerms = [...traineeTerms, ...attendeeTerms];
   const domainTerm = allTerms.find((t) => DOMAIN_TERM_SET.has(t));
-  const term = domainTerm ?? allTerms[0];
+  // Domain terms only. A generic word from the greeter's sentence ("Makes sense" → "makes")
+  // produced prefixes like "Around makes, …", so with no domain term there is no prefix.
+  const term = domainTerm;
 
   if (!term) return "";
 
