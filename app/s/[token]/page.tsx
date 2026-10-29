@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { PracticeIntro } from "../../../components/PracticeIntro";
 import { StudyGuideLink } from "../../../components/quiz/StudyGuideLink";
+import { SignOutLink } from "../../../components/SignOutLink";
 import { Send } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { BrandButton } from "../../../components/ui/BrandButton";
@@ -97,6 +98,9 @@ export default function TraineePracticePage() {
     scrollToBottom();
   }, [messages]);
 
+  // A practice link belongs to one trainee: signed in as someone else, the server says whose it is.
+  const [wrongPerson, setWrongPerson] = useState<{ traineeName: string; signedInAs: string } | null>(null);
+
   /**
    * Load session from invite token on mount
    */
@@ -116,6 +120,10 @@ export default function TraineePracticePage() {
         const inviteRes = await fetch(`/api/invite/${token}`);
         if (!inviteRes.ok) {
           const errData = await inviteRes.json().catch(() => ({}));
+          if (inviteRes.status === 403 && errData.code === "wrong_person") {
+            setWrongPerson({ traineeName: errData.traineeName ?? "someone else", signedInAs: errData.signedInAs ?? "" });
+            return;
+          }
           setError(errData.error || "Invite link invalid or expired");
           return;
         }
@@ -345,6 +353,20 @@ export default function TraineePracticePage() {
       : "At the Honeycomb booth";
   const avatarInitial = roleRevealed ? attendeeName.charAt(0).toUpperCase() : "?";
   const band = bandForScore(momentumScore);
+  if (wrongPerson) {
+    return (
+      <div className="mx-auto max-w-md py-20 text-center flex flex-col items-center gap-3">
+        <h1 className="font-display text-2xl font-semibold text-white">This practice link is for {wrongPerson.traineeName}</h1>
+        <p className="text-sm text-white/60">
+          You&apos;re signed in as <span className="text-white">{wrongPerson.signedInAs}</span>. Open your own link
+          (or <a href="/start" className="text-[#7cc6f2] underline underline-offset-4">start from /start</a>), or sign in
+          with the right account.
+        </p>
+        <SignOutLink callbackUrl={`/signin?callbackUrl=${encodeURIComponent(`/s/${token}`)}`}>Sign out and switch accounts</SignOutLink>
+      </div>
+    );
+  }
+
   const traineeTurns = messages.filter((m) => m.type === "trainee").length;
 
   // A fresh session goes quiz → ready popup → conversation. Resumed sessions (trainee turns

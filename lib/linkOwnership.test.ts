@@ -35,6 +35,7 @@ describe("personal quiz links belong to their trainee", () => {
   });
 
   it("refuses another signed-in trainee and says whose link it is", async () => {
+    process.env.ADMIN_EMAILS = "rick@honeycomb.io"; // with no list, every colleague is an admin and may open any link
     const t = await upsertTrainee({ firstName: "Rick", lastName: "Abruzzo", email: "rick@honeycomb.io" });
     const link = (await getOrCreateQuizLink(t.id))!;
     session.current = { user: { email: "maggie@honeycomb.io" } };

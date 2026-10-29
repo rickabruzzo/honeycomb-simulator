@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { useParams } from "next/navigation";
 import { QuizFlow } from "@/components/quiz/QuizFlow";
+import { SignOutLink } from "@/components/SignOutLink";
 import type { QuizSource } from "@/lib/quiz/types";
 
 /**
@@ -28,15 +29,38 @@ export default function QuizPage() {
   const fromParam = new URLSearchParams(search).get("from");
   const from = fromParam && /^[A-Za-z0-9-]+$/.test(fromParam) ? fromParam : null;
 
+  // A quiz link belongs to one trainee: signed in as someone else, the server says whose it is.
+  const [wrongPerson, setWrongPerson] = useState<{ traineeName: string; signedInAs: string } | null>(null);
+
   useEffect(() => {
     fetch(`/api/quiz/${token}`)
       .then(async (r) => {
+        if (r.status === 403) {
+          const d = await r.json().catch(() => ({}));
+          if (d.code === "wrong_person") {
+            setWrongPerson({ traineeName: d.traineeName ?? "someone else", signedInAs: d.signedInAs ?? "" });
+            return null;
+          }
+        }
         if (!r.ok) throw new Error(r.status === 404 ? "This quiz link isn't valid." : "Couldn't load the quiz.");
         return r.json();
       })
-      .then(setStatus)
+      .then((d) => d && setStatus(d))
       .catch((e) => setError(e.message));
   }, [token]);
+
+  if (wrongPerson) {
+    return (
+      <div className="mx-auto max-w-md py-20 text-center flex flex-col items-center gap-3">
+        <h1 className="font-display text-2xl font-semibold text-white">This quiz link is for {wrongPerson.traineeName}</h1>
+        <p className="text-sm text-white/60">
+          You&apos;re signed in as <span className="text-white">{wrongPerson.signedInAs}</span>. Use your own link, or sign in
+          with the right account.
+        </p>
+        <SignOutLink callbackUrl={`/signin?callbackUrl=${encodeURIComponent(`/q/${token}`)}`}>Sign out and switch accounts</SignOutLink>
+      </div>
+    );
+  }
 
   if (error) {
     return (

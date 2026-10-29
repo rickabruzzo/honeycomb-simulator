@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withSpan } from "@/lib/telemetry";
 import { getQuizBank, isQuizUsable } from "@/lib/quiz/bank";
 import { answerQuestion, getQuizLink } from "@/lib/quiz/store";
+import { requireLinkOwner } from "@/lib/auth/requireLinkOwner";
 
 const STATUS = { not_found: 404, bad_request: 400, bank_changed: 409 } as const;
 
@@ -18,6 +19,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     }
     const link = await getQuizLink(token);
     if (!link) return NextResponse.json({ error: "Quiz link not found" }, { status: 404 });
+    const owner = await requireLinkOwner(link.traineeId);
+    if (!owner.ok) return owner.response;
     const bank = await getQuizBank();
     if (!isQuizUsable(bank)) return NextResponse.json({ error: "Quiz unavailable" }, { status: 404 });
 
