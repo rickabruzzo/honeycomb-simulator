@@ -45,7 +45,8 @@ describe("invite index, KV mode", () => {
       "invites:index:v2",
       { score: Date.parse("2026-10-28T10:00:00.000Z"), member: "tok-old" },
     ]);
-    expect(fakeKv.commandsOf("zremrangebyrank")[0].args).toEqual(["invites:index:v2", 0, -101]);
+    // The index keeps 500 rows (raised from 100 for the self-serve link), so trim everything below rank -500.
+    expect(fakeKv.commandsOf("zremrangebyrank")[0].args).toEqual(["invites:index:v2", 0, -501]);
     // Never the old read-modify-write of the JSON array.
     expect(fakeKv.commandsOf("get")).toEqual([]);
     expect(fakeKv.commandsOf("set")).toEqual([]);
