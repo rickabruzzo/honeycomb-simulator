@@ -34,6 +34,16 @@ describe("detectOutcomeFromText", () => {
     expect(detectOutcomeFromText("I'd rather read the docs and try the free tier.")).toBe("FLYER");
   });
 
+  it("recognises accepting the offered demo, not just asking for one", () => {
+    expect(
+      detectOutcomeFromText("Yeah, go ahead and grab someone from the technical side — I'll take a quick look at the demo if it's not a long wait.")
+    ).toBe("DEMO");
+    expect(detectOutcomeFromText("Sure, the demo station works for me.")).toBe("DEMO");
+    expect(detectOutcomeFromText("Yeah, let's see it.")).toBe("DEMO");
+    expect(detectOutcomeFromText("Go ahead and grab the support person, I've got a few minutes before my next session.")).toBe("DEMO");
+    expect(detectOutcomeFromText("Yeah, grab the technical person — I want to see if it actually handles pipeline stages.")).toBe("DEMO");
+  });
+
   it("finds no outcome in a conversation that is still discovery", () => {
     const transcript = [
       { type: "attendee" as const, text: "It's fine, kind of a blur honestly - a lot of booths, not a lot of sleep." },
