@@ -8,6 +8,11 @@ export interface Trainee {
   lastName: string;
   /** Lowercased. Admin-only (Builder, Quiz Results); never shown on trainee-facing pages. */
   email?: string;
+  /**
+   * When they first spoke in a simulator session. Training wheels default ON until this is set
+   * (their first run), OFF afterwards.
+   */
+  firstPracticeAt?: string;
   isArchived?: boolean;
   createdAt: string;
   updatedAt?: string;
@@ -282,11 +287,13 @@ export async function upsertTrainee(
       ? normalizeEmail(trainee.email) ?? undefined
       : existing?.email;
 
+  const firstPracticeAt = trainee.firstPracticeAt ?? existing?.firstPracticeAt;
   const fullTrainee: Trainee = {
     id,
     firstName: trainee.firstName,
     lastName: trainee.lastName,
     ...(email ? { email } : {}),
+    ...(firstPracticeAt ? { firstPracticeAt } : {}),
     createdAt: existing?.createdAt ?? now,
     updatedAt: isUpdate ? now : undefined,
     isArchived: trainee.isArchived ?? false,
@@ -319,6 +326,16 @@ export async function upsertTrainee(
   }
 
   return fullTrainee;
+}
+
+/**
+ * Record a trainee's first simulator turn (once). Later calls leave the original date alone, so
+ * "has this person practiced before?" stays true from their first real run onward.
+ */
+export async function markTraineePracticed(id: string): Promise<void> {
+  const existing = await getTrainee(id);
+  if (!existing || existing.firstPracticeAt) return;
+  await upsertTrainee({ ...existing, firstPracticeAt: new Date().toISOString() });
 }
 
 /**
