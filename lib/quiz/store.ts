@@ -7,6 +7,7 @@
 import { kv } from "@vercel/kv";
 import { randomUUID } from "crypto";
 import { useKv as kvEnabled } from "../kvConfig";
+import { kvIndexAdd, kvIndexList, kvIndexRemove, type KvIndex } from "../kvIndex";
 import { getMemStore } from "../memoryStore";
 import { getInvite } from "../invites";
 import { getTrainee } from "../traineeStore";
@@ -32,7 +33,13 @@ const lastSeenKey = (traineeKey: string) => `quiz_last_seen:${traineeKey}`;
 const linkKey = (token: string) => `quizlink:${token}`;
 const linkByTraineeKey = (traineeId: string) => `quizlink_trainee:${traineeId}`;
 const recordKey = (traineeId: string) => `quiz_results:trainee:${traineeId}`;
-const INDEX_KEY = "quiz_results:index"; // trainee ids, newest first
+const INDEX_KEY = "quiz_results:index"; // trainee ids, newest first (memory mode / legacy KV array)
+const MAX_INDEX_SIZE = 1000;
+/**
+ * KV: trainee ids as a sorted set, newest first (see lib/kvIndex.ts — two quiz completions at
+ * once could drop one from the old JSON array; it is migrated on first read).
+ */
+const QUIZ_INDEX: KvIndex = { key: "quiz_results:index:v2", legacyKey: INDEX_KEY, cap: MAX_INDEX_SIZE };
 
 const traineeKeyFor = (traineeId: string) => `trainee:${traineeId}`;
 
@@ -58,10 +65,28 @@ async function del(...keys: string[]): Promise<void> {
   for (const k of keys) getMemStore().quiz.delete(k);
 }
 
+/** Index a trainee once (a repeat completion keeps their place). */
 async function addToIndex(traineeId: string): Promise<void> {
+  if (kvEnabled()) {
+    await kvIndexAdd(QUIZ_INDEX, traineeId, { ifAbsent: true });
+    return;
+  }
   const ids = (await get<string[]>(INDEX_KEY)) ?? [];
   if (ids.includes(traineeId)) return;
-  await set(INDEX_KEY, [traineeId, ...ids].slice(0, 1000));
+  await set(INDEX_KEY, [traineeId, ...ids].slice(0, MAX_INDEX_SIZE));
+}
+
+async function removeFromIndex(traineeId: string): Promise<boolean> {
+  if (kvEnabled()) return kvIndexRemove(QUIZ_INDEX, traineeId);
+  const ids = (await get<string[]>(INDEX_KEY)) ?? [];
+  if (!ids.includes(traineeId)) return false;
+  await set(INDEX_KEY, ids.filter((id) => id !== traineeId));
+  return true;
+}
+
+async function listIndex(): Promise<string[]> {
+  if (kvEnabled()) return kvIndexList(QUIZ_INDEX);
+  return (await get<string[]>(INDEX_KEY)) ?? [];
 }
 
 // ── Quiz links ──────────────────────────────────────────────────────────────
@@ -105,7 +130,6 @@ export async function getOrCreateQuizLink(traineeId: string): Promise<QuizLink |
 /** Remove a trainee's quiz link and all their quiz results (including the pass). */
 export async function deleteQuizTrainee(traineeId: string): Promise<boolean> {
   const token = await get<string>(linkByTraineeKey(traineeId));
-  const ids = (await get<string[]>(INDEX_KEY)) ?? [];
   const tk = traineeKeyFor(traineeId);
   await del(
     ...(token ? [linkKey(token)] : []),
@@ -114,14 +138,14 @@ export async function deleteQuizTrainee(traineeId: string): Promise<boolean> {
     passKey(tk),
     lastSeenKey(tk)
   );
-  if (ids.includes(traineeId)) await set(INDEX_KEY, ids.filter((id) => id !== traineeId));
-  return Boolean(token) || ids.includes(traineeId);
+  const wasIndexed = await removeFromIndex(traineeId);
+  return Boolean(token) || wasIndexed;
 }
 
 export async function listQuizRecords(
   bank: QuizBank | null
 ): Promise<Array<QuizRecord & { passed: boolean }>> {
-  const ids = (await get<string[]>(INDEX_KEY)) ?? [];
+  const ids = await listIndex();
   if (!ids.length) return [];
   const records: Array<QuizRecord | null> = kvEnabled()
     ? await kv.mget<(QuizRecord | null)[]>(...ids.map(recordKey))
