@@ -188,7 +188,8 @@
     "only_if_asked_about_user_experience": true,
     "or_if_backend_fine_users_mad": true,
     "depth_limit": "high_level_only",
-    "deep_dive_requires": "handoff_to_expert"
+    "deep_dive_requires": "handoff_to_technical_support",
+    "positioning": "part_of_platform_not_a_separate_product_or_add_on"
   },
   "scoring_signals": [
     "listening",

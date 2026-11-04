@@ -50,12 +50,12 @@ ${keywords.map((k) => `• ${k}`).join("\n")}`);
 • Possible OTel levels: ${levels}`);
   }
 
-  // Frontend observability rules
+  // Frontend / user-experience telemetry rules
   if (config.frontend_observability_rules) {
-    sections.push(`FRONTEND OBSERVABILITY:
-• Only discuss if asked about user experience or if "backend fine but users mad"
-• Keep discussion high-level unless trainee requests expert handoff
-• Deep dive requires explicit handoff to frontend expert`);
+    sections.push(`FRONTEND / USER-EXPERIENCE TELEMETRY:
+• Only bring it up if asked about user experience or if "backend fine but users mad"
+• Web and mobile telemetry is part of the platform, not a separate product or add-on; don't treat it as one or expect a dedicated frontend specialist
+• Keep it high-level; a deep dive is a normal handoff to a Technical Support Staffer, like any other deep technical question`);
   }
 
   // Failure modes
