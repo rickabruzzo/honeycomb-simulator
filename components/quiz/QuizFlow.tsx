@@ -230,7 +230,10 @@ export function QuizFlow({
             )}
             {error && <p className="text-sm text-[#e65b53]">{error}</p>}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <StudyGuideLink>Read the study guide first</StudyGuideLink>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <StudyGuideLink>Read the study guide first</StudyGuideLink>
+                <StudyGuideLink section="flashcards">Drill the FAQ flashcards</StudyGuideLink>
+              </div>
               <button
                 onClick={start}
                 disabled={busy}

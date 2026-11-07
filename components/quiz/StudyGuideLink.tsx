@@ -6,10 +6,19 @@ import { BookOpen, ExternalLink } from "lucide-react";
  * appears (the quiz-first card, the quiz intro, the grade screen, the ready popup): Pacific blue,
  * underlined, book icon, opens in a new tab. ?trainee=1 hides the admin tabs on the study page.
  */
-export function StudyGuideLink({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+export function StudyGuideLink({
+  children,
+  className = "",
+  section,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  /** A section id on the study page, e.g. "flashcards", to land on directly. */
+  section?: string;
+}) {
   return (
     <a
-      href="/study?trainee=1"
+      href={section ? `/study?trainee=1#${section}` : "/study?trainee=1"}
       target="_blank"
       rel="noreferrer"
       className={`inline-flex items-center gap-1.5 text-sm font-medium text-[#7cc6f2] underline decoration-[#7cc6f2]/50 underline-offset-4 transition hover:text-white hover:decoration-white ${className}`}

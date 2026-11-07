@@ -2,11 +2,14 @@
 
 import React, { useEffect, useState } from "react";
 import { CoachingContent, OutcomesGrid, ScoringContent } from "@/components/quiz/CoachingContent";
+import { Flashcards, FlashcardsCallout } from "@/components/quiz/Flashcards";
+import { faqToCards } from "@/lib/quiz/faqCards";
 import type { QuizSource } from "@/lib/quiz/types";
 
 /**
- * The booth study guide: greeter coaching, how sessions are scored, the Booth FAQ, and links to
- * the launch docs. The FAQ and links come from the quiz bank (kept out of the repo), not this file.
+ * The booth study guide: greeter coaching, how sessions are scored, FAQ flashcards, the Booth FAQ,
+ * and links to the launch docs. The FAQ and links come from the quiz bank (kept out of the repo),
+ * not this file; the flashcards are derived from the FAQ, so there's one source of product facts.
  */
 
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
@@ -87,6 +90,7 @@ export default function StudyGuidePage() {
   }, []);
 
   const external = sources.filter((s) => /^https?:\/\//.test(s.url));
+  const cardCount = faq ? faqToCards(faq).length : 0;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 pb-12">
@@ -102,6 +106,7 @@ export default function StudyGuidePage() {
             ["#coaching", "How to have the conversation"],
             ["#outcomes", "Good endings"],
             ["#scoring", "How you're scored"],
+            ["#flashcards", "Flashcards"],
             ["#faq", "Booth FAQ"],
             ...(external.length ? [["#launch", "Launch docs"]] : []),
           ].map(([href, label]) => (
@@ -111,6 +116,8 @@ export default function StudyGuidePage() {
           ))}
         </nav>
       </header>
+
+      {faq && <FlashcardsCallout count={cardCount} />}
 
       <Section id="coaching" title="How to have the conversation">
         <CoachingContent />
@@ -124,6 +131,20 @@ export default function StudyGuidePage() {
         <p className="text-xs text-white/45">These guide your practice; they&apos;re not there to trip you up.</p>
         <ScoringContent />
       </Section>
+
+      <section
+        id="flashcards"
+        className="scroll-mt-6 rounded-2xl border border-[#0298ec]/50 bg-white/7 p-6 sm:p-7 flex flex-col gap-4 shadow-[0_0_0_1px_rgba(2,152,236,.15),0_12px_40px_-20px_rgba(2,152,236,.6)]"
+      >
+        <div className="flex flex-col gap-1">
+          <h2 className="font-display text-lg font-semibold text-white">Flashcards: drill the Booth FAQ</h2>
+          <p className="text-sm text-white/60">
+            The same questions and answers as the FAQ, one at a time. Mark each card <strong className="text-white">Got it</strong> or{" "}
+            <strong className="text-white">Review again</strong>; the review pile comes back around until it&apos;s empty.
+          </p>
+        </div>
+        <Flashcards faqMarkdown={faq} />
+      </section>
 
       <Section id="faq" title="Booth FAQ">
         {faq ? (
