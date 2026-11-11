@@ -55,6 +55,9 @@ export function decideReplyOwner(
   // follow-up limiter). An explicit override outranks this policy.
   if (directive.hookOverride || directive.concreteOverride) return "template";
 
+  // Reacting to a demo/handoff offer depends entirely on what was offered - no bank fits.
+  if (directive.traineeOffer) return "llm";
+
   if (!EXPRESSIVE_MOVES.has(directive.move)) return "template";
 
   // Keep the concrete, factual turns deterministic: naming the stack should not drift,

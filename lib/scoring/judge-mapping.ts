@@ -73,10 +73,16 @@ export function judgeResultToScore(
   return { breakdown, score, evidence };
 }
 
+/**
+ * Grade bands (rubric v4). Retuned with the booth calibration: a competent booth conversation
+ * (~6-7 per dimension, 60-70 total) now reads as a C/B instead of a D, and a strong one (~7.5+)
+ * as a B/A. The old 90/78/65/50 bands, combined with "ordinary sits at 5-6", graded the median
+ * competent run a D - the main source of the "too harsh" feedback.
+ */
 export function deriveGrade(score: number): "A" | "B" | "C" | "D" | "F" {
-  if (score >= 90) return "A";
-  if (score >= 78) return "B";
-  if (score >= 65) return "C";
-  if (score >= 50) return "D";
+  if (score >= 85) return "A";
+  if (score >= 72) return "B";
+  if (score >= 60) return "C";
+  if (score >= 45) return "D";
   return "F";
 }

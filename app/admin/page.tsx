@@ -5,8 +5,8 @@ import Link from "next/link";
 import type { AdminInviteRow } from "../../lib/adminInvites";
 import type { Persona } from "../../lib/scenarioTypes";
 import type { Trainee } from "../../lib/traineeStore";
-import { ExternalLink, Copy, Eye, Trash2 } from "lucide-react";
-import { siteUrl } from "../../lib/siteUrl";
+import { ExternalLink, Eye, Trash2, Bot } from "lucide-react";
+import { AiReviewDialog } from "../../components/AiReviewDialog";
 import { PageHeader } from "../../components/PageHeader";
 
 function StatusBadge({ status }: { status: AdminInviteRow["status"] }) {
@@ -88,40 +88,39 @@ function GradeChip({ grade }: { grade: string }) {
 }
 
 /**
- * Row actions, redesigned to one accent: a persistent ghost "Review" pill (the primary
- * admin action) plus open-session and copy-link icon buttons that reveal on row hover.
- * Replaces the old five saturated buttons per row.
+ * Row actions: a persistent ghost "Review" pill (the primary admin action) plus icon buttons
+ * that reveal on row hover:
+ *   - Open trainee view: the trainee's own link (/s/...) - the live chat while a session runs, the
+ *     trainee's scorecard once it's done. Use it to see exactly what the trainee sees, or to grab
+ *     the link to send someone. (The old copy-link button duplicated this link and was dropped.)
+ *   - AI review: sends the transcript + score to the AI reviewer (simulator quality, grading
+ *     fairness, coaching) with an optional question; the result can be saved as a trainer note.
+ *   - Delete.
  */
 function RowActions({
   reviewUrl,
   traineeUrl,
   reviewable,
+  onAiReview,
   onDelete,
   deleting,
 }: {
   reviewUrl: string;
   traineeUrl: string;
   reviewable: boolean;
+  onAiReview: () => void;
   onDelete: () => void;
   deleting: boolean;
 }) {
-  const [copied, setCopied] = useState(false);
-
-  const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(siteUrl(traineeUrl));
-    } catch {
-      /* clipboard may be blocked; still flash confirmation */
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
+  const iconBtn =
+    "inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/12 bg-white/[0.06] text-gray-300 transition hover:border-[#0298ec]/45 hover:bg-[#0278cd]/25 hover:text-white";
 
   return (
     <div className="flex items-center justify-end gap-1.5">
       {reviewable ? (
         <Link
           href={reviewUrl}
+          title="Transcript, score, and trainer notes"
           className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.07] px-3 py-1.5 text-xs font-medium text-gray-100 transition hover:border-[#0298ec]/45 hover:bg-[#0278cd]/25 hover:text-white"
         >
           <Eye size={13} /> Review
@@ -138,26 +137,27 @@ function RowActions({
         <Link
           href={traineeUrl}
           target="_blank"
-          title="Open session"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/12 bg-white/[0.06] text-gray-300 transition hover:border-[#0298ec]/45 hover:bg-[#0278cd]/25 hover:text-white"
+          title="Open trainee view (what the trainee sees)"
+          aria-label="Open trainee view"
+          className={iconBtn}
         >
           <ExternalLink size={13} />
         </Link>
-        <button
-          onClick={copyLink}
-          title="Copy trainee link"
-          className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition ${
-            copied
-              ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
-              : "border-white/12 bg-white/[0.06] text-gray-300 hover:border-[#0298ec]/45 hover:bg-[#0278cd]/25 hover:text-white"
-          }`}
-        >
-          {copied ? "✓" : <Copy size={13} />}
-        </button>
+        {reviewable && (
+          <button
+            onClick={onAiReview}
+            title="AI review: simulator quality, grading fairness, coaching"
+            aria-label="AI review"
+            className={iconBtn}
+          >
+            <Bot size={13} />
+          </button>
+        )}
         <button
           onClick={onDelete}
           disabled={deleting}
           title="Delete this session"
+          aria-label="Delete this session"
           className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#e65b53]/40 bg-[#e65b53]/10 text-[#e88079] transition hover:bg-[#e65b53]/20 hover:text-white disabled:opacity-40"
         >
           <Trash2 size={13} />
@@ -174,6 +174,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deletingToken, setDeletingToken] = useState<string | null>(null);
+  const [aiReviewRow, setAiReviewRow] = useState<AdminInviteRow | null>(null);
 
   // Filter state
   const [filterPersonaId, setFilterPersonaId] = useState<string>("");
@@ -449,6 +450,7 @@ export default function AdminPage() {
                         reviewUrl={`/review/${invite.token}`}
                         traineeUrl={invite.traineeUrl}
                         reviewable={invite.status !== "NOT_STARTED"}
+                        onAiReview={() => setAiReviewRow(invite)}
                         deleting={deletingToken === invite.token}
                         onDelete={() =>
                           handleDeleteInvite(
@@ -464,6 +466,15 @@ export default function AdminPage() {
             </table>
           </div>
         </div>
+      )}
+
+      {aiReviewRow && (
+        <AiReviewDialog
+          sessionId={aiReviewRow.sessionId}
+          token={aiReviewRow.token}
+          traineeName={aiReviewRow.traineeShortName || "this session"}
+          onClose={() => setAiReviewRow(null)}
+        />
       )}
     </div>
   );

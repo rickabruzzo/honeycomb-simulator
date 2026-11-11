@@ -88,6 +88,8 @@ export interface DirectorDirective {
   toolAnchored?: boolean;
   /** Booth-entry mode — set when move === "booth_entry" to guide the generator bank selection */
   boothEntryMode?: BoothEntryMode;
+  /** Set when the trainee's last turn offered a demo / handoff — the LLM must react to the offer */
+  traineeOffer?: "demo";
 }
 
 // ── Named tool detection ──────────────────────────────────────────────────────
@@ -231,8 +233,43 @@ export function isTraineeBadgeOffer(text: string): boolean {
   return TRAINEE_BADGE_OFFER_RE.test(text);
 }
 
+/**
+ * Has the trainee just offered a demo or a handoff to a technical person?
+ *
+ * Exists because nothing in the director recognized an OFFER. "Want me to have the tech team
+ * show you how it works?" contains "?" and a tool-domain word, so it was routed to the
+ * tool-anchored template bank and the attendee answered with a canned stack complaint instead of
+ * reacting to the offer - three offers in a row in one real session, each ignored. An offer is
+ * always handed to the LLM with an explicit "react to the offer" hint.
+ */
+const TRAINEE_DEMO_OFFER_RE =
+  /\b((want|like|care|open) (me )?to (see|show|take a look|check (it|this) out)|(want|like) (me|us) to (show|walk|demo|have|bring|grab|get|introduce|pass|connect)|(can|could|let) (i|me|we) (show|walk|demo|grab|bring|get|introduce|pass|connect)|(show|walk) you (how|through|what|a)|(quick|short|live|real|\d+[- ]minute) (demo|walkthrough|walk-through|look)|demo station|(tech(nical)?|support|solutions?|se|sa) (team|folks|person|people|specialist|engineer|staff)|pass you (to|over)|hand you (off|over)|introduce you to|bring (someone|somebody|one of) (over)?)\b/i;
+
+export function isTraineeDemoOffer(text: string): boolean {
+  return TRAINEE_DEMO_OFFER_RE.test(text);
+}
+
+/**
+ * True when a QUESTION sentence in the text names one of the attendee's own tools
+ * ("How's Datadog treating you?"). Only the question sentences count: "Datadog APM is pretty
+ * common. How long does it take to scrape those logs?" is asking about the log hunt, not Datadog.
+ */
+function mentionsSessionTool(text: string, tools: string[] | undefined): boolean {
+  if (!tools || tools.length === 0) return false;
+  const questionSentences = (text.match(/[^.!?]*\?/g) ?? []).join(" ");
+  // "How is that monitoring stack helping?" points at their tools without naming them.
+  if (STACK_REF_RE.test(questionSentences)) return true;
+  const named = detectNamedTools(questionSentences);
+  return named.some((t) => tools.includes(t));
+}
+
+const STACK_REF_RE =
+  /\b(your|that|this|those|the) (current |existing )?(monitoring |observability |logging |tracing )?(stack|setup|tooling|tools|toolchain)\b/i;
+
 export function isSmallTalkQuestion(text: string): boolean {
-  if (!text.includes("?")) return false;
+  // People type small talk without punctuation ("uhm yeah how's the conference"). The patterns
+  // are specific enough to stand alone for a short turn; longer turns still need the "?".
+  if (!text.includes("?") && text.length > 80) return false;
   return SMALL_TALK_PATTERNS.some((p) => p.test(text));
 }
 
@@ -948,6 +985,9 @@ function selectNextPainAnchorId(
 // ── LLM prompt hint ───────────────────────────────────────────────────────────
 
 export function directiveToPromptHint(directive: DirectorDirective): string {
+  if (directive.traineeOffer === "demo") {
+    return "The trainee just offered to show you a demo or bring over a technical specialist. React to THAT offer in your reply: accept it if what they've said is relevant to the pain you've shared, or say briefly what you'd want to see first. Do not ignore the offer and do not repeat a point you already made.";
+  }
   const moveHints: Record<DirectorMove, string> = {
     ask_clarifying:
       "Ask a short clarifying question that connects directly to what the trainee just said. Be cooperative and assume good intent. Do not scold or argue.",
@@ -1036,6 +1076,26 @@ export function decideNextMove(
     };
   }
 
+  // ── 2a. Trainee offer rule ──────────────────────────────────────────────
+  // The trainee offered a demo or a handoff to a technical person. Whatever stage we are in, the
+  // attendee's next line must respond to that offer (accept, or say what they'd want to see
+  // first) - never ignore it and restate an earlier pain. Owned by the LLM (see replyPolicy).
+  if (intent !== "hard_exit" && isTraineeDemoOffer(lastTraineeText)) {
+    return {
+      stage,
+      move: "answer",
+      tone,
+      intent,
+      traineeOffer: "demo",
+      mustAvoid: {
+        phrases: attendeeMessages
+          .slice(-3)
+          .map((m) => m.text.slice(0, 50).trim())
+          .filter((p) => p.length > 10),
+      },
+    };
+  }
+
   // ── 2b. Small-talk short-circuit ────────────────────────────────────────
   // When the trainee asks a conference/day question in HOOK or RAPPORT,
   // return an "answer" directive with smallTalk=true so the generator
@@ -1092,7 +1152,12 @@ export function decideNextMove(
   // clarification questions like "are you thinking more about tooling or process?"
   const sessionTools = (session as any).currentTools as string[] | undefined;
   const hasNamedTools = sessionTools && sessionTools.length > 0;
-  const traineeAsksToolQ = isQuestion(lastTraineeText) && isToolDomainQuestion(lastTraineeText);
+  // Only a question ABOUT their named tools qualifies ("How's Datadog working for you?").
+  // isToolDomainQuestion alone matched any observability word - "trace", "incident", "OTel"
+  // - so "Want to see how tracing works here?" and "Are you on OTel?" both got a canned
+  // "<tool> works okay day-to-day" line, and the bank cycled until the attendee looped.
+  const traineeAsksToolQ =
+    isQuestion(lastTraineeText) && mentionsSessionTool(lastTraineeText, sessionTools);
 
   if (
     hasNamedTools &&
