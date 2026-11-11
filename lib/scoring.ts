@@ -61,6 +61,8 @@ export interface ScoreRecord {
     /** The concrete coaching line for this dimension. */
     comment: string;
   }[];
+  /** The judge's 1-2 sentence coaching summary (absent when heuristic-scored). */
+  summary?: string;
   /** Which path produced this score. */
   scoringMethod: "judge" | "heuristic";
   /** True when the session was run in training-wheels (assisted/guided) mode. */
@@ -139,6 +141,7 @@ export async function scoreSession(
       highlights,
       mistakes,
       evidence: mapped.evidence,
+      summary: judge.summary || undefined,
       scoringMethod: "judge",
       trainingWheels: session.trainingWheels,
       completedAt: now,
@@ -235,6 +238,13 @@ export function heuristicScore(
     "that sounds",
     "rough",
     "brutal",
+    // Plain validation people actually type at a booth (kept in step with simulator.isEmpathetic).
+    "that's a lot",
+    "oof",
+    "makes sense",
+    "i get it",
+    "burnout",
+    "not sustainable",
   ];
   const empathyCount = empathyPhrases.filter((phrase) =>
     allTraineeText.includes(phrase)
@@ -246,7 +256,20 @@ export function heuristicScore(
   // maturity without asking means discovery was built on an unverified assumption, which the
   // rubric caps at 2/5 → 8/20. Asking about OTel is fine (good discovery), so only assertions
   // trip the cap.
-  const otelAssertions = traineeMessages.filter((msg) => {
+  // Walk the transcript in order: an assertion only counts before OTel has been established by
+  // either side (the attendee mentioned it, or the trainee already asked).
+  const otelAssertions: string[] = [];
+  let otelEstablished = false;
+  for (const m of session.transcript) {
+    if (m.type === "system") continue;
+    const lower = m.text.toLowerCase();
+    const hasOtel = lower.includes("opentelemetry") || /\botel\b/.test(lower);
+    if (m.type === "trainee" && hasOtel && !otelEstablished && isOtelAssertion(m.text)) {
+      otelAssertions.push(m.text);
+    }
+    if (hasOtel) otelEstablished = true;
+  }
+  function isOtelAssertion(msg: string): boolean {
     const lower = msg.toLowerCase();
     const hasOtel = lower.includes("opentelemetry") || /\botel\b/.test(lower);
     const isQuestion = msg.includes("?");
@@ -264,7 +287,7 @@ export function heuristicScore(
     ) && hasOtel;
 
     return assertsOtel && !asksAboutOtel; // Only flag assertions
-  });
+  }
   if (otelAssertions.length > 0) {
     discovery = Math.min(discovery, 8); // unverified OTel assumption caps discovery
   }

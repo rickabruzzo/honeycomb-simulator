@@ -188,22 +188,31 @@ function capitalizeFirst(s: string): string {
  * Generate a concrete first-person answer about the attendee's current stack.
  * Returns null if no tools are available on the session.
  */
-function generateStackEvalAnswer(
+export function generateStackEvalAnswer(
   session: SessionState,
   traineeTurnCount: number
 ): string | null {
   const tools = (session as any).currentTools as string[] | undefined;
   if (!tools || tools.length === 0) return null;
 
-  if (tools.length >= 2) {
-    const idx = traineeTurnCount % STACK_EVAL_TEMPLATES.length;
-    const toolA = capitalizeFirst(tools[0]);
-    const toolB = capitalizeFirst(tools[1]);
-    return STACK_EVAL_TEMPLATES[idx](toolA, toolB);
-  }
+  const candidates =
+    tools.length >= 2
+      ? STACK_EVAL_TEMPLATES.map((t) => t(capitalizeFirst(tools[0]), capitalizeFirst(tools[1])))
+      : STACK_EVAL_SINGLE.map((t) => t(capitalizeFirst(tools[0])));
 
-  const idx = traineeTurnCount % STACK_EVAL_SINGLE.length;
-  return STACK_EVAL_SINGLE[idx](capitalizeFirst(tools[0]));
+  // Never reuse a line this attendee already said anywhere in the session. Indexing by turn
+  // count alone cycled the 4-line bank, so the same complaint came back every 4th turn.
+  const said = new Set(
+    session.transcript
+      .filter((m) => m.type === "attendee")
+      .map((m) => m.text.toLowerCase().trim())
+  );
+  const start = traineeTurnCount % candidates.length;
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[(start + i) % candidates.length];
+    if (!said.has(c.toLowerCase().trim())) return c;
+  }
+  return null; // bank exhausted - caller falls through to question routing
 }
 
 // ── Answer move — first-person response templates ────────────────────────────
@@ -589,9 +598,10 @@ function isRepetitiveResponse(
   candidateText: string,
   session: SessionState
 ): boolean {
+  // Whole session, not just the last 3: a 4-line template bank defeated a 3-message window, so
+  // a line could repeat verbatim as long as three other lines came between.
   const recentAttendeeMessages = session.transcript
     .filter((m) => m.type === "attendee")
-    .slice(-3)
     .map((m) => m.text.toLowerCase().trim());
 
   if (recentAttendeeMessages.length === 0) return false;

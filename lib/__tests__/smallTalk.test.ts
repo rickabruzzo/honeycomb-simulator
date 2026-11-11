@@ -134,8 +134,16 @@ assert(
 );
 
 assert(
-  "rejects without question mark",
+  // Changed deliberately: trainees type small talk without punctuation ("uhm yeah how's the
+  // conference"), and treating it as a work question produced a non-sequitur pain line.
+  "accepts short small talk without question mark",
   isSmallTalkQuestion("How's your day going"),
+  true
+);
+
+assert(
+  "rejects long unpunctuated text",
+  isSmallTalkQuestion("How's your day going because I wanted to talk through how your team handles incident response today"),
   false
 );
 

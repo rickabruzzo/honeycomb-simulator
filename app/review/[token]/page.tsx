@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MessageSquare, Clock, User, Home, Edit3, Save, X, Download } from "lucide-react";
+import { downloadSessionExport, type ReviewPayload } from "@/lib/sessionExport";
 import { BrandButton } from "@/components/ui/BrandButton";
 import { getMomentumBand } from "@/lib/attendee/momentumBands";
 
@@ -265,46 +266,7 @@ export default function ReviewPage() {
 
   const handleExport = () => {
     if (!reviewData) return;
-
-    // Build export data
-    const exportData = {
-      sessionId: reviewData.sessionId,
-      persona: reviewData.kickoff.personaDisplayName || reviewData.kickoff.personaId || "Unknown",
-      trainee: reviewData.kickoff.traineeNameShort || reviewData.kickoff.traineeId || "Unknown",
-      startTime: reviewData.startTime,
-      currentState: reviewData.currentState,
-      active: reviewData.active,
-      // Was reporting currentState, so a finished session exported outcome: "OUTCOME" -
-      // the state name, not the result. detectedOutcome carries the actual result.
-      outcome: reviewData.active
-        ? "In Progress"
-        : reviewData.detectedOutcome?.type ?? reviewData.currentState,
-      violations: reviewData.violations,
-      trainerFeedback: reviewData.trainerFeedback?.guidance || null,
-      transcript: reviewData.transcript.map((m) => ({
-        timestamp: m.timestamp,
-        role: m.type === "trainee" ? "Trainee" : m.type === "attendee" ? "Attendee" : "System",
-        message: m.text,
-      })),
-      // Was hardcoded to "v1.1.0", which made every export misreport the prompt version -
-      // it read as though a session had run on an old bundle when it had not.
-      promptBundleVersion: reviewData.promptBundleVersion ?? "not recorded",
-      exportedAt: new Date().toISOString(),
-    };
-
-    // Convert to formatted JSON
-    const jsonString = JSON.stringify(exportData, null, 2);
-
-    // Create and download file
-    const blob = new Blob([jsonString], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `session-${reviewData.sessionId}-${Date.now()}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadSessionExport(reviewData as unknown as ReviewPayload);
   };
 
   if (loading) {

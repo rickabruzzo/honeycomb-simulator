@@ -1,5 +1,6 @@
 "use client";
 
+import { deriveGrade } from "@/lib/scoring/judge-mapping";
 import React, { useEffect, useState } from "react";
 import type { Conference, Persona } from "@/lib/scenarioTypes";
 import type { Trainee } from "@/lib/traineeStore";
@@ -21,13 +22,8 @@ const GRADE_HEX: Record<"A" | "B" | "C" | "D" | "F", string> = {
   F: "#e65b53",
 };
 const GRADES = ["A", "B", "C", "D", "F"] as const;
-function gradeFor(score: number): "A" | "B" | "C" | "D" | "F" {
-  if (score >= 90) return "A";
-  if (score >= 78) return "B";
-  if (score >= 65) return "C";
-  if (score >= 50) return "D";
-  return "F";
-}
+// Same bands as the scorer, so the Insights tiles never disagree with a session's grade.
+const gradeFor = deriveGrade;
 
 export function InsightsContent() {
   const [insights, setInsights] = useState<InsightsData | null>(null);

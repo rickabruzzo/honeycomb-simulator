@@ -9,6 +9,7 @@ import { addToLeaderboardIndex } from '@/lib/leaderboardStore';
 import { getPersona, ensurePersonasSeeded } from '@/lib/personaStore';
 import { buildPersonaTitle } from '@/lib/formatUtils';
 import { withSpan } from '@/lib/telemetry';
+import { outcomeSignalToCommittedOutcome } from '@/lib/attendee/outcomeSignals';
 
 export async function POST(
   request: NextRequest,
@@ -49,48 +50,83 @@ export async function POST(
 
         span.setAttribute("session_duration_sec", duration);
 
-        // Generate feedback
+        // Outcome: prefer the outcome the conversation actually reached (commitment detection /
+        // transcript signal) over the regex-gated state machine. The state machine used to decide
+        // this alone, so a trainee whose attendee said "Sure, that's probably the right move" to a
+        // technical handoff was told DEFERRED_INTEREST, and a badge scan that ended in
+        // PAIN_DISCOVERY read as an early exit.
         const states = Object.keys(SIMULATOR_CONFIG.states);
         const reached = states.indexOf(session.currentState);
         const total = states.length - 1;
 
-        let outcome = 'POLITE_EXIT';
-        if (session.currentState === 'OUTCOME') outcome = 'DEMO_READY';
-        else if (session.currentState === 'SOLUTION_FRAMING') outcome = 'DEFERRED_INTEREST';
+        let outcome: string = session.pendingOutcome || "";
+        if (!outcome && session.detectedOutcome?.type) {
+          outcome = outcomeSignalToCommittedOutcome(session.detectedOutcome.type) ?? "";
+        }
+        if (!outcome) {
+          if (session.currentState === "OUTCOME") outcome = "DEMO_READY";
+          else if (session.currentState === "SOLUTION_FRAMING") outcome = "DEFERRED_INTEREST";
+          else outcome = "NO_NEXT_STEP";
+        }
 
         span.setAttribute("outcome", outcome);
         span.setAttribute("states_reached", reached);
         span.setAttribute("states_total", total);
-    
-    const feedback = `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SESSION FEEDBACK
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⏱️  Duration: ${Math.floor(duration / 60)}m ${duration % 60}s
-🎯 Outcome: ${outcome}
-📊 State Progress: ${reached}/${total}
+        // Score first, so the feedback text tells the trainee the same story as their scorecard.
+        let token: string | null = null;
+        try {
+          token = await getInviteForSession(id);
+          if (!token) {
+            const body = await request.json().catch(() => ({}));
+            token = body.token || null;
+          }
+        } catch (e) {
+          console.warn('Failed to resolve token for scoring:', e);
+        }
 
-✅ What You Did Well:
-${session.violations.length === 0 ? '• Maintained discipline with product keywords' : ''}
-${session.stateHistory.length > 0 ? '• Successfully advanced the conversation through ' + session.stateHistory.length + ' state(s)' : ''}
+        let scoreRecord: Awaited<ReturnType<typeof scoreSession>> | null = null;
+        if (token) {
+          try {
+            scoreRecord = await scoreSession(session, token);
+          } catch (e) {
+            console.error('Failed to score session:', e);
+          }
+        }
 
-⚠️  Where You Could Improve:
-${session.violations.length > 0 ? session.violations.map(v => '• ' + v).join('\n') : ''}
-${reached < 3 ? '• Focus on discovery before solution framing' : ''}
+        const OUTCOME_TEXT: Record<string, string> = {
+          MQL_READY: "Badge scan / sales follow-up",
+          DEMO_READY: "Demo / technical handoff",
+          SELF_SERVICE_READY: "Self-service (postcard)",
+          DEFERRED_INTEREST: "Interested, no next step set yet",
+          POLITE_EXIT: "Polite exit",
+          NO_NEXT_STEP: "Ended before a next step",
+        };
 
-🎭 Persona Alignment:
-Hidden persona profile was used to generate realistic attendee responses.
+        const wins = scoreRecord?.highlights ?? [];
+        const fixes = [
+          ...(scoreRecord?.mistakes ?? []),
+          ...session.violations.map((v) => `Rule check: ${v}`),
+        ];
 
-📈 Overall Assessment:
-${outcome === 'DEMO_READY' ? 'Strong execution! You earned genuine interest.' : outcome === 'DEFERRED_INTEREST' ? 'Good progress. More discovery could have sealed it.' : 'Conversation ended early. Review failure modes.'}
+        const feedback = [
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+          "SESSION FEEDBACK",
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+          "",
+          `⏱️  Duration: ${Math.floor(duration / 60)}m ${duration % 60}s`,
+          `🎯 Outcome: ${OUTCOME_TEXT[outcome] ?? outcome}`,
+          scoreRecord ? `📊 Score: ${scoreRecord.score} (${scoreRecord.grade})` : "",
+          "",
+          scoreRecord?.summary ? `📈 Coach's take:\n${scoreRecord.summary}\n` : "",
+          wins.length ? `✅ What worked:\n${wins.map((w) => "• " + w).join("\n")}\n` : "",
+          fixes.length ? `⚠️  Next time:\n${fixes.map((f) => "• " + f).join("\n")}\n` : "",
+          "Remember: Listen, discover pain, validate, then align to outcomes.",
+        ]
+          .filter((line, i, arr) => line !== "" || arr[i - 1] !== "")
+          .join("\n")
+          .trim();
 
-State Transitions:
-${session.stateHistory.map(h => `${h.from} → ${h.to}`).join('\n') || 'None'}
-
-Remember: Listen, discover pain, validate, then align to outcomes.
-    `.trim();
-    
     const feedbackMsg = {
       id: randomUUID(),
       type: 'system' as const,
@@ -101,28 +137,12 @@ Remember: Listen, discover pain, validate, then align to outcomes.
 
     await saveSession(session);
 
-    // Attempt to get token for scoring (Phase C)
-    let token: string | null = null;
-    try {
-      // Try to get token from reverse mapping
-      token = await getInviteForSession(id);
-
-      // Fallback: accept token from request body
-      if (!token) {
-        const body = await request.json().catch(() => ({}));
-        token = body.token || null;
-      }
-    } catch (e) {
-      console.warn('Failed to resolve token for scoring:', e);
-    }
-
         // If we have a token, compute and save score
         let shareUrl: string | null = null;
         let scoreData = null;
-        if (token) {
+        if (token && scoreRecord) {
           span.setAttribute("has_token", true);
           try {
-            const scoreRecord = await scoreSession(session, token);
             await saveScore(scoreRecord);
             shareUrl = `/share/${token}`;
             scoreData = {

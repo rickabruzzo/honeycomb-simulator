@@ -44,7 +44,7 @@ import {
   recordDirectorMove,
   type DirectorDirective,
 } from "@/lib/attendee/conversationDirector";
-import { detectCommittedOutcome } from "@/lib/outcomeCommitment";
+import { detectCommittedOutcome, detectAcceptedDemoOffer } from "@/lib/outcomeCommitment";
 import { isEvaluationQuestion } from "@/lib/outcomeEvaluation";
 import { updateMomentum } from "@/lib/attendee/momentumModel";
 import {
@@ -203,7 +203,10 @@ export async function POST(
         }
 
         // 2) Analyze trainee message (your rules engine)
-        const analysis = analyzeTraineeMessage(message, session.currentState);
+        const analysis = analyzeTraineeMessage(message, session.currentState, {
+          // Everything before the message just pushed.
+          priorTranscript: session.transcript.slice(0, -1),
+        });
 
         // 3) Track violations (FIXED: removed stray '.' and use push(...spread))
         if (analysis.issues?.length > 0) {
@@ -515,7 +518,9 @@ export async function POST(
         // Detect commitment early (needed for OUTCOME gate check)
         let committedOutcomeForStateGate: string | null = null;
         if (session.currentState === "SOLUTION_FRAMING") {
-          committedOutcomeForStateGate = detectCommittedOutcome(attendeeResponseText);
+          committedOutcomeForStateGate =
+            detectCommittedOutcome(attendeeResponseText) ??
+            (detectAcceptedDemoOffer(message, attendeeResponseText) ? "DEMO_READY" : null);
         }
 
         if (shouldAdvanceState(session.currentState, analysis)) {
@@ -623,7 +628,10 @@ export async function POST(
         let committedOutcome: string | null = null;
 
         // 1. Check last attendee response for a commitment phrase
-        const singleMsgCommit = detectCommittedOutcome(attendeeResponseText);
+        // An attendee accepting the trainee's demo/handoff offer is a commitment too.
+        const singleMsgCommit =
+          detectCommittedOutcome(attendeeResponseText) ??
+          (detectAcceptedDemoOffer(message, attendeeResponseText) ? "DEMO_READY" : null);
 
         // 2. Scan recent transcript for explicit outcome signals (catches early states)
         const transcriptSignal = detectOutcomeFromTranscript(session.transcript);

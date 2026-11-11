@@ -242,6 +242,27 @@ export function detectDeferredCommitment(text: string): boolean {
  * @param text - Attendee message text
  * @returns Committed outcome or null
  */
+/**
+ * Detect the attendee ACCEPTING a demo / technical-handoff offer the trainee just made.
+ *
+ * The phrase lists above only catch the attendee asking for a demo in their own words. When the
+ * trainee offers ("I'd love to pass you to a technical support person") and the attendee says
+ * "Sure, that's probably the right move", no phrase matched, so a real handoff was scored as
+ * DEFERRED_INTEREST. The offer comes from the trainee's text; the commitment is still the
+ * attendee's - an acceptance is required, and a hedge ("maybe later", "not right now") is not one.
+ */
+const DEMO_OFFER_RE =
+  /\b(demo|walk ?through|show you|technical (support|specialist|person|folks|team)|tech (team|folks|person)|solutions? (engineer|architect)|pass you (to|over)|hand you (off|over)|introduce you|proof of concept|poc)\b/i;
+const ACCEPT_RE =
+  /^\s*(\*[^*]*\*\s*)?(yes|yeah|yep|yup|sure|ok(ay)?|absolutely|definitely|totally|for sure|sounds good|that works|works for me|let'?s (do|go|see|get)|i('d| would) (like|love)|i could do|why not|happy to|go for it|perfect|great)\b|\b(right move|sounds good|that works|let'?s do (it|that)|let'?s get that set up|i'?m in|count me in)\b/i;
+const HEDGE_RE = /\b(not (right )?now|maybe later|another time|not today|no thanks|i'?ll pass|not interested|some other time)\b/i;
+
+export function detectAcceptedDemoOffer(traineeText: string, attendeeText: string): boolean {
+  if (!DEMO_OFFER_RE.test(traineeText)) return false;
+  if (HEDGE_RE.test(attendeeText)) return false;
+  return ACCEPT_RE.test(attendeeText);
+}
+
 export function detectCommittedOutcome(text: string): string | null {
   // Priority order matches outcome priority
   if (detectMqlCommitment(text)) return "MQL_READY";

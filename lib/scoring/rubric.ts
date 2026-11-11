@@ -8,7 +8,7 @@
 import type { SessionState } from "../storage";
 import { getTraineeMessages } from "../scoringInput";
 
-export const RUBRIC_VERSION = "score-rubric-v3";
+export const RUBRIC_VERSION = "score-rubric-v4";
 
 /** The six booth-arc dimensions, in the order the judge must return them. */
 export const SCORING_DIMENSIONS = [
@@ -24,8 +24,15 @@ export type ScoringDimension = (typeof SCORING_DIMENSIONS)[number];
 
 const ANCHORS = `
 Each dimension is scored 0-10. Anchors are given at even points; use the odd values in between
-when a conversation sits between two anchors. Most competent-but-ordinary turns land around 5-6;
-8-10 is demanding and must be earned with quotable evidence.
+when a conversation sits between two anchors.
+
+CALIBRATION - this is a 3-to-5 minute BOOTH conversation, not a 45-minute discovery call. Judge it
+against what a strong booth staffer does in that window.
+- A competent booth conversation (asked about their situation, heard a real pain, responded to it,
+  offered a fitting next step) lands around 6-7 on most dimensions. 5 is "okay, clearly room to grow".
+- 8-10 is earned with quotable evidence, but is reachable in a short conversation; do not hold back
+  an 8 because the conversation was short or because a full-length discovery item was not covered.
+- 4 and below means a real, citable problem, not the absence of polish.
 
 DISCOVERY - did questions uncover the real situation?
 0: No discovery; pitches or talks at the attendee.
@@ -34,6 +41,9 @@ DISCOVERY - did questions uncover the real situation?
 6: Uncovers pain AND its impact in the attendee's own words.
 8: Also draws out the attendee's IDEAL FUTURE STATE - what "better" looks like to them.
 10: Full, vivid picture - role, tooling, pain, quantified impact, future state, and constraints - drawn out naturally.
+Note: at a booth, uncovering a real pain plus its impact or frequency (6) and moving to a fitting next
+step is a solid result. Do not deduct for not reaching future state or constraints when the attendee
+was ready for a next step - moving on at the right moment is good judgment, not a discovery gap.
 Note: score the INFORMATION uncovered, never the number of questions asked.
 Note: asserting the attendee's OpenTelemetry maturity without checking caps this at 4 - discovery
 built on an unverified assumption. Judge OTel accuracy against the attendee's ACTUAL hidden
@@ -148,8 +158,18 @@ Rules:
       ("when they said the on-call pages were waking them up, ask how often - the frequency is the pain").
   Every coaching line must read as help, and must reference what the attendee said or the trainee said.
 - "traineeLine" is the trainee's own verbatim words you are crediting or critiquing, or "".
-- LLMs tend to over-praise the SCORE. Keep the numbers honest (8-10 is demanding; most competent-but-
-  ordinary conversations sit around 5-6) - but keep the coaching generous and useful at every score.
+- Keep the numbers honest and calibrated to the booth context above (a competent booth conversation
+  sits around 6-7; 8-10 needs quotable evidence) - and keep the coaching generous and useful at every score.
+- THE ATTENDEE IS A SIMULATION AND CAN GLITCH. If the attendee ignores what the trainee said, repeats a
+  line it already said, answers an earlier question late, or replies off-topic, that is the simulator's
+  fault, not the trainee's. Never deduct listening, discovery, or handoff because the trainee repeated an
+  offer or question the attendee failed to respond to, or because the trainee moved on from a line that
+  did not answer them. Score what the trainee did given what a real attendee would plausibly have meant.
+- DO NOT DOUBLE-COUNT. One mistake (e.g. a single early product mention) is deducted in the ONE
+  dimension it belongs to, not across several.
+- PLAYFUL OR NON-SERIOUS SESSIONS: if the trainee was clearly not attempting a real conversation
+  (role-play stage directions, joke replies, walking away), score what happened honestly and say so in
+  the summary; do not invent strengths or detailed faults.
 - Reflection and empathy are about intent and fit, never about specific phrases.
 
 Return ONLY a JSON object, no prose, in exactly this shape:

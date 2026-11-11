@@ -117,7 +117,12 @@ export function sampleOutcome(
  * Simple heuristic analysis of trainee message.
  * Keep this intentionally lightweight for v1.
  */
-export function analyzeTraineeMessage(text: string, currentState: string) {
+export function analyzeTraineeMessage(
+  text: string,
+  currentState: string,
+  /** Earlier conversation, used so the trainee isn't flagged for "assuming" something already established. */
+  context: { priorTranscript?: Array<{ type: string; text: string }> } = {}
+) {
   const lower = text.toLowerCase();
   const issues: string[] = [];
 
@@ -168,13 +173,25 @@ export function analyzeTraineeMessage(text: string, currentState: string) {
      lower.includes("you're using")) &&
     mentionsOtel;
 
+  // Not an assumption once OTel is established: the attendee already brought it up (e.g. "yeah,
+  // we've got it instrumented"), or the trainee asked about it earlier. Without this, a trainee
+  // who asked "Do you use OpenTelemetry?", got a yes, and replied "great that you're using
+  // OpenTelemetry!" was penalized for exactly the behavior the rule wants.
+  const OTEL_RE = /opentelemetry|\botel\b/i;
+  const otelEstablished = (context.priorTranscript ?? []).some(
+    (m) => (m.type === "attendee" || m.type === "trainee") && OTEL_RE.test(m.text)
+  );
+
   // Only flag if asserting without asking
-  if (assertsOtel && !asksAboutOtel) {
+  if (assertsOtel && !asksAboutOtel && !otelEstablished) {
     issues.push("Assumed OTel familiarity without asking");
   }
 
   const isOpenEnded = /\b(what|how|tell me|describe|walk me through|help me understand)\b/i.test(text);
-  const isEmpathetic = /\b(understand|hear you|sounds like|that must|that's tough|frustrat|brutal|rough)\b/i.test(text);
+  // Broad on purpose: this gates PAIN_DISCOVERY -> SOLUTION_FRAMING. The old list missed plain
+  // validation like "Oof", "that's a lot", "wow", "that changes the conversation", so a strong
+  // session could finish stuck in PAIN_DISCOVERY and read as unfinished on the review page.
+  const isEmpathetic = /\b(understand|hear you|sounds like|sounds (rough|hard|tough|painful|difficult|exhausting)|that must|that's (tough|rough|hard|a lot|painful|brutal|difficult)|frustrat|brutal|rough|oof|ouch|ugh|wow|yikes|painful|exhausting|burn(ing)? ?out|burnout|makes sense|i get (it|that)|been there|no fun|that sucks|changes the conversation|i can imagine|not sustainable|sorry to hear)\b/i.test(text);
 
   return { issues, isQuestion, isOpenEnded, isEmpathetic, mentionsOtel };
 }
