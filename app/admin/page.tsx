@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { AdminInviteRow } from "../../lib/adminInvites";
 import type { Persona } from "../../lib/scenarioTypes";
 import type { Trainee } from "../../lib/traineeStore";
-import { ExternalLink, Eye, Trash2, Bot } from "lucide-react";
+import { Eye, Trash2, Bot } from "lucide-react";
 import { AiReviewDialog } from "../../components/AiReviewDialog";
 import { PageHeader } from "../../components/PageHeader";
 
@@ -90,23 +90,20 @@ function GradeChip({ grade }: { grade: string }) {
 /**
  * Row actions: a persistent ghost "Review" pill (the primary admin action) plus icon buttons
  * that reveal on row hover:
- *   - Open trainee view: the trainee's own link (/s/...) - the live chat while a session runs, the
- *     trainee's scorecard once it's done. Use it to see exactly what the trainee sees, or to grab
- *     the link to send someone. (The old copy-link button duplicated this link and was dropped.)
+ *   (The trainee's own /s/... link is deliberately not here: it's the trainee's view, and admins
+ *   work from Review. Trainees still reach it from their invite.)
  *   - AI review: sends the transcript + score to the AI reviewer (simulator quality, grading
  *     fairness, coaching) with an optional question; the result can be saved as a trainer note.
  *   - Delete.
  */
 function RowActions({
   reviewUrl,
-  traineeUrl,
   reviewable,
   onAiReview,
   onDelete,
   deleting,
 }: {
   reviewUrl: string;
-  traineeUrl: string;
   reviewable: boolean;
   onAiReview: () => void;
   onDelete: () => void;
@@ -134,15 +131,6 @@ function RowActions({
         </span>
       )}
       <div className="flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-        <Link
-          href={traineeUrl}
-          target="_blank"
-          title="Open trainee view (what the trainee sees)"
-          aria-label="Open trainee view"
-          className={iconBtn}
-        >
-          <ExternalLink size={13} />
-        </Link>
         {reviewable && (
           <button
             onClick={onAiReview}
@@ -448,7 +436,6 @@ export default function AdminPage() {
                     <td className="px-3 py-3">
                       <RowActions
                         reviewUrl={`/review/${invite.token}`}
-                        traineeUrl={invite.traineeUrl}
                         reviewable={invite.status !== "NOT_STARTED"}
                         onAiReview={() => setAiReviewRow(invite)}
                         deleting={deletingToken === invite.token}
